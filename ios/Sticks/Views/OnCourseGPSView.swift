@@ -68,7 +68,7 @@ struct OnCourseGPSView: View {
             Map(position: $camera) {
                 mapContent(geo: geo, hazards: hazards, anchor: anchor)
             }
-            .mapStyle(.imagery(elevation: .realistic))
+            .mapStyle(.imagery(elevation: .flat))
             .onTapGesture { screenPoint in
                 guard let coordinate = proxy.convert(screenPoint, from: .local) else { return }
                 aim = coordinate
