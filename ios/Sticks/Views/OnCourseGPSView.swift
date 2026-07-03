@@ -23,6 +23,7 @@ struct OnCourseGPSView: View {
     @State private var holeIndex = 0
     @State private var aim: CLLocationCoordinate2D?
     @State private var scoreCell: ScoreCellSelection?
+    @State private var showFixTee = false
     @State private var hasInitialized = false
 
     /// Where distances are measured from.
@@ -54,6 +55,18 @@ struct OnCourseGPSView: View {
         .sheet(item: $scoreCell) { cell in
             ScoreEntryView(cell: cell, viewModel: viewModel, session: session) {
                 advanceHole()
+            }
+        }
+        .sheet(isPresented: $showFixTee) {
+            if let detail = viewModel.detail {
+                let hole = detail.holeNumber(at: holeIndex)
+                FixTeeView(
+                    viewModel: viewModel,
+                    session: session,
+                    locationService: locationService,
+                    hole: hole,
+                    geo: viewModel.response?.holeGeo[hole]
+                )
             }
         }
     }
@@ -164,7 +177,7 @@ struct OnCourseGPSView: View {
                 aimRow(anchor: anchor, aim: aim, green: geo?.greenCoordinate)
             }
 
-            statusLine(anchor: anchor)
+            statusRow(detail: detail, anchor: anchor)
 
             if detail.canEnterScores {
                 Button {
@@ -264,7 +277,7 @@ struct OnCourseGPSView: View {
         return "\(originName) → AIM \(toAim)"
     }
 
-    private func statusLine(anchor: DistanceAnchor?) -> some View {
+    private func statusRow(detail: MatchDetail, anchor: DistanceAnchor?) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(anchor?.isPlayer == true ? Color.green : Color.orange)
@@ -273,7 +286,43 @@ struct OnCourseGPSView: View {
                 .font(SticksFont.label(10))
                 .kerning(1)
                 .foregroundStyle(.white.opacity(0.6))
+
+            if canFixTee(detail) {
+                Spacer()
+                fixTeeButton
+            }
         }
+    }
+
+    /// FIX TEE appears only when the caller is seated in the match AND
+    /// live GPS accuracy is ±35y or better (the server rejects worse).
+    private func canFixTee(_ detail: MatchDetail) -> Bool {
+        guard detail.myMatchPlayerId != nil,
+              locationService.coordinate != nil,
+              let accuracy = locationService.horizontalAccuracyYards else { return false }
+        return accuracy <= GolfGeo.maxTeeFixAccuracyYards
+    }
+
+    private var fixTeeButton: some View {
+        Button {
+            showFixTee = true
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "smallcircle.filled.circle")
+                    .font(.system(size: 10, weight: .bold))
+                Text("FIX TEE")
+                    .font(SticksFont.label(10, weight: .bold))
+                    .kerning(1.2)
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.white.opacity(0.14))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
     }
 
     private func statusText(anchor: DistanceAnchor?) -> String {

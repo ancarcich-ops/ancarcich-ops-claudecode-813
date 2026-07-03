@@ -104,6 +104,34 @@ final class MatchDetailViewModel {
         response = updated
     }
 
+    /// POSTs a FIX TEE crowdfix. Returns the server verdict — `ok: false`
+    /// carries a `reason` the UI shows verbatim. On success a quiet re-fetch
+    /// picks up the corrected tee geometry. Throws APIError on transport or
+    /// HTTP errors; a 401 signs the user out.
+    func submitTee(hole: Int, lat: Double, lng: Double, accuracyYd: Int, session: SessionStore) async throws -> TeeResponse {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            let verdict = try await api.postTee(
+                matchId: matchId,
+                hole: hole,
+                lat: lat,
+                lng: lng,
+                accuracyYd: accuracyYd,
+                token: token
+            )
+            if verdict.ok {
+                Task { await load(session: session, quiet: true) }
+            }
+            return verdict
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+    }
+
     /// Fetches the match detail. A 401 signs the user out. When `quiet`,
     /// failures never disturb already-displayed data (used by the poll).
     func load(session: SessionStore, quiet: Bool = false) async {

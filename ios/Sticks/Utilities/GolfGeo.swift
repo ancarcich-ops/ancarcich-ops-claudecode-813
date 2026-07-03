@@ -23,6 +23,9 @@ nonisolated enum GolfGeo {
     /// distances anchor from the tee instead (FROM TEE mode).
     static let onCourseThresholdYards: Double = 3_520
 
+    /// FIX TEE requires GPS accuracy of ±35y or better (server rejects worse).
+    static let maxTeeFixAccuracyYards: Double = 35
+
     /// Haversine distance in yards.
     static func yards(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) -> Double {
         let lat1 = a.latitude * .pi / 180
