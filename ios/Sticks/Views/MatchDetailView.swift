@@ -64,7 +64,7 @@ struct MatchDetailView: View {
         .toolbarBackground(Color.sticksCream, for: .navigationBar)
         .tint(Color.sticksGreen)
         .navigationDestination(isPresented: $showsGPS) {
-            OnCourseGPSPlaceholderView(courseName: match.courseName)
+            OnCourseGPSView(viewModel: viewModel, session: session)
         }
         .sheet(item: $selectedCell) { cell in
             ScoreEntryPlaceholderSheet(cell: cell)
@@ -217,36 +217,9 @@ struct MatchDetailView: View {
 
 // MARK: - Slice stubs
 
-/// Slice 4 stub — replaced by the full MapKit on-course screen.
-private struct OnCourseGPSPlaceholderView: View {
-    let courseName: String
-
-    var body: some View {
-        ZStack {
-            Color.sticksCream.ignoresSafeArea()
-            VStack(spacing: 10) {
-                Image(systemName: "location.circle")
-                    .font(.system(size: 40, weight: .light))
-                    .foregroundStyle(Color.sticksGreen)
-                Text(courseName)
-                    .font(SticksFont.display(26))
-                    .foregroundStyle(Color.sticksInk)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-                Text("ON-COURSE GPS ARRIVES IN SLICE 4")
-                    .font(SticksFont.label(11))
-                    .kerning(1.2)
-                    .foregroundStyle(Color.sticksMuted)
-                    .padding(.top, 16)
-            }
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color.sticksCream, for: .navigationBar)
-    }
-}
-
 /// Slice 5 stub — replaced by the full par-relative score entry sheet.
-private struct ScoreEntryPlaceholderSheet: View {
+/// Shared by the scorecard grid and the on-course GPS screen.
+struct ScoreEntryPlaceholderSheet: View {
     let cell: ScoreCellSelection
 
     var body: some View {
