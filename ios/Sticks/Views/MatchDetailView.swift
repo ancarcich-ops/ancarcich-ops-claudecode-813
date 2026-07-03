@@ -1,0 +1,295 @@
+//
+//  MatchDetailView.swift
+//  Sticks
+//
+//  Slice 3: match detail / scorecard. Header with course + status,
+//  scorecard grid (caller's row first), On-course GPS CTA, and a
+//  30-second foreground poll of GET /matches/:id.
+//
+
+import SwiftUI
+
+struct MatchDetailView: View {
+    let match: MatchSummary
+    let session: SessionStore
+
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var viewModel: MatchDetailViewModel
+    @State private var selectedCell: ScoreCellSelection?
+    @State private var showsGPS = false
+
+    init(match: MatchSummary, session: SessionStore) {
+        self.match = match
+        self.session = session
+        _viewModel = State(initialValue: MatchDetailViewModel(matchId: match.id))
+    }
+
+    var body: some View {
+        ZStack {
+            Color.sticksCream.ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    header
+
+                    switch viewModel.phase {
+                    case .loading:
+                        loadingCard
+                    case .failed(let message):
+                        failedCard(message)
+                    case .loaded:
+                        if let detail = viewModel.detail {
+                            scorecardCard(detail)
+                            if detail.status != .completed {
+                                gpsButton
+                            }
+                            if !detail.canEnterScores {
+                                Text("You're viewing as a spectator — only seated players or the match creator can enter scores.")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color.sticksMuted)
+                                    .padding(.horizontal, 4)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 40)
+            }
+            .refreshable {
+                await viewModel.load(session: session, quiet: true)
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.sticksCream, for: .navigationBar)
+        .tint(Color.sticksGreen)
+        .navigationDestination(isPresented: $showsGPS) {
+            OnCourseGPSPlaceholderView(courseName: match.courseName)
+        }
+        .sheet(item: $selectedCell) { cell in
+            ScoreEntryPlaceholderSheet(cell: cell)
+        }
+        .task {
+            await viewModel.load(session: session)
+            // 30s poll while this screen is up; only fires when foregrounded.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled else { break }
+                if scenePhase == .active {
+                    await viewModel.load(session: session, quiet: true)
+                }
+            }
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        let detail = viewModel.detail
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                StatusChip(status: detail?.status ?? match.status)
+                Spacer()
+                Text(dateText)
+                    .font(SticksFont.label(11, weight: .medium))
+                    .kerning(0.6)
+                    .foregroundStyle(Color.sticksMuted)
+            }
+
+            Text(match.courseName)
+                .font(SticksFont.display(30))
+                .foregroundStyle(Color.sticksInk)
+                .multilineTextAlignment(.leading)
+
+            Text(summaryLine(detail))
+                .font(SticksFont.label(11, weight: .semibold))
+                .kerning(1.4)
+                .foregroundStyle(Color.sticksMuted)
+        }
+    }
+
+    private var dateText: String {
+        let date = viewModel.detail?.scheduledAt ?? match.scheduledAt
+        if Calendar.current.isDateInToday(date) {
+            return "TODAY · \(date.formatted(date: .omitted, time: .shortened))"
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d · h:mm a"
+        return formatter.string(from: date).uppercased()
+    }
+
+    private func summaryLine(_ detail: MatchDetail?) -> String {
+        let holes = detail?.holes ?? match.holes
+        let mode = detail?.scoringMode ?? match.scoringMode
+        let format = detail?.format ?? match.format
+        return "\(holes) HOLES · \(mode.uppercased()) · \(format.replacingOccurrences(of: "_", with: " ").uppercased())"
+    }
+
+    // MARK: - Scorecard
+
+    private func scorecardCard(_ detail: MatchDetail) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SCORECARD")
+                .font(SticksFont.label(11))
+                .kerning(1.8)
+                .foregroundStyle(Color.sticksMuted)
+                .padding(.horizontal, 16)
+
+            ScorecardGrid(
+                detail: detail,
+                players: viewModel.sortedPlayers,
+                onSelect: { cell in selectedCell = cell }
+            )
+            .padding(.horizontal, 10)
+        }
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
+    // MARK: - CTA
+
+    private var gpsButton: some View {
+        Button {
+            showsGPS = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("On-course GPS")
+                    .font(.system(size: 16, weight: .semibold))
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .bold))
+            }
+            .foregroundStyle(Color.sticksCream)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(Color.sticksGreen)
+            .clipShape(.rect(cornerRadius: 14))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
+    // MARK: - States
+
+    private var loadingCard: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .tint(Color.sticksGreen)
+            Text("Loading scorecard…")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.sticksMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+    }
+
+    private func failedCard(_ message: String) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 28, weight: .medium))
+                .foregroundStyle(Color.sticksMuted)
+            Text(message)
+                .font(.system(size: 15))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.sticksInk)
+            Button {
+                Task { await viewModel.load(session: session) }
+            } label: {
+                Text("Try Again")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.sticksCream)
+                    .padding(.horizontal, 28)
+                    .frame(height: 44)
+                    .background(Color.sticksGreen)
+                    .clipShape(.rect(cornerRadius: 12))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+}
+
+// MARK: - Slice stubs
+
+/// Slice 4 stub — replaced by the full MapKit on-course screen.
+private struct OnCourseGPSPlaceholderView: View {
+    let courseName: String
+
+    var body: some View {
+        ZStack {
+            Color.sticksCream.ignoresSafeArea()
+            VStack(spacing: 10) {
+                Image(systemName: "location.circle")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(Color.sticksGreen)
+                Text(courseName)
+                    .font(SticksFont.display(26))
+                    .foregroundStyle(Color.sticksInk)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                Text("ON-COURSE GPS ARRIVES IN SLICE 4")
+                    .font(SticksFont.label(11))
+                    .kerning(1.2)
+                    .foregroundStyle(Color.sticksMuted)
+                    .padding(.top, 16)
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.sticksCream, for: .navigationBar)
+    }
+}
+
+/// Slice 5 stub — replaced by the full par-relative score entry sheet.
+private struct ScoreEntryPlaceholderSheet: View {
+    let cell: ScoreCellSelection
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("HOLE \(cell.hole) · PAR \(cell.par)")
+                .font(SticksFont.label(11))
+                .kerning(1.6)
+                .foregroundStyle(Color.sticksMuted)
+
+            Text(cell.player.displayName)
+                .font(SticksFont.display(28))
+                .foregroundStyle(Color.sticksInk)
+
+            if let score = cell.player.scoresByHole[cell.hole] {
+                Text("Current score: \(score)")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.sticksInk)
+            } else {
+                Text("No score yet")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.sticksMuted)
+            }
+
+            Text("SCORE ENTRY ARRIVES IN SLICE 5")
+                .font(SticksFont.label(10))
+                .kerning(1.2)
+                .foregroundStyle(Color.sticksMuted)
+                .padding(.top, 14)
+        }
+        .padding(.top, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .presentationDetents([.height(240)])
+        .presentationBackground(Color.sticksCream)
+        .presentationDragIndicator(.visible)
+    }
+}
+
+/// Shared press-scale feedback for prominent buttons.
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}

@@ -90,6 +90,12 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /matches/:id — full match detail with scorecard, geo, hazards.
+    func matchDetail(id: String, token: String) async throws -> MatchDetailResponse {
+        let request = makeRequest(path: "matches/\(id)", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     // MARK: - Plumbing
 
     private func makeRequest(path: String, method: String, token: String? = nil) -> URLRequest {
