@@ -1,0 +1,10 @@
+{
+  "apps": [
+    {
+      "name": "Sticks",
+      "path": "ios",
+      "framework": "swift"
+    }
+  ],
+  "$schema": "https://rork.com/schema/rork.json"
+}
