@@ -67,7 +67,7 @@ struct MatchDetailView: View {
             OnCourseGPSView(viewModel: viewModel, session: session)
         }
         .sheet(item: $selectedCell) { cell in
-            ScoreEntryPlaceholderSheet(cell: cell)
+            ScoreEntryView(cell: cell, viewModel: viewModel, session: session)
         }
         .task {
             await viewModel.load(session: session)
@@ -212,48 +212,6 @@ struct MatchDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
-    }
-}
-
-// MARK: - Slice stubs
-
-/// Slice 5 stub — replaced by the full par-relative score entry sheet.
-/// Shared by the scorecard grid and the on-course GPS screen.
-struct ScoreEntryPlaceholderSheet: View {
-    let cell: ScoreCellSelection
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("HOLE \(cell.hole) · PAR \(cell.par)")
-                .font(SticksFont.label(11))
-                .kerning(1.6)
-                .foregroundStyle(Color.sticksMuted)
-
-            Text(cell.player.displayName)
-                .font(SticksFont.display(28))
-                .foregroundStyle(Color.sticksInk)
-
-            if let score = cell.player.scoresByHole[cell.hole] {
-                Text("Current score: \(score)")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.sticksInk)
-            } else {
-                Text("No score yet")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.sticksMuted)
-            }
-
-            Text("SCORE ENTRY ARRIVES IN SLICE 5")
-                .font(SticksFont.label(10))
-                .kerning(1.2)
-                .foregroundStyle(Color.sticksMuted)
-                .padding(.top, 14)
-        }
-        .padding(.top, 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .presentationDetents([.height(240)])
-        .presentationBackground(Color.sticksCream)
-        .presentationDragIndicator(.visible)
     }
 }
 

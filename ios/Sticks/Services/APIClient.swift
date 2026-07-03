@@ -36,6 +36,30 @@ nonisolated private struct ServerErrorBody: Codable {
     let error: String
 }
 
+/// Body for POST /matches/:id/score. `strokes: null` clears the hole, so
+/// nil MUST encode as an explicit JSON null (synthesized Codable would
+/// drop the key entirely).
+nonisolated struct ScoreRequest: Encodable {
+    let matchPlayerId: String
+    let hole: Int
+    let strokes: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case matchPlayerId, hole, strokes
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(matchPlayerId, forKey: .matchPlayerId)
+        try container.encode(hole, forKey: .hole)
+        try container.encode(strokes, forKey: .strokes)
+    }
+}
+
+nonisolated struct OkResponse: Decodable {
+    let ok: Bool
+}
+
 nonisolated struct APIClient {
     static let shared = APIClient()
 
@@ -94,6 +118,15 @@ nonisolated struct APIClient {
     func matchDetail(id: String, token: String) async throws -> MatchDetailResponse {
         let request = makeRequest(path: "matches/\(id)", method: "GET", token: token)
         return try await perform(request)
+    }
+
+    /// POST /matches/:id/score — saves (or clears, with nil) a hole score.
+    func postScore(matchId: String, matchPlayerId: String, hole: Int, strokes: Int?, token: String) async throws {
+        var request = makeRequest(path: "matches/\(matchId)/score", method: "POST", token: token)
+        request.httpBody = try encoder.encode(
+            ScoreRequest(matchPlayerId: matchPlayerId, hole: hole, strokes: strokes)
+        )
+        let _: OkResponse = try await perform(request)
     }
 
     // MARK: - Plumbing

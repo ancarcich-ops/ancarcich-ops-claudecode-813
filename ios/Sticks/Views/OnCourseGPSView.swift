@@ -52,7 +52,9 @@ struct OnCourseGPSView: View {
         }
         .onDisappear { locationService.stop() }
         .sheet(item: $scoreCell) { cell in
-            ScoreEntryPlaceholderSheet(cell: cell)
+            ScoreEntryView(cell: cell, viewModel: viewModel, session: session) {
+                advanceHole()
+            }
         }
     }
 
@@ -367,6 +369,13 @@ struct OnCourseGPSView: View {
         } else {
             camera = target
         }
+    }
+
+    /// Advances to the next hole after the score sheet completes a hole.
+    /// The hole-index change re-frames the camera and clears the aim point.
+    private func advanceHole() {
+        guard let detail = viewModel.detail, holeIndex < detail.holes - 1 else { return }
+        withAnimation { holeIndex += 1 }
     }
 
     private func openScoreSheet(_ detail: MatchDetail, hole: Int) {

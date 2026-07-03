@@ -43,6 +43,67 @@ final class MatchDetailViewModel {
         }
     }
 
+    /// Players in seat order — the cycle order for score entry.
+    var seatOrderedPlayers: [MatchDetailPlayer] {
+        (response?.match.players ?? []).sorted { a, b in
+            let aSeat = a.seat ?? Int.max
+            let bSeat = b.seat ?? Int.max
+            if aSeat != bSeat { return aSeat < bSeat }
+            return a.id < b.id
+        }
+    }
+
+    /// Next seat-ordered player (wrapping) still missing a score on `hole`,
+    /// starting after `playerId`. Nil when the hole is complete.
+    func nextUnscoredPlayer(onHole hole: Int, after playerId: String) -> MatchDetailPlayer? {
+        let players = seatOrderedPlayers
+        guard !players.isEmpty else { return nil }
+        let start = players.firstIndex { $0.id == playerId } ?? -1
+        for offset in 1 ... players.count {
+            let candidate = players[(start + offset + players.count) % players.count]
+            if candidate.id != playerId && candidate.scoresByHole[hole] == nil {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    /// POSTs a score (nil clears the hole). On success the local scorecard
+    /// is updated immediately and a quiet re-fetch is kicked off — no
+    /// waiting for the 30s poll. Throws APIError for the sheet to display.
+    func submitScore(playerId: String, hole: Int, strokes: Int?, session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            try await api.postScore(
+                matchId: matchId,
+                matchPlayerId: playerId,
+                hole: hole,
+                strokes: strokes,
+                token: token
+            )
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        applyScoreLocally(playerId: playerId, hole: hole, strokes: strokes)
+        Task { await load(session: session, quiet: true) }
+    }
+
+    /// Optimistic local update after a confirmed POST /score.
+    private func applyScoreLocally(playerId: String, hole: Int, strokes: Int?) {
+        guard var updated = response,
+              let index = updated.match.players.firstIndex(where: { $0.id == playerId }) else { return }
+        if let strokes {
+            updated.match.players[index].scoresByHole[hole] = strokes
+        } else {
+            updated.match.players[index].scoresByHole.removeValue(forKey: hole)
+        }
+        response = updated
+    }
+
     /// Fetches the match detail. A 401 signs the user out. When `quiet`,
     /// failures never disturb already-displayed data (used by the poll).
     func load(session: SessionStore, quiet: Bool = false) async {

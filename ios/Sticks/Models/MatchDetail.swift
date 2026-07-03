@@ -66,7 +66,8 @@ nonisolated struct MatchDetailPlayer: Identifiable, Hashable {
     let seat: Int?
     let team: String?
     /// Hole number → strokes (converted from the server's string keys).
-    let scoresByHole: [Int: Int]
+    /// Mutable so score posts can update the scorecard optimistically.
+    var scoresByHole: [Int: Int]
 }
 
 extension MatchDetailPlayer: Decodable {
@@ -115,7 +116,7 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     let isCreator: Bool
     let myMatchPlayerId: String?
     let pars: [Int]
-    let players: [MatchDetailPlayer]
+    var players: [MatchDetailPlayer]
 
     /// Score entry is allowed if the caller is seated or created the match.
     var canEnterScores: Bool { myMatchPlayerId != nil || isCreator }
@@ -134,7 +135,7 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
 }
 
 nonisolated struct MatchDetailResponse: Decodable {
-    let match: MatchDetail
+    var match: MatchDetail
     /// Keyed by absolute hole number (converted from string keys).
     let holeGeo: [Int: HoleGeo]
     /// Keyed by absolute hole number; holes without hazards are absent.
