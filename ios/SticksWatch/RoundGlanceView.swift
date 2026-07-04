@@ -11,7 +11,20 @@ import SwiftUI
 struct RoundGlanceView: View {
     let snapshot: RoundSnapshot
 
+    /// Snapshots older than this are treated as stale — the yardage is no
+    /// longer trustworthy and must not be presented as live.
+    private static let staleAfter: TimeInterval = 3 * 60
+
     var body: some View {
+        // TimelineView re-evaluates staleness as time passes, even when no
+        // fresh snapshot arrives from the phone (the exact case that matters).
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            let isStale = context.date.timeIntervalSince(snapshot.updatedAt) > Self.staleAfter
+            content(isStale: isStale)
+        }
+    }
+
+    private func content(isStale: Bool) -> some View {
         ScrollView {
             VStack(spacing: 2) {
                 Text(snapshot.courseName.uppercased())
@@ -29,17 +42,26 @@ struct RoundGlanceView: View {
                     .font(.system(size: 52, weight: .semibold, design: .serif))
                     .monospacedDigit()
                     .contentTransition(.numericText())
+                    .opacity(isStale ? 0.35 : 1)
 
-                Text("YDS TO CENTER")
-                    .font(.system(size: 9, weight: .semibold))
-                    .kerning(1.2)
-                    .foregroundStyle(.secondary)
+                if isStale {
+                    Text("OPEN STICKS ON IPHONE")
+                        .font(.system(size: 9, weight: .bold))
+                        .kerning(1.2)
+                        .foregroundStyle(Color.sticksGold)
+                } else {
+                    Text("YDS TO CENTER")
+                        .font(.system(size: 9, weight: .semibold))
+                        .kerning(1.2)
+                        .foregroundStyle(.secondary)
+                }
 
                 HStack(spacing: 18) {
                     flank(label: "FRONT", yards: snapshot.frontYds)
                     flank(label: "BACK", yards: snapshot.backYds)
                 }
                 .padding(.top, 6)
+                .opacity(isStale ? 0.35 : 1)
 
                 Text(progressText)
                     .font(.system(size: 11, weight: .semibold))
@@ -47,6 +69,7 @@ struct RoundGlanceView: View {
                     .padding(.top, 8)
             }
             .frame(maxWidth: .infinity)
+            .animation(.easeInOut(duration: 0.3), value: isStale)
         }
     }
 
