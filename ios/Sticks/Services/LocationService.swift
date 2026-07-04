@@ -2,10 +2,12 @@
 //  LocationService.swift
 //  Sticks
 //
-//  CoreLocation wrapper for the on-course screen. Permission is requested
-//  the first time `start()` is called — i.e. when the GPS screen opens,
-//  never at app launch. Best accuracy, continuous (~1s) updates while the
-//  screen is visible; `stop()` on disappear.
+//  CoreLocation wrapper owned by RoundSessionService. Permission is
+//  requested the first time `start()` is called — i.e. when the GPS
+//  screen opens, never at app launch. Best accuracy with a ~5m distance
+//  filter (the Live Activity only pushes on ≥5yd change, so sub-5m
+//  updates are wasted battery). Background delivery is opt-in per round
+//  via `setBackgroundUpdates(_:)` and torn down the moment a round ends.
 //
 
 import CoreLocation
@@ -24,7 +26,11 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = kCLDistanceFilterNone
+        // Battery: the companions only care about ≥5yd movement.
+        manager.distanceFilter = 5
+        // Golfers stand still between shots — auto-pause would kill
+        // updates mid-round and never resume until foregrounded.
+        manager.pausesLocationUpdatesAutomatically = false
         manager.activityType = .fitness
         authorizationStatus = manager.authorizationStatus
     }
@@ -57,6 +63,17 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     func stop() {
         manager.stopUpdatingLocation()
         isUpdating = false
+    }
+
+    /// Enables/disables background location delivery. ON only while a
+    /// round session is active (requires the `location` UIBackgroundMode
+    /// declared on the app target); OFF the moment the round ends so the
+    /// app never tracks outside a round. The system's background-location
+    /// indicator is shown while enabled — honest, and required for
+    /// when-in-use authorization to keep delivering in the background.
+    func setBackgroundUpdates(_ enabled: Bool) {
+        manager.allowsBackgroundLocationUpdates = enabled
+        manager.showsBackgroundLocationIndicator = enabled
     }
 
     private func beginUpdates() {

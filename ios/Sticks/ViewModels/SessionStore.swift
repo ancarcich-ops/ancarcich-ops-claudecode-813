@@ -61,7 +61,10 @@ final class SessionStore {
     }
 
     /// Clears the token and returns to login. Also the handler for any 401.
+    /// Ends any active round session — the Live Activity, watch snapshot,
+    /// and background location must never outlive the signed-in user.
     func signOut() {
+        RoundSessionService.shared.endRound()
         KeychainService.deleteToken()
         phase = .signedOut
     }

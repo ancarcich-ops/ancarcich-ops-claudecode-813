@@ -3,9 +3,12 @@
 //  Sticks
 //
 //  Manages the on-course Live Activity (lock screen + Dynamic Island).
-//  Requested when the GPS screen opens on an in-progress match, updated
-//  as the hole / scores / TO PIN change, and ended on FINISH ROUND, on
-//  the poll reporting COMPLETED, or when the GPS screen is left.
+//  ROUND-scoped, driven by RoundSessionService: requested the first time
+//  the GPS screen opens on an in-progress match, updated as the hole /
+//  scores / TO PIN change (surviving navigation, backgrounding, and phone
+//  lock), and ended on FINISH ROUND, the poll reporting COMPLETED,
+//  sign-out, or switching to a different match's round. The staleDate
+//  backstop covers force-quit and system kills.
 //  Everything is local — no push tokens, no server involvement.
 //
 
@@ -58,9 +61,9 @@ final class RoundActivityService {
         }
     }
 
-    /// Ends and dismisses the activity immediately (FINISH ROUND success,
-    /// the poll reporting COMPLETED, or leaving the GPS screen). Sweeps
-    /// every activity for the app so none can linger.
+    /// Ends and dismisses the activity immediately (round end: FINISH
+    /// ROUND success, the poll reporting COMPLETED, sign-out, or a match
+    /// switch). Sweeps every activity for the app so none can linger.
     func end() {
         pendingPush?.cancel()
         pendingPush = nil

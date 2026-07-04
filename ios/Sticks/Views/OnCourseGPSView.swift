@@ -10,6 +10,11 @@
 //  - Tap the map to set an AIM point (anchor→aim and aim→green).
 //  - Location permission is requested when this screen first opens.
 //
+//  Companions (Live Activity + watch snapshot) are ROUND-scoped, not
+//  screen-scoped: this view starts the round session on appear and feeds
+//  it the displayed hole, but RoundSessionService owns the update loop —
+//  leaving this screen does NOT end the activity.
+//
 
 import SwiftUI
 import MapKit
@@ -19,7 +24,6 @@ struct OnCourseGPSView: View {
     let session: SessionStore
 
     @Environment(\.dismiss) private var dismiss
-    @State private var locationService = LocationService()
     @State private var camera: MapCameraPosition = .automatic
     @State private var holeIndex = 0
     @State private var aim: CLLocationCoordinate2D?
@@ -28,6 +32,11 @@ struct OnCourseGPSView: View {
     @State private var hasInitialized = false
     @State private var isFinishing = false
     @State private var finishError: String?
+
+    /// Round-scoped location source — owned by the session service so
+    /// GPS updates (and the companions they feed) survive leaving this
+    /// screen while a round is live.
+    private var locationService: LocationService { RoundSessionService.shared.location }
 
     /// Where distances are measured from.
     private struct DistanceAnchor {
@@ -52,17 +61,23 @@ struct OnCourseGPSView: View {
         // on the hole rail row, reclaiming a full row of map space.
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
-            locationService.start()
+            RoundSessionService.shared.gpsScreenAppeared()
             initializeIfNeeded()
-            WatchSessionService.shared.activate()
-            syncCompanions()
+            RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex)
         }
         .onDisappear {
-            locationService.stop()
-            // Spec: the Live Activity ends when the GPS screen is left.
-            RoundActivityService.shared.end()
+            // Round-scoped: the Live Activity, watch snapshot, and
+            // background location persist past this screen. The session
+            // stops foreground location only when no round is active.
+            RoundSessionService.shared.gpsScreenDisappeared()
         }
-        .onChange(of: liveActivityContent) { _, _ in syncCompanions() }
+        // An UPCOMING match can flip to IN_PROGRESS via the poll while
+        // this screen is open — start the round session when it does.
+        .onChange(of: viewModel.detail?.status) { _, status in
+            if status == .inProgress {
+                RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex)
+            }
+        }
         .sheet(item: $scoreCell) { cell in
             ScoreEntryView(cell: cell, viewModel: viewModel, session: session) {
                 advanceHole()
@@ -122,8 +137,9 @@ struct OnCourseGPSView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
         }
-        .onChange(of: holeIndex) { _, _ in
+        .onChange(of: holeIndex) { _, newIndex in
             aim = nil
+            RoundSessionService.shared.setHole(index: newIndex, matchId: detail.id)
             frameCurrentHole(detail, animated: true)
         }
     }
@@ -393,8 +409,7 @@ struct OnCourseGPSView: View {
             do {
                 try await viewModel.completeMatch(session: session)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                RoundActivityService.shared.end()
-                WatchSessionService.shared.clear()
+                RoundSessionService.shared.endRound()
                 dismiss()
             } catch let error as APIError {
                 finishError = error.message
@@ -483,90 +498,6 @@ struct OnCourseGPSView: View {
         return nil
     }
 
-    // MARK: - Live Activity + Watch companion
-
-    /// State for the round Live Activity — nil unless the match is in
-    /// progress. Equatable, so `.onChange` fires only on meaningful
-    /// changes (hole, par, rounded yardages, scores).
-    ///
-    /// Per the spec: `toPinYds` (and front/back) are nil unless there's a
-    /// live GPS fix anchored at the player AND a mapped green — the tee
-    /// fallback never masquerades as TO PIN on the lock screen.
-    private var liveActivityContent: RoundActivityAttributes.ContentState? {
-        guard let detail = viewModel.detail, detail.status == .inProgress else { return nil }
-        let hole = detail.holeNumber(at: holeIndex)
-        let geo = viewModel.response?.holeGeo[hole]
-        let anchor = currentAnchor(geo)
-        let playerDistances = anchor?.isPlayer == true
-            ? anchor.flatMap { geo?.distances(from: $0.coordinate) }
-            : nil
-        let scores = myScores(detail)
-
-        var holesScored = 0
-        var myScoredHoles = 0
-        var toPar = 0
-        for index in 0 ..< detail.holes {
-            let holeNumber = detail.holeNumber(at: index)
-            if !detail.players.isEmpty,
-               detail.players.allSatisfy({ $0.scoresByHole[holeNumber] != nil }) {
-                holesScored += 1
-            }
-            if let strokes = scores[holeNumber] {
-                myScoredHoles += 1
-                toPar += strokes - detail.par(at: index)
-            }
-        }
-        let isSeated = detail.myMatchPlayerId != nil
-
-        return RoundActivityAttributes.ContentState(
-            hole: hole,
-            par: detail.par(at: holeIndex),
-            toPinYds: playerDistances.map { Int($0.center.rounded()) },
-            frontYds: playerDistances.map { Int($0.front.rounded()) },
-            backYds: playerDistances.map { Int($0.back.rounded()) },
-            holesScored: holesScored,
-            totalHoles: detail.holes,
-            myToPar: isSeated && myScoredHoles > 0 ? toPar : nil,
-            // Constant placeholder so Equatable dedupe works — the real
-            // timestamp is stamped by RoundActivityService at push time.
-            updatedAt: Date(timeIntervalSince1970: 0)
-        )
-    }
-
-    /// Pushes the current round state to the lock screen Live Activity
-    /// and the watch companion. Ends both once the match has completed.
-    private func syncCompanions() {
-        guard let detail = viewModel.detail else { return }
-        guard let state = liveActivityContent else {
-            if detail.status == .completed {
-                RoundActivityService.shared.end()
-                WatchSessionService.shared.clear()
-            }
-            return
-        }
-        RoundActivityService.shared.startOrUpdate(
-            matchId: detail.id,
-            courseName: detail.courseName,
-            state: state
-        )
-        // The watch keeps the tee fallback so it stays useful off-course
-        // (unlike the Live Activity, which is strictly player-anchored).
-        let geo = viewModel.response?.holeGeo[state.hole]
-        let watchDistances = currentAnchor(geo).flatMap { geo?.distances(from: $0.coordinate) }
-        WatchSessionService.shared.send(RoundSnapshot(
-            courseName: detail.courseName,
-            hole: state.hole,
-            par: state.par,
-            frontYds: watchDistances.map { Int($0.front.rounded()) },
-            centerYds: watchDistances.map { Int($0.center.rounded()) },
-            backYds: watchDistances.map { Int($0.back.rounded()) },
-            holesScored: state.holesScored,
-            totalHoles: state.totalHoles,
-            myToPar: state.myToPar,
-            updatedAt: Date()
-        ))
-    }
-
     private func myScores(_ detail: MatchDetail) -> [Int: Int] {
         detail.players.first { $0.id == detail.myMatchPlayerId }?.scoresByHole ?? [:]
     }
@@ -574,7 +505,13 @@ struct OnCourseGPSView: View {
     private func initializeIfNeeded() {
         guard !hasInitialized, let detail = viewModel.detail else { return }
         hasInitialized = true
-        holeIndex = initialHoleIndex(detail)
+        if RoundSessionService.shared.activeMatchId == detail.id {
+            // Re-opening the GPS screen mid-round: resume the hole the
+            // round session last showed instead of recomputing.
+            holeIndex = min(RoundSessionService.shared.holeIndex, max(detail.holes - 1, 0))
+        } else {
+            holeIndex = initialHoleIndex(detail)
+        }
         frameCurrentHole(detail, animated: false)
     }
 
