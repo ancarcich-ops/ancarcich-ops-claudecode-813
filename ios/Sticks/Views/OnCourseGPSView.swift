@@ -53,8 +53,11 @@ struct OnCourseGPSView: View {
         .onAppear {
             locationService.start()
             initializeIfNeeded()
+            WatchSessionService.shared.activate()
+            syncCompanions()
         }
         .onDisappear { locationService.stop() }
+        .onChange(of: liveActivityContent) { _, _ in syncCompanions() }
         .sheet(item: $scoreCell) { cell in
             ScoreEntryView(cell: cell, viewModel: viewModel, session: session) {
                 advanceHole()
@@ -357,6 +360,8 @@ struct OnCourseGPSView: View {
             do {
                 try await viewModel.completeMatch(session: session)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                RoundActivityService.shared.end()
+                WatchSessionService.shared.clear()
                 dismiss()
             } catch let error as APIError {
                 finishError = error.message
@@ -443,6 +448,70 @@ struct OnCourseGPSView: View {
             return DistanceAnchor(coordinate: tee, isPlayer: false)
         }
         return nil
+    }
+
+    // MARK: - Live Activity + Watch companion
+
+    /// State for the round Live Activity and watch snapshot — nil unless
+    /// the match is in progress. Equatable, so `.onChange` fires only on
+    /// meaningful changes (hole, par, rounded yardages, scores).
+    private var liveActivityContent: RoundActivityAttributes.ContentState? {
+        guard let detail = viewModel.detail, detail.status == .inProgress else { return nil }
+        let hole = detail.holeNumber(at: holeIndex)
+        let geo = viewModel.response?.holeGeo[hole]
+        let distances = currentAnchor(geo).flatMap { geo?.distances(from: $0.coordinate) }
+        let scores = myScores(detail)
+
+        var holesScored = 0
+        var toPar = 0
+        for index in 0 ..< detail.holes {
+            if let strokes = scores[detail.holeNumber(at: index)] {
+                holesScored += 1
+                toPar += strokes - detail.par(at: index)
+            }
+        }
+        let isSeated = detail.myMatchPlayerId != nil
+
+        return RoundActivityAttributes.ContentState(
+            hole: hole,
+            par: detail.par(at: holeIndex),
+            frontYds: distances.map { Int($0.front.rounded()) },
+            centerYds: distances.map { Int($0.center.rounded()) },
+            backYds: distances.map { Int($0.back.rounded()) },
+            holesScored: holesScored,
+            totalHoles: detail.holes,
+            myToPar: isSeated && holesScored > 0 ? toPar : nil
+        )
+    }
+
+    /// Pushes the current round state to the lock screen Live Activity
+    /// and the watch companion. Ends both once the match has completed.
+    private func syncCompanions() {
+        guard let detail = viewModel.detail else { return }
+        guard let state = liveActivityContent else {
+            if detail.status == .completed {
+                RoundActivityService.shared.end()
+                WatchSessionService.shared.clear()
+            }
+            return
+        }
+        RoundActivityService.shared.startOrUpdate(
+            matchId: detail.id,
+            courseName: detail.courseName,
+            state: state
+        )
+        WatchSessionService.shared.send(RoundSnapshot(
+            courseName: detail.courseName,
+            hole: state.hole,
+            par: state.par,
+            frontYds: state.frontYds,
+            centerYds: state.centerYds,
+            backYds: state.backYds,
+            holesScored: state.holesScored,
+            totalHoles: state.totalHoles,
+            myToPar: state.myToPar,
+            updatedAt: Date()
+        ))
     }
 
     private func myScores(_ detail: MatchDetail) -> [Int: Int] {

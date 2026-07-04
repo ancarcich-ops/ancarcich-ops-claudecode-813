@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		XX5AF90CE66C44B2F37DEAXX /* SticksWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = XX947006A8ADC8465BB0DEXX /* SticksWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		XX8AF10D42597C6CDD5230XX /* SticksWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = XX0D5FE814FE9EA9781201XX /* SticksWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		105FC58A2E9EAD3200EA8BCF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,13 +26,64 @@
 			remoteGlobalIDString = 105FC5792E9EAD3100EA8BCF;
 			remoteInfo = Sticks;
 		};
+		XX07A4FA04EB61B4B73AA5XX /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 105FC5722E9EAD3100EA8BCF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = XX4C334FAF25F0AE7D1CF3XX;
+			remoteInfo = SticksWatch;
+		};
+		XX0AC91385CC6CE2DFB999XX /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 105FC5722E9EAD3100EA8BCF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = XXC9FEA680BA1F94A83277XX;
+			remoteInfo = SticksWidget;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		XX6B4C40BBEA4BC0DAE2C2XX /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				XX5AF90CE66C44B2F37DEAXX /* SticksWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XXC476511CEDBC3BCC1001XX /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				XX8AF10D42597C6CDD5230XX /* SticksWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		105FC57A2E9EAD3100EA8BCF /* Sticks.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sticks.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		105FC5892E9EAD3200EA8BCF /* SticksTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SticksTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		105FC5932E9EAD3200EA8BCF /* SticksUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SticksUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		XX0D5FE814FE9EA9781201XX /* SticksWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SticksWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		XX947006A8ADC8465BB0DEXX /* SticksWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SticksWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		XX90D4F3E4857B1BF13547XX /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = XXC9FEA680BA1F94A83277XX /* SticksWidget */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		105FC57C2E9EAD3100EA8BCF /* Sticks */ = {
@@ -43,6 +99,11 @@
 		105FC5962E9EAD3200EA8BCF /* SticksUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SticksUITests;
+			sourceTree = "<group>";
+		};
+		XXBCB13AAA01960634807FXX /* SticksWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SticksWatch;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,7 +130,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		XX28A9A27FCA465D91AA27XX /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XX75B8358D2242CEB782C5XX /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		XX7119E6C27D7B2142D555XX /* SticksWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SticksWidget;
+			sourceTree = "<group>";
+			exceptions = (
+				XX90D4F3E4857B1BF13547XX /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXGroup section */
 		105FC5712E9EAD3100EA8BCF = {
@@ -79,6 +165,8 @@
 				105FC58C2E9EAD3200EA8BCF /* SticksTests */,
 				105FC5962E9EAD3200EA8BCF /* SticksUITests */,
 				105FC57B2E9EAD3100EA8BCF /* Products */,
+				XX7119E6C27D7B2142D555XX /* SticksWidget */,
+				XXBCB13AAA01960634807FXX /* SticksWatch */,
 			);
 			sourceTree = "<group>";
 		};
@@ -88,6 +176,8 @@
 				105FC57A2E9EAD3100EA8BCF /* Sticks.app */,
 				105FC5892E9EAD3200EA8BCF /* SticksTests.xctest */,
 				105FC5932E9EAD3200EA8BCF /* SticksUITests.xctest */,
+				XX0D5FE814FE9EA9781201XX /* SticksWidget.appex */,
+				XX947006A8ADC8465BB0DEXX /* SticksWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -102,10 +192,14 @@
 				105FC5762E9EAD3100EA8BCF /* Sources */,
 				105FC5772E9EAD3100EA8BCF /* Frameworks */,
 				105FC5782E9EAD3100EA8BCF /* Resources */,
+				XXC476511CEDBC3BCC1001XX /* Embed Foundation Extensions */,
+				XX6B4C40BBEA4BC0DAE2C2XX /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				XX13291F96B3FF73795B2AXX /* PBXTargetDependency */,
+				XXC2E7C51E7AE752B6BAA3XX /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				105FC57C2E9EAD3100EA8BCF /* Sticks */,
@@ -163,6 +257,46 @@
 			productReference = 105FC5932E9EAD3200EA8BCF /* SticksUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		XX4C334FAF25F0AE7D1CF3XX /* SticksWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = XX113E591EFD45C15228DEXX /* Build configuration list for PBXNativeTarget "SticksWatch" */;
+			buildPhases = (
+				XX178B45C53EB340DB4155XX /* Sources */,
+				XX28A9A27FCA465D91AA27XX /* Frameworks */,
+				XX4FEB6E8356710642DD83XX /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SticksWatch;
+			productName = SticksWatch;
+			productReference = XX947006A8ADC8465BB0DEXX /* SticksWatch.app */;
+			productType = "com.apple.product-type.application";
+			fileSystemSynchronizedGroups = (
+				XXBCB13AAA01960634807FXX /* SticksWatch */,
+			);
+		};
+		XXC9FEA680BA1F94A83277XX /* SticksWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = XXD320AE74F2E440F4B475XX /* Build configuration list for PBXNativeTarget "SticksWidget" */;
+			buildPhases = (
+				XXE0FD6AFA7551401BFCEBXX /* Sources */,
+				XX75B8358D2242CEB782C5XX /* Frameworks */,
+				XX8DEE49FEB104205DDA8DXX /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SticksWidget;
+			productName = SticksWidget;
+			productReference = XX0D5FE814FE9EA9781201XX /* SticksWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+			fileSystemSynchronizedGroups = (
+				XX7119E6C27D7B2142D555XX /* SticksWidget */,
+			);
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -203,6 +337,8 @@
 				105FC5792E9EAD3100EA8BCF /* Sticks */,
 				105FC5882E9EAD3200EA8BCF /* SticksTests */,
 				105FC5922E9EAD3200EA8BCF /* SticksUITests */,
+				XXC9FEA680BA1F94A83277XX /* SticksWidget */,
+				XX4C334FAF25F0AE7D1CF3XX /* SticksWatch */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +359,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		105FC5912E9EAD3200EA8BCF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XX4FEB6E8356710642DD83XX /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XX8DEE49FEB104205DDA8DXX /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +403,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		XX178B45C53EB340DB4155XX /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XXE0FD6AFA7551401BFCEBXX /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +429,16 @@
 			isa = PBXTargetDependency;
 			target = 105FC5792E9EAD3100EA8BCF /* Sticks */;
 			targetProxy = 105FC5942E9EAD3200EA8BCF /* PBXContainerItemProxy */;
+		};
+		XX13291F96B3FF73795B2AXX /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = XXC9FEA680BA1F94A83277XX /* SticksWidget */;
+			targetProxy = XX0AC91385CC6CE2DFB999XX /* PBXContainerItemProxy */;
+		};
+		XXC2E7C51E7AE752B6BAA3XX /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = XX4C334FAF25F0AE7D1CF3XX /* SticksWatch */;
+			targetProxy = XX07A4FA04EB61B4B73AA5XX /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -402,6 +576,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Sticks uses your location to show live GPS distances to the green while you play.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -436,6 +611,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Sticks uses your location to show live GPS distances to the green while you play.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -468,7 +644,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.ofo2zt4lcp6hi4ceu1jsm.tests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -490,7 +666,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.ofo2zt4lcp6hi4ceu1jsm.tests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -510,7 +686,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.ofo2zt4lcp6hi4ceu1jsm.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -530,7 +706,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.ofo2zt4lcp6hi4ceu1jsm.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -539,6 +715,106 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Sticks;
+			};
+			name = Release;
+		};
+		XX489CA4CFE2CD6B3B54C3XX /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.stickswidget;
+				PRODUCT_NAME = SticksWidget;
+				SWIFT_VERSION = 5.0;
+				SDKROOT = iphoneos;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SticksWidget/Info.plist;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
+			};
+			name = Debug;
+		};
+		XX4D1C4198C4E8DFE5309DXX /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.stickswatch;
+				PRODUCT_NAME = SticksWatch;
+				SWIFT_VERSION = 5.0;
+				SDKROOT = watchos;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				GENERATE_INFOPLIST_FILE = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				TARGETED_DEVICE_FAMILY = 4;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				ENABLE_PREVIEWS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = app.rork.ofo2zt4lcp6hi4ceu1jsm;
+			};
+			name = Debug;
+		};
+		XXC216504D31D0720DFDA1XX /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.stickswidget;
+				PRODUCT_NAME = SticksWidget;
+				SWIFT_VERSION = 5.0;
+				SDKROOT = iphoneos;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SticksWidget/Info.plist;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
+			};
+			name = Release;
+		};
+		XXD8EDB8935E4D6CDB557FXX /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.ofo2zt4lcp6hi4ceu1jsm.stickswatch;
+				PRODUCT_NAME = SticksWatch;
+				SWIFT_VERSION = 5.0;
+				SDKROOT = watchos;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				GENERATE_INFOPLIST_FILE = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				TARGETED_DEVICE_FAMILY = 4;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				ENABLE_PREVIEWS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = app.rork.ofo2zt4lcp6hi4ceu1jsm;
 			};
 			name = Release;
 		};
@@ -577,6 +853,24 @@
 			buildConfigurations = (
 				105FC5A42E9EAD3200EA8BCF /* Debug */,
 				105FC5A52E9EAD3200EA8BCF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		XX113E591EFD45C15228DEXX /* Build configuration list for PBXNativeTarget "SticksWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				XX4D1C4198C4E8DFE5309DXX /* Debug */,
+				XXD8EDB8935E4D6CDB557FXX /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		XXD320AE74F2E440F4B475XX /* Build configuration list for PBXNativeTarget "SticksWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				XX489CA4CFE2CD6B3B54C3XX /* Debug */,
+				XXC216504D31D0720DFDA1XX /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
