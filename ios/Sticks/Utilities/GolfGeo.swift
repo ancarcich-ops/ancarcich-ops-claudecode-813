@@ -55,6 +55,40 @@ nonisolated enum GolfGeo {
             longitude: (a.longitude + b.longitude) / 2
         )
     }
+
+    /// Destination point `meters` away from `origin` along `bearing`
+    /// (degrees, 0 = north). Used to slide the map camera center up-course
+    /// so the framed hole clears the top rail overlay.
+    static func coordinate(
+        from origin: CLLocationCoordinate2D,
+        bearing: Double,
+        meters: Double
+    ) -> CLLocationCoordinate2D {
+        let angular = meters / 6_371_000
+        let bearingRad = bearing * .pi / 180
+        let lat1 = origin.latitude * .pi / 180
+        let lng1 = origin.longitude * .pi / 180
+        let lat2 = asin(sin(lat1) * cos(angular) + cos(lat1) * sin(angular) * cos(bearingRad))
+        let lng2 = lng1 + atan2(
+            sin(bearingRad) * sin(angular) * cos(lat1),
+            cos(angular) - sin(lat1) * sin(lat2)
+        )
+        return CLLocationCoordinate2D(latitude: lat2 * 180 / .pi, longitude: lng2 * 180 / .pi)
+    }
+
+    /// Signed projection of `point` onto the hole axis, in meters from
+    /// `origin` along `heading` (positive = up-course, toward the green).
+    /// Used to fit tee, green, and hazards inside the map's visible band.
+    static func upCourseMeters(
+        of point: CLLocationCoordinate2D,
+        from origin: CLLocationCoordinate2D,
+        heading: Double
+    ) -> Double {
+        let distanceMeters = yards(from: origin, to: point) / yardsPerMeter
+        guard distanceMeters > 0 else { return 0 }
+        let delta = (bearing(from: origin, to: point) - heading) * .pi / 180
+        return distanceMeters * cos(delta)
+    }
 }
 
 extension HoleGeo {

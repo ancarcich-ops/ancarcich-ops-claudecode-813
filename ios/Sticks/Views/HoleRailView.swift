@@ -4,7 +4,9 @@
 //
 //  Horizontal hole chips (1–18) with par and the player's score, used to
 //  switch holes on the on-course GPS screen. Auto-scrolls to the current
-//  hole. Sits on a dark scrim over the satellite map.
+//  hole. Sits on a dark scrim over the satellite map, sharing its row
+//  with the fixed back button — chips scroll behind it and fade out at
+//  the leading edge.
 //
 
 import SwiftUI
@@ -14,6 +16,11 @@ struct HoleRailView: View {
     /// The caller's scores keyed by absolute hole number.
     let scores: [Int: Int]
     @Binding var selectedIndex: Int
+
+    /// Space reserved at the leading edge so the first chip rests fully
+    /// visible to the right of the fixed back button at scroll zero
+    /// (12pt inset + 44pt button + 12pt gap).
+    private let leadingInset: CGFloat = 68
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -26,7 +33,9 @@ struct HoleRailView: View {
                 }
                 .padding(.vertical, 10)
             }
-            .contentMargins(.horizontal, 16)
+            .contentMargins(.leading, leadingInset)
+            .contentMargins(.trailing, 16)
+            .mask(leadingFadeMask)
             .onAppear {
                 proxy.scrollTo(selectedIndex, anchor: .center)
             }
@@ -44,6 +53,24 @@ struct HoleRailView: View {
             )
             .ignoresSafeArea(edges: .top)
         )
+    }
+
+    /// Soft fade at the leading edge so chips slide under the back button
+    /// gracefully instead of clipping hard against it.
+    private var leadingFadeMask: some View {
+        HStack(spacing: 0) {
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .clear, location: 0.3),
+                    .init(color: .black, location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: leadingInset)
+            Rectangle().fill(.black)
+        }
     }
 
     private func chip(index: Int) -> some View {

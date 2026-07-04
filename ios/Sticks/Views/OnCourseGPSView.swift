@@ -48,8 +48,9 @@ struct OnCourseGPSView: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        // The system nav bar is fully hidden — the custom back button sits
+        // on the hole rail row, reclaiming a full row of map space.
+        .toolbar(.hidden, for: .navigationBar)
         .onAppear {
             locationService.start()
             initializeIfNeeded()
@@ -102,7 +103,14 @@ struct OnCourseGPSView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(alignment: .trailing, spacing: 10) {
-                HoleRailView(detail: detail, scores: myScores(detail), selectedIndex: $holeIndex)
+                // Back button and hole rail share one row: the button is
+                // fixed at the leading edge, chips scroll behind it and
+                // fade out under it (see HoleRailView's leading mask).
+                ZStack(alignment: .leading) {
+                    HoleRailView(detail: detail, scores: myScores(detail), selectedIndex: $holeIndex)
+                    backButton
+                        .padding(.leading, 12)
+                }
                 if let wind = viewModel.response?.wind {
                     WindTile(wind: wind)
                         .padding(.trailing, 12)
@@ -118,6 +126,27 @@ struct OnCourseGPSView: View {
             aim = nil
             frameCurrentHole(detail, animated: true)
         }
+    }
+
+    /// Fixed back button on the hole rail row — chips scroll past it.
+    /// Kept at 44×44 (not shrunk to chip height) and centered vertically
+    /// against the chips by the enclosing ZStack.
+    private var backButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.55))
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .environment(\.colorScheme, .dark)
+        .accessibilityLabel("Back")
     }
 
     @MapContentBuilder
@@ -558,19 +587,51 @@ struct OnCourseGPSView: View {
         return 0
     }
 
-    /// Fits tee + green with padding and rotates the camera so the
-    /// tee→green line points up-screen.
+    /// Fraction of the screen covered by the merged top row (status bar +
+    /// back button/hole rail), with headroom for hazard chip height.
+    private static let cameraTopFraction = 0.20
+    /// Fraction covered by the bottom readout panel.
+    private static let cameraBottomFraction = 0.30
+    /// Visible ground height ≈ this × camera distance (empirical for the
+    /// satellite camera at pitch 0).
+    private static let groundSpanPerDistance = 0.75
+
+    /// Fits tee + green + hazards into the visible band between the top
+    /// rail row and the bottom panel, rotated so tee→green points
+    /// up-screen. The top/bottom fractions pad the camera so hazard chips
+    /// never render underneath the hole rail.
     private func frameCurrentHole(_ detail: MatchDetail, animated: Bool) {
         let hole = detail.holeNumber(at: holeIndex)
         guard let geo = viewModel.response?.holeGeo[hole] else { return }
 
         let target: MapCameraPosition
         if let tee = geo.teeCoordinate, let green = geo.greenCoordinate {
-            let lengthMeters = GolfGeo.yards(from: tee, to: green) / GolfGeo.yardsPerMeter
+            let heading = GolfGeo.bearing(from: tee, to: green)
+            let midpoint = GolfGeo.midpoint(tee, green)
+
+            // Everything that must stay inside the visible band, projected
+            // onto the hole axis (meters from midpoint, + = up-course).
+            var points = [tee, green]
+            points += (viewModel.response?.hazards[hole] ?? []).compactMap { hazard in
+                guard let lat = hazard.lat, let lng = hazard.lng else { return nil }
+                return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+            }
+            let projections = points.map {
+                GolfGeo.upCourseMeters(of: $0, from: midpoint, heading: heading)
+            }
+            let upMost = projections.max() ?? 0
+            let downMost = projections.min() ?? 0
+
+            let usable = 1 - Self.cameraTopFraction - Self.cameraBottomFraction
+            let minSpan = 380 * Self.groundSpanPerDistance
+            let span = max((upMost - downMost) / usable, minSpan)
+            // Slide the center up-course so the up-most point sits exactly
+            // at the top of the visible band, clear of the rail row.
+            let centerOffset = upMost - span * (0.5 - Self.cameraTopFraction)
             target = .camera(MapCamera(
-                centerCoordinate: GolfGeo.midpoint(tee, green),
-                distance: max(lengthMeters * 2.1, 380),
-                heading: GolfGeo.bearing(from: tee, to: green),
+                centerCoordinate: GolfGeo.coordinate(from: midpoint, bearing: heading, meters: centerOffset),
+                distance: span / Self.groundSpanPerDistance,
+                heading: heading,
                 pitch: 0
             ))
         } else if let single = geo.teeCoordinate ?? geo.greenCoordinate {
