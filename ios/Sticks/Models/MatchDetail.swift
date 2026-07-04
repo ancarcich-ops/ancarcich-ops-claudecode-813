@@ -40,6 +40,13 @@ nonisolated struct Hazard: Codable, Hashable {
     let lng: Double?
 }
 
+/// Course wind conditions — null when unavailable.
+nonisolated struct Wind: Codable, Hashable {
+    let speedMph: Double
+    /// Compass direction the wind blows FROM, in degrees.
+    let fromDeg: Double
+}
+
 /// Per-hole GPS geometry. ANY field can be null.
 nonisolated struct HoleGeo: Codable, Hashable {
     let hole: Int?
@@ -140,9 +147,11 @@ nonisolated struct MatchDetailResponse: Decodable {
     let holeGeo: [Int: HoleGeo]
     /// Keyed by absolute hole number; holes without hazards are absent.
     let hazards: [Int: [Hazard]]
+    /// Wind conditions — nil when the server has none.
+    let wind: Wind?
 
     private enum CodingKeys: String, CodingKey {
-        case match, holeGeo, hazards
+        case match, holeGeo, hazards, wind
     }
 
     init(from decoder: Decoder) throws {
@@ -158,5 +167,7 @@ nonisolated struct MatchDetailResponse: Decodable {
         hazards = Dictionary(uniqueKeysWithValues: rawHazards.compactMap { key, value in
             Int(key).map { ($0, value) }
         })
+
+        wind = try container.decodeIfPresent(Wind.self, forKey: .wind)
     }
 }

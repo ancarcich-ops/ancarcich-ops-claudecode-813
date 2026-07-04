@@ -98,6 +98,13 @@ struct OnCourseGPSView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
         }
+        .overlay(alignment: .topTrailing) {
+            if let wind = viewModel.response?.wind {
+                WindTile(wind: wind)
+                    .padding(.top, 10)
+                    .padding(.trailing, 12)
+            }
+        }
         .onChange(of: holeIndex) { _, _ in
             aim = nil
             frameCurrentHole(detail, animated: true)
@@ -432,6 +439,45 @@ struct OnCourseGPSView: View {
             ?? viewModel.sortedPlayers.first
         guard let player else { return }
         scoreCell = ScoreCellSelection(player: player, hole: hole, par: detail.par(at: holeIndex))
+    }
+}
+
+// MARK: - Wind tile
+
+/// Wind speed + direction, matching the web app: MPH with an arrow
+/// rotated to `fromDeg` (the direction the wind blows FROM).
+private struct WindTile: View {
+    let wind: Wind
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                .rotationEffect(.degrees(wind.fromDeg))
+            VStack(alignment: .leading, spacing: 0) {
+                Text("\(Int(wind.speedMph.rounded()))")
+                    .font(SticksFont.display(18))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                Text("MPH")
+                    .font(SticksFont.label(8))
+                    .kerning(1.2)
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(.black.opacity(0.55))
+        .background(.ultraThinMaterial)
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(.white.opacity(0.14), lineWidth: 1)
+        )
+        .environment(\.colorScheme, .dark)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Wind \(Int(wind.speedMph.rounded())) miles per hour from \(Int(wind.fromDeg)) degrees")
     }
 }
 
