@@ -34,7 +34,7 @@ struct ContentView: View {
 
     private var launchView: some View {
         ZStack {
-            Color.sticksCream.ignoresSafeArea()
+            Color.sticksBg.ignoresSafeArea()
             VStack(spacing: 16) {
                 Text("Sticks")
                     .font(SticksFont.display(48))
@@ -47,7 +47,7 @@ struct ContentView: View {
 
     private func unreachableView(_ message: String) -> some View {
         ZStack {
-            Color.sticksCream.ignoresSafeArea()
+            Color.sticksBg.ignoresSafeArea()
             VStack(spacing: 18) {
                 Image(systemName: "wifi.slash")
                     .font(.system(size: 36, weight: .medium))

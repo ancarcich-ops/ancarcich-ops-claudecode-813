@@ -17,7 +17,7 @@ struct MatchListView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.sticksCream.ignoresSafeArea()
+                Color.sticksBg.ignoresSafeArea()
 
                 switch viewModel.phase {
                 case .loading:
@@ -46,7 +46,18 @@ struct MatchListView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .center, spacing: 10) {
+            Image("SticksMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+                .clipShape(.rect(cornerRadius: 9))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(Color.sticksHairline, lineWidth: 1)
+                )
+                .accessibilityHidden(true)
+
             Text("Sticks")
                 .font(SticksFont.display(30))
                 .foregroundStyle(Color.sticksInk)
@@ -73,7 +84,7 @@ struct MatchListView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 12)
-        .background(Color.sticksCream.opacity(0.97))
+        .background(Color.sticksBg.opacity(0.97))
     }
 
     // MARK: - List
@@ -229,9 +240,9 @@ private struct MatchRowView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.sticksCard)
-        .clipShape(.rect(cornerRadius: 16))
+        .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
                 .stroke(Color.sticksHairline, lineWidth: 1)
         )
     }
@@ -278,7 +289,7 @@ private struct AvatarStack: View {
                     .font(SticksFont.label(10, weight: .bold))
                     .foregroundStyle(Color.sticksGreen)
                     .frame(width: 26, height: 26)
-                    .background(Color.sticksCream)
+                    .background(Color.sticksPanel2)
                     .clipShape(.circle)
                     .overlay(
                         Circle().stroke(Color.sticksCard, lineWidth: 2)

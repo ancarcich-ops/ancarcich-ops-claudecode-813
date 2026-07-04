@@ -26,7 +26,7 @@ struct MatchDetailView: View {
 
     var body: some View {
         ZStack {
-            Color.sticksCream.ignoresSafeArea()
+            Color.sticksBg.ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
@@ -61,7 +61,7 @@ struct MatchDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color.sticksCream, for: .navigationBar)
+        .toolbarBackground(Color.sticksBg, for: .navigationBar)
         .tint(Color.sticksGreen)
         .navigationDestination(isPresented: $showsGPS) {
             OnCourseGPSView(viewModel: viewModel, session: session)
@@ -145,9 +145,9 @@ struct MatchDetailView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.sticksCard)
-        .clipShape(.rect(cornerRadius: 16))
+        .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
                 .stroke(Color.sticksHairline, lineWidth: 1)
         )
     }

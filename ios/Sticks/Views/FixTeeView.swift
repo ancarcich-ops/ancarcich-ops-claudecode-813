@@ -51,7 +51,7 @@ struct FixTeeView: View {
         .padding(.top, 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .presentationDetents([.height(400)])
-        .presentationBackground(Color.sticksCream)
+        .presentationBackground(Color.sticksBg)
         .presentationDragIndicator(.visible)
     }
 

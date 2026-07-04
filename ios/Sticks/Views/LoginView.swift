@@ -30,7 +30,7 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            Color.sticksCream.ignoresSafeArea()
+            Color.sticksBg.ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -78,10 +78,18 @@ struct LoginView: View {
     }
 
     private var wordmark: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "flag.fill")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(Color.sticksGreen)
+        VStack(spacing: 14) {
+            Image("SticksMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 76, height: 76)
+                .clipShape(.rect(cornerRadius: 18))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.sticksHairline, lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.07), radius: 12, y: 5)
+                .accessibilityHidden(true)
 
             Text("Sticks")
                 .font(SticksFont.display(56))

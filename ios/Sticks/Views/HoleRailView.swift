@@ -83,16 +83,14 @@ struct HoleRailView: View {
             selectedIndex = index
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 Text("\(hole)")
                     .font(SticksFont.display(17))
                 Text("PAR \(par)")
                     .font(SticksFont.label(8))
                     .kerning(0.5)
                     .opacity(0.75)
-                Text(score.map(String.init) ?? "·")
-                    .font(SticksFont.label(11, weight: .bold))
-                    .foregroundStyle(scoreColor(score: score, par: par, isSelected: isSelected))
+                scoreBadge(score: score, par: par)
             }
             .foregroundStyle(isSelected ? Color.sticksCream : .white)
             .frame(width: 50, height: 58)
@@ -106,10 +104,33 @@ struct HoleRailView: View {
         .buttonStyle(PressableButtonStyle())
     }
 
-    private func scoreColor(score: Int?, par: Int, isSelected: Bool) -> Color {
-        guard let score else { return .white.opacity(0.45) }
-        if score < par { return Color(red: 0.62, green: 0.9, blue: 0.68) }
-        if score > par { return Color(red: 0.96, green: 0.72, blue: 0.6) }
-        return isSelected ? Color.sticksCream : .white
+    /// The player's score as a tiny score-state badge (web palette): the
+    /// fill encodes the par-relation, the number disambiguates. The par
+    /// state's ink text is swapped for cream so it reads on the dark rail.
+    @ViewBuilder
+    private func scoreBadge(score: Int?, par: Int) -> some View {
+        if let score {
+            let style = ScoreStyle.forScore(score, par: par)
+            Text("\(score)")
+                .font(SticksFont.mono(10, weight: .bold))
+                .foregroundStyle(style.text == Color.sticksInk ? Color.sticksCream : style.text)
+                .frame(minWidth: 18)
+                .frame(height: 14)
+                .padding(.horizontal, 2)
+                .background(style.fill)
+                .clipShape(.rect(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(
+                            style.ring ?? (style.border == .clear ? .white.opacity(0.25) : style.border),
+                            lineWidth: style.ring != nil ? 1.2 : 0.8
+                        )
+                )
+        } else {
+            Text("·")
+                .font(SticksFont.label(11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.45))
+                .frame(height: 14)
+        }
     }
 }

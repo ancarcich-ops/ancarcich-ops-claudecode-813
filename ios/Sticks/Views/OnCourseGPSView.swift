@@ -52,7 +52,7 @@ struct OnCourseGPSView: View {
                 courseMap(detail)
             } else {
                 ZStack {
-                    Color.sticksCream.ignoresSafeArea()
+                    Color.sticksBg.ignoresSafeArea()
                     ProgressView().tint(Color.sticksGreen)
                 }
             }
@@ -392,7 +392,7 @@ struct OnCourseGPSView: View {
             HStack(spacing: 8) {
                 if isFinishing {
                     ProgressView()
-                        .tint(Color.sticksInk)
+                        .tint(Color.sticksCream)
                 } else {
                     Image(systemName: "flag.checkered")
                         .font(.system(size: 14, weight: .bold))
@@ -401,7 +401,7 @@ struct OnCourseGPSView: View {
                     .font(SticksFont.label(14, weight: .bold))
                     .kerning(2)
             }
-            .foregroundStyle(Color.sticksInk)
+            .foregroundStyle(Color.sticksCream)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
             .background(Color.sticksGold)

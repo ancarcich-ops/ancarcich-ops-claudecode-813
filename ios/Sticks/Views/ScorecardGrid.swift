@@ -4,8 +4,9 @@
 //
 //  Scorecard: rows = players (caller first), columns = holes with a par
 //  row, plus OUT/IN subtotals (18 holes) and a total column. The name
-//  column is pinned; hole columns scroll horizontally. Under-par scores
-//  get a circle, over-par a square — classic scorecard notation.
+//  column is pinned; hole columns scroll horizontally. Score cells use
+//  the web app's score-state colors (ScoreStyle) with monospaced digits
+//  so columns align.
 //
 
 import SwiftUI
@@ -96,7 +97,7 @@ struct ScorecardGrid: View {
             .foregroundStyle(Color.sticksMuted)
             .frame(width: nameWidth, height: headerHeight, alignment: .leading)
             .padding(.leading, 2)
-            .background(Color.sticksCream.opacity(0.55))
+            .background(Color.sticksPanel2)
             .rowRule()
     }
 
@@ -148,7 +149,7 @@ struct ScorecardGrid: View {
                         .kerning(0.8)
                         .foregroundStyle(Color.sticksMuted)
                         .frame(width: subtotalWidth, height: headerHeight)
-                        .background(Color.sticksCream.opacity(0.55))
+                        .background(Color.sticksPanel2)
                 case .total:
                     Text("TOT")
                         .font(SticksFont.label(10, weight: .bold))
@@ -176,7 +177,7 @@ struct ScorecardGrid: View {
                         .font(SticksFont.label(11, weight: .semibold))
                         .foregroundStyle(Color.sticksMuted)
                         .frame(width: subtotalWidth, height: headerHeight)
-                        .background(Color.sticksCream.opacity(0.55))
+                        .background(Color.sticksPanel2)
                 case .total:
                     Text("\(parSum(0 ..< detail.holes))")
                         .font(SticksFont.label(11, weight: .semibold))
@@ -199,7 +200,7 @@ struct ScorecardGrid: View {
                     scoreCell(for: player, index: index)
                 case .subtotal(_, let range):
                     subtotalCell(for: player, range: range)
-                        .background(Color.sticksCream.opacity(0.55))
+                        .background(Color.sticksPanel2)
                 case .total:
                     totalCell(for: player)
                         .background(Color.sticksGreen.opacity(0.08))
@@ -214,16 +215,32 @@ struct ScorecardGrid: View {
         let hole = detail.holeNumber(at: index)
         let par = detail.par(at: index)
         let score = player.scoresByHole[hole]
+        let style = ScoreStyle.forScore(score, par: par)
 
         return Button {
             onSelect(ScoreCellSelection(player: player, hole: hole, par: par))
         } label: {
             ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(style.fill)
+                    .frame(width: 30, height: 30)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(style.border, lineWidth: 1)
+                    )
+                    .overlay {
+                        // Thin glow ring for eagle+ / double bogey+.
+                        if let ring = style.ring {
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(ring.opacity(0.45), lineWidth: 1.5)
+                                .frame(width: 36, height: 36)
+                        }
+                    }
+
                 if let score {
-                    scoreMark(score: score, par: par)
                     Text("\(score)")
-                        .font(SticksFont.display(16, weight: .semibold))
-                        .foregroundStyle(Color.sticksInk)
+                        .font(SticksFont.mono(14, weight: .semibold))
+                        .foregroundStyle(style.text)
                 } else {
                     Text("·")
                         .font(.system(size: 15, weight: .bold))
@@ -237,27 +254,11 @@ struct ScorecardGrid: View {
         .disabled(!detail.canEnterScores)
     }
 
-    @ViewBuilder
-    private func scoreMark(score: Int, par: Int) -> some View {
-        if score < par {
-            Circle()
-                .stroke(Color.sticksGreen, lineWidth: score <= par - 2 ? 2 : 1.2)
-                .frame(width: 27, height: 27)
-        } else if score > par {
-            RoundedRectangle(cornerRadius: 3)
-                .stroke(
-                    Color.sticksError.opacity(0.75),
-                    lineWidth: score >= par + 2 ? 2 : 1.2
-                )
-                .frame(width: 26, height: 26)
-        }
-    }
-
     private func subtotalCell(for player: MatchDetailPlayer, range: Range<Int>) -> some View {
         Group {
             if let sum = strokeSum(for: player, range: range) {
                 Text("\(sum)")
-                    .font(SticksFont.display(15, weight: .semibold))
+                    .font(SticksFont.mono(14, weight: .semibold))
                     .foregroundStyle(Color.sticksInk)
             } else {
                 Text("–")
@@ -272,7 +273,7 @@ struct ScorecardGrid: View {
         VStack(spacing: 1) {
             if let total = strokeSum(for: player, range: 0 ..< detail.holes) {
                 Text("\(total)")
-                    .font(SticksFont.display(17, weight: .bold))
+                    .font(SticksFont.mono(16, weight: .bold))
                     .foregroundStyle(Color.sticksInk)
                 Text(toParText(for: player))
                     .font(SticksFont.label(9, weight: .bold))

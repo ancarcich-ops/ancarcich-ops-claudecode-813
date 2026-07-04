@@ -67,7 +67,7 @@ struct ScoreEntryView: View {
         .opacity(isSaving ? 0.65 : 1)
         .animation(.easeOut(duration: 0.15), value: isSaving)
         .presentationDetents([.height(478)])
-        .presentationBackground(Color.sticksCream)
+        .presentationBackground(Color.sticksBg)
         .presentationDragIndicator(.visible)
     }
 
@@ -173,8 +173,11 @@ struct ScoreEntryView: View {
         }
     }
 
+    /// Par-relative chip in the web app's score-state colors: selecting a
+    /// value renders it exactly as it will appear on the scorecard.
     private func quickChip(_ value: Int) -> some View {
         let selected = currentScore == value
+        let style = ScoreStyle.forScore(value, par: par)
         return Button {
             save(value)
         } label: {
@@ -184,18 +187,21 @@ struct ScoreEntryView: View {
                     .kerning(0.6)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .foregroundStyle(selected ? Color.sticksCream.opacity(0.8) : Color.sticksMuted)
+                    .foregroundStyle(selected ? style.text.opacity(0.85) : Color.sticksMuted)
                 Text("\(value)")
                     .font(SticksFont.display(23))
-                    .foregroundStyle(selected ? Color.sticksCream : Color.sticksInk)
+                    .foregroundStyle(selected ? style.text : Color.sticksInk)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 58)
-            .background(selected ? Color.sticksGreen : Color.sticksCard)
+            .background(selected ? style.fill : Color.sticksCard)
             .clipShape(.rect(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(selected ? Color.sticksGreen : Color.sticksHairline, lineWidth: 1)
+                    .stroke(
+                        selected ? (style.ring ?? (style.border == .clear ? style.fill : style.border)) : Color.sticksHairline,
+                        lineWidth: selected && style.ring != nil ? 1.6 : 1
+                    )
             )
         }
         .buttonStyle(PressableButtonStyle())
@@ -232,19 +238,23 @@ struct ScoreEntryView: View {
 
     private func numberCell(_ value: Int) -> some View {
         let selected = currentScore == value
+        let style = ScoreStyle.forScore(value, par: par)
         return Button {
             save(value)
         } label: {
             Text("\(value)")
                 .font(SticksFont.display(19))
-                .foregroundStyle(selected ? Color.sticksCream : Color.sticksInk)
+                .foregroundStyle(selected ? style.text : Color.sticksInk)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
-                .background(selected ? Color.sticksGreen : Color.sticksCard)
+                .background(selected ? style.fill : Color.sticksCard)
                 .clipShape(.rect(cornerRadius: 11))
                 .overlay(
                     RoundedRectangle(cornerRadius: 11)
-                        .stroke(selected ? Color.sticksGreen : Color.sticksHairline, lineWidth: 1)
+                        .stroke(
+                            selected ? (style.ring ?? (style.border == .clear ? style.fill : style.border)) : Color.sticksHairline,
+                            lineWidth: 1
+                        )
                 )
         }
         .buttonStyle(PressableButtonStyle())
