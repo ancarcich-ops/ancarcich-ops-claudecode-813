@@ -18,6 +18,10 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     private(set) var coordinate: CLLocationCoordinate2D?
     private(set) var horizontalAccuracyMeters: Double?
     private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    /// Monotonic count of delivered GPS fixes. Lets consumers distinguish
+    /// a NEW fix from re-reads of an unchanged coordinate — auto-advance
+    /// counts consecutive FIXES, not observation re-runs.
+    private(set) var fixSequence = 0
 
     private let manager = CLLocationManager()
     private var isUpdating = false
@@ -91,6 +95,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         Task { @MainActor in
             self.coordinate = coordinate
             self.horizontalAccuracyMeters = accuracy >= 0 ? accuracy : nil
+            self.fixSequence += 1
         }
     }
 

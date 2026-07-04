@@ -78,9 +78,22 @@ struct OnCourseGPSView: View {
                 RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex)
             }
         }
+        // Slice 7.2: GPS auto-advance — when the round session advances
+        // the hole from a location fix, this screen follows with the same
+        // transition as a manual rail tap (the holeIndex onChange clears
+        // the aim and reframes the camera). Light haptic, no alert.
+        .onChange(of: RoundSessionService.shared.holeIndex) { _, newIndex in
+            guard hasInitialized,
+                  let detail = viewModel.detail,
+                  RoundSessionService.shared.activeMatchId == detail.id,
+                  newIndex != holeIndex,
+                  newIndex < detail.holes else { return }
+            withAnimation { holeIndex = newIndex }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
         .sheet(item: $scoreCell) { cell in
             ScoreEntryView(cell: cell, viewModel: viewModel, session: session) {
-                advanceHole()
+                advanceHole(afterCompleting: cell.hole)
             }
         }
         .sheet(isPresented: $showFixTee) {
@@ -584,10 +597,14 @@ struct OnCourseGPSView: View {
         }
     }
 
-    /// Advances to the next hole after the score sheet completes a hole.
-    /// The hole-index change re-frames the camera and clears the aim point.
-    private func advanceHole() {
-        guard let detail = viewModel.detail, holeIndex < detail.holes - 1 else { return }
+    /// Advances to the next hole after the score sheet completes a hole —
+    /// but only when the completed hole is the one on screen. Completing
+    /// an EARLIER hole (e.g. the unscored hole an auto-advance walked away
+    /// from) stays on the current hole.
+    private func advanceHole(afterCompleting hole: Int) {
+        guard let detail = viewModel.detail,
+              hole == detail.holeNumber(at: holeIndex),
+              holeIndex < detail.holes - 1 else { return }
         withAnimation { holeIndex += 1 }
     }
 
@@ -595,7 +612,20 @@ struct OnCourseGPSView: View {
         let player = detail.players.first { $0.id == detail.myMatchPlayerId }
             ?? viewModel.sortedPlayers.first
         guard let player else { return }
-        scoreCell = ScoreCellSelection(player: player, hole: hole, par: detail.par(at: holeIndex))
+
+        // An auto-advance may have walked off an unscored hole — the
+        // sheet defaults to it (once) if it's still unscored.
+        var targetIndex = holeIndex
+        var targetHole = hole
+        if let suggested = RoundSessionService.shared.consumeSuggestedScoreIndex(matchId: detail.id),
+           suggested >= 0, suggested < detail.holes {
+            let suggestedHole = detail.holeNumber(at: suggested)
+            if myScores(detail)[suggestedHole] == nil {
+                targetIndex = suggested
+                targetHole = suggestedHole
+            }
+        }
+        scoreCell = ScoreCellSelection(player: player, hole: targetHole, par: detail.par(at: targetIndex))
     }
 }
 
