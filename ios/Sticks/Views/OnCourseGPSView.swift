@@ -91,19 +91,18 @@ struct OnCourseGPSView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            HoleRailView(detail: detail, scores: myScores(detail), selectedIndex: $holeIndex)
+            VStack(alignment: .trailing, spacing: 10) {
+                HoleRailView(detail: detail, scores: myScores(detail), selectedIndex: $holeIndex)
+                if let wind = viewModel.response?.wind {
+                    WindTile(wind: wind)
+                        .padding(.trailing, 12)
+                }
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomPanel(detail: detail, geo: geo, anchor: anchor)
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
-        }
-        .overlay(alignment: .topTrailing) {
-            if let wind = viewModel.response?.wind {
-                WindTile(wind: wind)
-                    .padding(.top, 10)
-                    .padding(.trailing, 12)
-            }
         }
         .onChange(of: holeIndex) { _, _ in
             aim = nil
