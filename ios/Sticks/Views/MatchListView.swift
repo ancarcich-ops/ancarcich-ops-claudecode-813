@@ -149,7 +149,7 @@ struct MatchListView: View {
             ProgressView()
                 .tint(Color.sticksGreen)
             Text("Loading matches…")
-                .font(.system(size: 14))
+                .font(SticksFont.sans(14))
                 .foregroundStyle(Color.sticksMuted)
         }
     }
@@ -163,7 +163,7 @@ struct MatchListView: View {
                 .font(SticksFont.display(24))
                 .foregroundStyle(Color.sticksInk)
             Text("Create a match on the Sticks web app\nand it'll show up here.")
-                .font(.system(size: 14))
+                .font(SticksFont.sans(14))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.sticksMuted)
         }
@@ -176,7 +176,7 @@ struct MatchListView: View {
                 .font(.system(size: 32, weight: .medium))
                 .foregroundStyle(Color.sticksMuted)
             Text(message)
-                .font(.system(size: 15))
+                .font(SticksFont.sans(15))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.sticksInk)
                 .padding(.horizontal, 40)
@@ -184,7 +184,7 @@ struct MatchListView: View {
                 Task { await viewModel.load(session: session) }
             } label: {
                 Text("Try Again")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(SticksFont.sans(15, weight: .semibold))
                     .foregroundStyle(Color.sticksCream)
                     .padding(.horizontal, 28)
                     .frame(height: 44)
@@ -227,7 +227,7 @@ private struct MatchRowView: View {
                 AvatarStack(players: match.players)
 
                 Text(detailText)
-                    .font(.system(size: 13))
+                    .font(SticksFont.sans(13))
                     .foregroundStyle(Color.sticksMuted)
 
                 Spacer()

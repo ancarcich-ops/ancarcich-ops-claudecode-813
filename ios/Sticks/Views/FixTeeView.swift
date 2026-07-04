@@ -108,7 +108,7 @@ struct FixTeeView: View {
                 inlineError(errorMessage)
             } else if !accuracyIsGoodEnough(accuracy) {
                 Text("Waiting for GPS accuracy of ±35 yds or better…")
-                    .font(.system(size: 13))
+                    .font(SticksFont.sans(13))
                     .foregroundStyle(Color.sticksMuted)
             }
 
@@ -134,7 +134,7 @@ struct FixTeeView: View {
             .disabled(!canConfirm || phase == .submitting)
 
             Button("Cancel") { dismiss() }
-                .font(.system(size: 15))
+                .font(SticksFont.sans(15))
                 .foregroundStyle(Color.sticksMuted)
                 .disabled(phase == .submitting)
         }
@@ -182,7 +182,7 @@ struct FixTeeView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(Color.sticksError)
                 Text(reason)
-                    .font(.system(size: 15))
+                    .font(SticksFont.sans(15))
                     .foregroundStyle(Color.sticksInk)
                     .multilineTextAlignment(.center)
             }
@@ -211,7 +211,7 @@ struct FixTeeView: View {
             .buttonStyle(PressableButtonStyle())
 
             Button("Cancel") { dismiss() }
-                .font(.system(size: 15))
+                .font(SticksFont.sans(15))
                 .foregroundStyle(Color.sticksMuted)
         }
     }
@@ -227,7 +227,7 @@ struct FixTeeView: View {
                 .font(SticksFont.display(22))
                 .foregroundStyle(Color.sticksInk)
             Text("Thanks — hole \(hole) now uses your position.")
-                .font(.system(size: 14))
+                .font(SticksFont.sans(14))
                 .foregroundStyle(Color.sticksMuted)
         }
         .frame(maxWidth: .infinity)
@@ -239,7 +239,7 @@ struct FixTeeView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 11, weight: .semibold))
             Text(message)
-                .font(.system(size: 13))
+                .font(SticksFont.sans(13))
                 .multilineTextAlignment(.leading)
         }
         .foregroundStyle(Color.sticksError)

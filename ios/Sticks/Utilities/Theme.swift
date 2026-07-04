@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 extension Color {
     /// Page background — #EDE7DB (web `bg`)
@@ -45,20 +46,80 @@ extension Color {
     static let sticksGold = Color(red: 169 / 255, green: 118 / 255, blue: 42 / 255)
 }
 
+/// The web app's three embedded families — Newsreader (display),
+/// Karla (sans) and DM Mono (mono) — registered via UIAppFonts.
+/// Every helper falls back to the closest system font if a bundled
+/// font fails to load: never crash, never render blank text.
 enum SticksFont {
-    /// Big serif display numerals / wordmark
+    // Availability is checked once per family and cached.
+    private static let hasNewsreader = UIFont(name: "Newsreader-SemiBold", size: 12) != nil
+    private static let hasNewsreaderItalic = UIFont(name: "Newsreader-SemiBoldItalic", size: 12) != nil
+    private static let hasKarla = UIFont(name: "Karla-Regular", size: 12) != nil
+    private static let hasDMMono = UIFont(name: "DMMono-Medium", size: 12) != nil
+
+    /// Display serif (Newsreader): headings, big numerals, wordmark,
+    /// score digits. Weights 500/600/700.
     static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+        guard hasNewsreader else {
+            return .system(size: size, weight: weight, design: .serif)
+        }
+        let name: String
+        switch weight {
+        case .bold, .heavy, .black:
+            name = "Newsreader-Bold"
+        case .ultraLight, .thin, .light, .regular, .medium:
+            name = "Newsreader-Medium"
+        default:
+            name = "Newsreader-SemiBold"
+        }
+        return .custom(name, size: size)
     }
 
-    /// Small uppercase label type
+    /// Italic display serif (Newsreader italic 600) — editorial accents.
+    static func displayItalic(_ size: CGFloat) -> Font {
+        guard hasNewsreaderItalic else {
+            return .system(size: size, weight: .semibold, design: .serif).italic()
+        }
+        return .custom("Newsreader-SemiBoldItalic", size: size)
+    }
+
+    /// Body sans (Karla): body text, player names, buttons.
+    /// Weights 400/600/700.
+    static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        guard hasKarla else {
+            return .system(size: size, weight: weight)
+        }
+        let name: String
+        switch weight {
+        case .bold, .heavy, .black:
+            name = "Karla-Bold"
+        case .medium, .semibold:
+            name = "Karla-SemiBold"
+        default:
+            name = "Karla-Regular"
+        }
+        return .custom(name, size: size)
+    }
+
+    /// Mono (DM Mono): labels, hole numbers, all-caps meta rows, and
+    /// in-cell score numbers so columns align. Weights 400/500.
+    static func mono(_ size: CGFloat, weight: Font.Weight = .medium) -> Font {
+        guard hasDMMono else {
+            return .system(size: size, weight: weight, design: .monospaced)
+        }
+        let name: String
+        switch weight {
+        case .ultraLight, .thin, .light, .regular:
+            name = "DMMono-Regular"
+        default:
+            name = "DMMono-Medium"
+        }
+        return .custom(name, size: size)
+    }
+
+    /// Small uppercase label type — DM Mono, matching the web's meta rows.
     static func label(_ size: CGFloat = 12, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .default)
-    }
-
-    /// Monospaced score numerals (web: DM Mono) so scorecard columns align.
-    static func mono(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        mono(size, weight: weight)
     }
 }
 

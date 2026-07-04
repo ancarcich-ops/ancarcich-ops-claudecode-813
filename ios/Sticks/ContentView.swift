@@ -3,7 +3,9 @@
 //  Sticks
 //
 //  Root router: validates the stored token on launch, then shows
-//  login or the signed-in experience.
+//  login or the signed-in experience. On cold launch the branded
+//  splash overlays everything for ≥2.5s or until the token check
+//  resolves (whichever is longer), then fades out over 240ms.
 //
 
 import SwiftUI
@@ -11,37 +13,61 @@ import SwiftUI
 struct ContentView: View {
     @Environment(SessionStore.self) private var session
 
+    @State private var splashHoldElapsed = false
+    @State private var splashVisible = true
+
     var body: some View {
-        Group {
-            switch session.phase {
-            case .checking:
-                launchView
-            case .signedOut:
-                LoginView(session: session)
+        ZStack {
+            Group {
+                switch session.phase {
+                case .checking:
+                    checkingView
+                case .signedOut:
+                    LoginView(session: session)
+                        .transition(.opacity)
+                case .signedIn(let user):
+                    MatchListView(user: user, session: session)
+                        .transition(.opacity)
+                case .unreachable(let message):
+                    unreachableView(message)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: session.phase)
+
+            if splashVisible {
+                SplashView()
                     .transition(.opacity)
-            case .signedIn(let user):
-                MatchListView(user: user, session: session)
-                    .transition(.opacity)
-            case .unreachable(let message):
-                unreachableView(message)
+                    .zIndex(1)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: session.phase)
         .task {
             await session.bootstrap()
         }
+        .task {
+            // Minimum splash hold — the fade waits for BOTH this and the
+            // token check, whichever finishes last.
+            try? await Task.sleep(for: .seconds(2.5))
+            splashHoldElapsed = true
+            dismissSplashIfReady()
+        }
+        .onChange(of: session.phase) { _, _ in
+            dismissSplashIfReady()
+        }
     }
 
-    private var launchView: some View {
+    private func dismissSplashIfReady() {
+        guard splashVisible, splashHoldElapsed, session.phase != .checking else { return }
+        withAnimation(.easeOut(duration: 0.24)) {
+            splashVisible = false
+        }
+    }
+
+    /// Post-splash re-check state (e.g. Try Again from unreachable).
+    private var checkingView: some View {
         ZStack {
             Color.sticksBg.ignoresSafeArea()
-            VStack(spacing: 16) {
-                Text("Sticks")
-                    .font(SticksFont.display(48))
-                    .foregroundStyle(Color.sticksInk)
-                ProgressView()
-                    .tint(Color.sticksGreen)
-            }
+            ProgressView()
+                .tint(Color.sticksGreen)
         }
     }
 
@@ -54,7 +80,7 @@ struct ContentView: View {
                     .foregroundStyle(Color.sticksMuted)
 
                 Text(message)
-                    .font(.system(size: 16))
+                    .font(SticksFont.sans(16))
                     .foregroundStyle(Color.sticksInk)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -63,7 +89,7 @@ struct ContentView: View {
                     Task { await session.bootstrap() }
                 } label: {
                     Text("Try Again")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(SticksFont.sans(16, weight: .semibold))
                         .foregroundStyle(Color.sticksCream)
                         .padding(.horizontal, 32)
                         .frame(height: 48)
@@ -75,7 +101,7 @@ struct ContentView: View {
                     session.signOut()
                 } label: {
                     Text("Sign in with a different account")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(SticksFont.sans(14, weight: .medium))
                         .foregroundStyle(Color.sticksMuted)
                 }
             }

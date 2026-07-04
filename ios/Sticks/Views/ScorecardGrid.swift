@@ -2,11 +2,13 @@
 //  ScorecardGrid.swift
 //  Sticks
 //
-//  Scorecard: rows = players (caller first), columns = holes with a par
-//  row, plus OUT/IN subtotals (18 holes) and a total column. The name
-//  column is pinned; hole columns scroll horizontally. Score cells use
-//  the web app's score-state colors (ScoreStyle) with monospaced digits
-//  so columns align.
+//  Match-detail scorecard matching the web app: a card header row
+//  ("Scorecard" + mono meta with the caller's to-par), then a split
+//  layout — pinned player-name column outside a horizontal scroller,
+//  44pt hole columns and a 56pt Tot column inside it. Cells are
+//  outline-style (no solid fills — those belong to the GPS hole rail
+//  and score-entry chips), with display-bold tabular digits. The
+//  current hole's column auto-centers on appear and when it advances.
 //
 
 import SwiftUI
@@ -22,55 +24,113 @@ struct ScoreCellSelection: Identifiable {
 struct ScorecardGrid: View {
     let detail: MatchDetail
     let players: [MatchDetailPlayer]
+    /// Round index of the current hole — nil when the match isn't live.
+    let currentHoleIndex: Int?
     let onSelect: (ScoreCellSelection) -> Void
 
-    private let nameWidth: CGFloat = 106
-    private let holeWidth: CGFloat = 42
-    private let subtotalWidth: CGFloat = 52
-    private let headerHeight: CGFloat = 30
-    private let rowHeight: CGFloat = 48
-
-    private enum GridColumn: Identifiable {
-        case hole(index: Int)
-        case subtotal(label: String, range: Range<Int>)
-        case total
-
-        var id: String {
-            switch self {
-            case .hole(let index): "h\(index)"
-            case .subtotal(let label, _): label
-            case .total: "TOT"
-            }
-        }
-    }
-
-    private var columns: [GridColumn] {
-        var result: [GridColumn] = []
-        for index in 0 ..< detail.holes {
-            result.append(.hole(index: index))
-            if detail.holes == 18 && index == 8 {
-                result.append(.subtotal(label: "OUT", range: 0 ..< 9))
-            }
-        }
-        if detail.holes == 18 {
-            result.append(.subtotal(label: "IN", range: 9 ..< 18))
-        }
-        result.append(.total)
-        return result
-    }
+    private let nameWidth: CGFloat = 88
+    private let holeWidth: CGFloat = 44
+    private let totWidth: CGFloat = 56
+    private let headerHeight: CGFloat = 34
+    private let rowHeight: CGFloat = 38
+    private let cellSize = CGSize(width: 36, height: 30)
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            headerRow
+            splitGrid
+        }
+    }
+
+    // MARK: - Header row
+
+    private var headerRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Scorecard")
+                .font(SticksFont.display(13, weight: .bold))
+                .foregroundStyle(Color.sticksInk)
+            Spacer()
+            meta
+        }
+    }
+
+    /// "FRONT · +2 THRU 4" — the to-par part in accent, bold.
+    private var meta: some View {
+        let thru = thruCount
+        return (
+            Text("\(nineLabel) · ")
+                .foregroundStyle(Color.sticksMuted)
+            + Text(toParText)
+                .font(SticksFont.mono(10, weight: .bold))
+                .foregroundStyle(Color.sticksGreen)
+            + Text(" THRU \(thru)")
+                .foregroundStyle(Color.sticksMuted)
+        )
+        .font(SticksFont.mono(10))
+        .kerning(0.5)
+        .textCase(.uppercase)
+    }
+
+    /// FRONT/BACK from the hole the round is at (or last played).
+    private var nineLabel: String {
+        let index = currentHoleIndex ?? lastPlayedIndex ?? 0
+        return detail.holeNumber(at: index) <= 9 ? "FRONT" : "BACK"
+    }
+
+    /// The caller's row when seated, else the top row.
+    private var metaPlayer: MatchDetailPlayer? {
+        players.first { $0.id == detail.myMatchPlayerId } ?? players.first
+    }
+
+    private var thruCount: Int {
+        guard let player = metaPlayer else { return 0 }
+        return (0 ..< detail.holes)
+            .filter { player.scoresByHole[detail.holeNumber(at: $0)] != nil }
+            .count
+    }
+
+    private var toParText: String {
+        guard let player = metaPlayer else { return "E" }
+        let diff = (0 ..< detail.holes).reduce(0) { partial, index in
+            guard let score = player.scoresByHole[detail.holeNumber(at: index)] else {
+                return partial
+            }
+            return partial + score - detail.par(at: index)
+        }
+        if diff == 0 { return "E" }
+        return diff > 0 ? "+\(diff)" : "\(diff)"
+    }
+
+    private var lastPlayedIndex: Int? {
+        guard let player = metaPlayer else { return nil }
+        return (0 ..< detail.holes)
+            .last { player.scoresByHole[detail.holeNumber(at: $0)] != nil }
+    }
+
+    // MARK: - Split grid
+
+    private var splitGrid: some View {
         HStack(alignment: .top, spacing: 0) {
             nameColumn
-            Rectangle()
-                .fill(Color.sticksHairline)
-                .frame(width: 1)
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    holeNumberRow
-                    parRow
-                    ForEach(players) { player in
-                        scoreRow(for: player)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(0 ..< detail.holes, id: \.self) { index in
+                            holeColumn(index)
+                                .id(index)
+                        }
+                        totColumn
+                    }
+                }
+                .onAppear {
+                    if let index = currentHoleIndex {
+                        proxy.scrollTo(index, anchor: .center)
+                    }
+                }
+                .onChange(of: currentHoleIndex) { _, newValue in
+                    guard let newValue else { return }
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(newValue, anchor: .center)
                     }
                 }
             }
@@ -81,8 +141,8 @@ struct ScorecardGrid: View {
 
     private var nameColumn: some View {
         VStack(spacing: 0) {
-            labelCell("HOLE")
-            labelCell("PAR")
+            Color.clear
+                .frame(width: nameWidth, height: headerHeight)
             ForEach(players) { player in
                 nameCell(for: player)
             }
@@ -90,236 +150,173 @@ struct ScorecardGrid: View {
         .frame(width: nameWidth)
     }
 
-    private func labelCell(_ text: String) -> some View {
-        Text(text)
-            .font(SticksFont.label(10, weight: .bold))
-            .kerning(1.2)
-            .foregroundStyle(Color.sticksMuted)
-            .frame(width: nameWidth, height: headerHeight, alignment: .leading)
-            .padding(.leading, 2)
-            .background(Color.sticksPanel2)
-            .rowRule()
-    }
-
     private func nameCell(for player: MatchDetailPlayer) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Text(player.displayName)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.sticksInk)
-                    .lineLimit(1)
-                if isMe(player) {
-                    Text("YOU")
-                        .font(SticksFont.label(8, weight: .heavy))
-                        .kerning(0.8)
-                        .foregroundStyle(Color.sticksCream)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(Color.sticksGreen)
-                        .clipShape(.capsule)
-                }
-            }
-            if let handicap = player.handicap {
-                Text("HCP \(formatted(handicap))")
-                    .font(SticksFont.label(9, weight: .medium))
-                    .kerning(0.6)
-                    .foregroundStyle(Color.sticksMuted)
-            }
+        HStack(spacing: 6) {
+            avatarBubble(for: player)
+            Text(player.displayName)
+                .font(SticksFont.sans(12, weight: .semibold))
+                .foregroundStyle(Color.sticksInk)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
         }
         .frame(width: nameWidth, height: rowHeight, alignment: .leading)
-        .padding(.leading, 2)
-        .background(rowBackground(for: player))
-        .rowRule()
     }
 
-    // MARK: - Header rows
+    /// 14pt circle, initials fallback — accent for the caller's row.
+    private func avatarBubble(for player: MatchDetailPlayer) -> some View {
+        Text(initial(of: player.displayName))
+            .font(SticksFont.sans(7, weight: .bold))
+            .foregroundStyle(Color.sticksCream)
+            .frame(width: 14, height: 14)
+            .background(isMe(player) ? Color.sticksGreen : Color.sticksMuted)
+            .clipShape(.circle)
+    }
 
-    private var holeNumberRow: some View {
-        HStack(spacing: 0) {
-            ForEach(columns) { column in
-                switch column {
-                case .hole(let index):
-                    Text("\(detail.holeNumber(at: index))")
-                        .font(SticksFont.label(11, weight: .bold))
-                        .foregroundStyle(Color.sticksInk)
-                        .frame(width: holeWidth, height: headerHeight)
-                case .subtotal(let label, _):
-                    Text(label)
-                        .font(SticksFont.label(10, weight: .bold))
-                        .kerning(0.8)
-                        .foregroundStyle(Color.sticksMuted)
-                        .frame(width: subtotalWidth, height: headerHeight)
-                        .background(Color.sticksPanel2)
-                case .total:
-                    Text("TOT")
-                        .font(SticksFont.label(10, weight: .bold))
-                        .kerning(0.8)
-                        .foregroundStyle(Color.sticksGreen)
-                        .frame(width: subtotalWidth, height: headerHeight)
-                        .background(Color.sticksGreen.opacity(0.08))
-                }
+    // MARK: - Hole columns
+
+    private func holeColumn(_ index: Int) -> some View {
+        let isCurrent = index == currentHoleIndex
+        return VStack(spacing: 0) {
+            columnHeader(index, isCurrent: isCurrent)
+            ForEach(players) { player in
+                scoreCell(for: player, index: index, isCurrent: isCurrent)
             }
         }
-        .rowRule()
+        .frame(width: holeWidth)
     }
 
-    private var parRow: some View {
-        HStack(spacing: 0) {
-            ForEach(columns) { column in
-                switch column {
-                case .hole(let index):
-                    Text("\(detail.par(at: index))")
-                        .font(SticksFont.label(11, weight: .medium))
-                        .foregroundStyle(Color.sticksMuted)
-                        .frame(width: holeWidth, height: headerHeight)
-                case .subtotal(_, let range):
-                    Text("\(parSum(range))")
-                        .font(SticksFont.label(11, weight: .semibold))
-                        .foregroundStyle(Color.sticksMuted)
-                        .frame(width: subtotalWidth, height: headerHeight)
-                        .background(Color.sticksPanel2)
-                case .total:
-                    Text("\(parSum(0 ..< detail.holes))")
-                        .font(SticksFont.label(11, weight: .semibold))
-                        .foregroundStyle(Color.sticksGreen)
-                        .frame(width: subtotalWidth, height: headerHeight)
-                        .background(Color.sticksGreen.opacity(0.08))
-                }
+    private func columnHeader(_ index: Int, isCurrent: Bool) -> some View {
+        VStack(spacing: 2) {
+            Text("\(detail.holeNumber(at: index))")
+                .font(SticksFont.mono(9, weight: .semibold))
+                .foregroundStyle(isCurrent ? Color.sticksGreen : Color.sticksMuted.opacity(0.8))
+            Text("P\(detail.par(at: index))")
+                .font(SticksFont.mono(8))
+                .foregroundStyle(Color.sticksMuted.opacity(0.65))
+        }
+        .frame(width: holeWidth, height: headerHeight)
+        .background {
+            // Current hole's column cap: accent at 7%, rounded top.
+            if isCurrent {
+                UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6)
+                    .fill(Color.sticksGreen.opacity(0.07))
             }
         }
-        .rowRule()
     }
 
-    // MARK: - Score rows
+    // MARK: - Cells
 
-    private func scoreRow(for player: MatchDetailPlayer) -> some View {
-        HStack(spacing: 0) {
-            ForEach(columns) { column in
-                switch column {
-                case .hole(let index):
-                    scoreCell(for: player, index: index)
-                case .subtotal(_, let range):
-                    subtotalCell(for: player, range: range)
-                        .background(Color.sticksPanel2)
-                case .total:
-                    totalCell(for: player)
-                        .background(Color.sticksGreen.opacity(0.08))
-                }
-            }
-        }
-        .background(rowBackground(for: player))
-        .rowRule()
-    }
-
-    private func scoreCell(for player: MatchDetailPlayer, index: Int) -> some View {
+    private func scoreCell(for player: MatchDetailPlayer, index: Int, isCurrent: Bool) -> some View {
         let hole = detail.holeNumber(at: index)
         let par = detail.par(at: index)
         let score = player.scoresByHole[hole]
-        let style = ScoreStyle.forScore(score, par: par)
 
         return Button {
             onSelect(ScoreCellSelection(player: player, hole: hole, par: par))
         } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(style.fill)
-                    .frame(width: 30, height: 30)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(style.border, lineWidth: 1)
-                    )
-                    .overlay {
-                        // Thin glow ring for eagle+ / double bogey+.
-                        if let ring = style.ring {
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(ring.opacity(0.45), lineWidth: 1.5)
-                                .frame(width: 36, height: 36)
-                        }
-                    }
-
-                if let score {
-                    Text("\(score)")
-                        .font(SticksFont.mono(14, weight: .semibold))
-                        .foregroundStyle(style.text)
-                } else {
-                    Text("·")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.sticksHairline)
-                }
-            }
-            .frame(width: holeWidth, height: rowHeight)
-            .contentShape(.rect)
+            cellBody(score: score, par: par, isCurrent: isCurrent)
+                .frame(width: holeWidth, height: rowHeight)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(!detail.canEnterScores)
     }
 
-    private func subtotalCell(for player: MatchDetailPlayer, range: Range<Int>) -> some View {
-        Group {
-            if let sum = strokeSum(for: player, range: range) {
-                Text("\(sum)")
-                    .font(SticksFont.mono(14, weight: .semibold))
-                    .foregroundStyle(Color.sticksInk)
-            } else {
-                Text("–")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.sticksHairline)
-            }
+    @ViewBuilder
+    private func cellBody(score: Int?, par: Int, isCurrent: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8)
+
+        if isCurrent, let score {
+            // Current hole, scored: accent text, page bg, 1.5px solid accent.
+            cellDigits("\(score)", color: .sticksGreen)
+                .frame(width: cellSize.width, height: cellSize.height)
+                .background(Color.sticksBg, in: shape)
+                .overlay(shape.stroke(Color.sticksGreen, lineWidth: 1.5))
+        } else if isCurrent {
+            // Current hole, unscored: "+" prompt, 1.5px dashed accent.
+            Text("+")
+                .font(SticksFont.sans(16, weight: .semibold))
+                .foregroundStyle(Color.sticksGreen)
+                .frame(width: cellSize.width, height: cellSize.height)
+                .background(Color.sticksBg, in: shape)
+                .overlay(
+                    shape.stroke(
+                        Color.sticksGreen.opacity(0.55),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
+                )
+        } else if let score {
+            let diff = score - par
+            let text: Color = diff < 0 ? .sticksGreen : (diff > 0 ? .sticksError : .sticksInk)
+            let fill: Color = diff < 0
+                ? Color.sticksGreen.opacity(0.10)
+                : (diff > 0 ? Color.sticksError.opacity(0.08) : .sticksPanel2)
+            let border: Color = diff < 0
+                ? Color.sticksGreen.opacity(0.4)
+                : (diff > 0 ? Color.sticksError.opacity(0.4) : .sticksHairline)
+            cellDigits("\(score)", color: text)
+                .frame(width: cellSize.width, height: cellSize.height)
+                .background(fill, in: shape)
+                .overlay(shape.stroke(border, lineWidth: 1))
+        } else {
+            // Unplayed (past or future): dashed outline, faint em-dash.
+            Text("–")
+                .font(SticksFont.mono(10))
+                .foregroundStyle(Color.sticksMuted.opacity(0.45))
+                .frame(width: cellSize.width, height: cellSize.height)
+                .overlay(
+                    shape.stroke(
+                        Color.sticksHairline,
+                        style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
+                    )
+                )
         }
-        .frame(width: subtotalWidth, height: rowHeight)
     }
 
-    private func totalCell(for player: MatchDetailPlayer) -> some View {
-        VStack(spacing: 1) {
-            if let total = strokeSum(for: player, range: 0 ..< detail.holes) {
+    private func cellDigits(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(SticksFont.display(13, weight: .bold).monospacedDigit())
+            .foregroundStyle(color)
+    }
+
+    // MARK: - Tot column
+
+    private var totColumn: some View {
+        VStack(spacing: 0) {
+            Text("TOT")
+                .font(SticksFont.mono(9, weight: .semibold))
+                .kerning(0.5)
+                .foregroundStyle(Color.sticksMuted.opacity(0.8))
+                .frame(width: totWidth, height: headerHeight)
+            ForEach(players) { player in
+                totCell(for: player)
+            }
+        }
+        .frame(width: totWidth)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color.sticksHairline)
+                .frame(width: 1)
+        }
+    }
+
+    private func totCell(for player: MatchDetailPlayer) -> some View {
+        let total = (0 ..< detail.holes)
+            .compactMap { player.scoresByHole[detail.holeNumber(at: $0)] }
+            .reduce(0, +)
+        return Group {
+            if total > 0 {
                 Text("\(total)")
-                    .font(SticksFont.mono(16, weight: .bold))
+                    .font(SticksFont.display(14, weight: .bold).monospacedDigit())
                     .foregroundStyle(Color.sticksInk)
-                Text(toParText(for: player))
-                    .font(SticksFont.label(9, weight: .bold))
-                    .foregroundStyle(toParColor(for: player))
             } else {
                 Text("–")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.sticksHairline)
+                    .font(SticksFont.mono(10))
+                    .foregroundStyle(Color.sticksMuted.opacity(0.45))
             }
         }
-        .frame(width: subtotalWidth, height: rowHeight)
-    }
-
-    // MARK: - Math
-
-    private func parSum(_ range: Range<Int>) -> Int {
-        range.reduce(0) { $0 + detail.par(at: $1) }
-    }
-
-    /// Sum of strokes over played holes in `range`; nil if none played.
-    private func strokeSum(for player: MatchDetailPlayer, range: Range<Int>) -> Int? {
-        let scores = range.compactMap { player.scoresByHole[detail.holeNumber(at: $0)] }
-        return scores.isEmpty ? nil : scores.reduce(0, +)
-    }
-
-    /// Strokes vs par across played holes only ("E", "+3", "-2").
-    private func toPar(for player: MatchDetailPlayer) -> Int {
-        (0 ..< detail.holes).reduce(0) { partial, index in
-            guard let score = player.scoresByHole[detail.holeNumber(at: index)] else {
-                return partial
-            }
-            return partial + score - detail.par(at: index)
-        }
-    }
-
-    private func toParText(for player: MatchDetailPlayer) -> String {
-        let diff = toPar(for: player)
-        if diff == 0 { return "E" }
-        return diff > 0 ? "+\(diff)" : "\(diff)"
-    }
-
-    private func toParColor(for player: MatchDetailPlayer) -> Color {
-        let diff = toPar(for: player)
-        if diff < 0 { return .sticksGreen }
-        if diff > 0 { return .sticksError.opacity(0.85) }
-        return .sticksMuted
+        .frame(width: totWidth, height: rowHeight)
     }
 
     // MARK: - Helpers
@@ -328,24 +325,9 @@ struct ScorecardGrid: View {
         player.id == detail.myMatchPlayerId
     }
 
-    private func rowBackground(for player: MatchDetailPlayer) -> Color {
-        isMe(player) ? Color.sticksGreen.opacity(0.07) : .clear
-    }
-
-    private func formatted(_ handicap: Double) -> String {
-        handicap == handicap.rounded()
-            ? String(Int(handicap))
-            : String(format: "%.1f", handicap)
-    }
-}
-
-private extension View {
-    /// Hairline rule under a scorecard row.
-    func rowRule() -> some View {
-        overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.sticksHairline.opacity(0.7))
-                .frame(height: 0.5)
-        }
+    private func initial(of name: String) -> String {
+        let parts = name.split(separator: " ").prefix(2)
+        let letters = parts.compactMap { $0.first.map(String.init) }
+        return letters.isEmpty ? "?" : letters.joined().uppercased()
     }
 }

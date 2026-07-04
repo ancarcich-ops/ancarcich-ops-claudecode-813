@@ -45,7 +45,7 @@ struct MatchDetailView: View {
                             }
                             if !detail.canEnterScores {
                                 Text("You're viewing as a spectator — only seated players or the match creator can enter scores.")
-                                    .font(.system(size: 12))
+                                    .font(SticksFont.sans(12))
                                     .foregroundStyle(Color.sticksMuted)
                                     .padding(.horizontal, 4)
                             }
@@ -128,21 +128,13 @@ struct MatchDetailView: View {
     // MARK: - Scorecard
 
     private func scorecardCard(_ detail: MatchDetail) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("SCORECARD")
-                .font(SticksFont.label(11))
-                .kerning(1.8)
-                .foregroundStyle(Color.sticksMuted)
-                .padding(.horizontal, 16)
-
-            ScorecardGrid(
-                detail: detail,
-                players: viewModel.sortedPlayers,
-                onSelect: { cell in selectedCell = cell }
-            )
-            .padding(.horizontal, 10)
-        }
-        .padding(.vertical, 16)
+        ScorecardGrid(
+            detail: detail,
+            players: viewModel.sortedPlayers,
+            currentHoleIndex: currentHoleIndex(detail),
+            onSelect: { cell in selectedCell = cell }
+        )
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.sticksCard)
         .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
@@ -150,6 +142,26 @@ struct MatchDetailView: View {
             RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
                 .stroke(Color.sticksHairline, lineWidth: 1)
         )
+    }
+
+    /// Round index of the current hole for a live match — the round
+    /// session's hole when this match is on-course (it advances live),
+    /// otherwise the first hole any player still hasn't scored. Nil for
+    /// upcoming/completed matches. Read-only — purely visual.
+    private func currentHoleIndex(_ detail: MatchDetail) -> Int? {
+        guard detail.status == .inProgress else { return nil }
+        let roundSession = RoundSessionService.shared
+        if roundSession.activeMatchId == detail.id {
+            return min(roundSession.holeIndex, detail.holes - 1)
+        }
+        guard !detail.players.isEmpty else { return 0 }
+        for index in 0 ..< detail.holes {
+            let hole = detail.holeNumber(at: index)
+            if detail.players.contains(where: { $0.scoresByHole[hole] == nil }) {
+                return index
+            }
+        }
+        return detail.holes - 1
     }
 
     // MARK: - CTA
@@ -162,7 +174,7 @@ struct MatchDetailView: View {
                 Image(systemName: "location.fill")
                     .font(.system(size: 15, weight: .semibold))
                 Text("On-course GPS")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(SticksFont.sans(16, weight: .semibold))
                 Image(systemName: "arrow.right")
                     .font(.system(size: 14, weight: .bold))
             }
@@ -182,7 +194,7 @@ struct MatchDetailView: View {
             ProgressView()
                 .tint(Color.sticksGreen)
             Text("Loading scorecard…")
-                .font(.system(size: 14))
+                .font(SticksFont.sans(14))
                 .foregroundStyle(Color.sticksMuted)
         }
         .frame(maxWidth: .infinity)
@@ -195,14 +207,14 @@ struct MatchDetailView: View {
                 .font(.system(size: 28, weight: .medium))
                 .foregroundStyle(Color.sticksMuted)
             Text(message)
-                .font(.system(size: 15))
+                .font(SticksFont.sans(15))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.sticksInk)
             Button {
                 Task { await viewModel.load(session: session) }
             } label: {
                 Text("Try Again")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(SticksFont.sans(15, weight: .semibold))
                     .foregroundStyle(Color.sticksCream)
                     .padding(.horizontal, 28)
                     .frame(height: 44)

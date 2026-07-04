@@ -256,7 +256,7 @@ struct OnCourseGPSView: View {
             if canFinishRound(detail) {
                 if let finishError {
                     Text(finishError)
-                        .font(.system(size: 12))
+                        .font(SticksFont.sans(12))
                         .foregroundStyle(.red.opacity(0.9))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
@@ -487,7 +487,7 @@ struct OnCourseGPSView: View {
                 .kerning(2)
                 .foregroundStyle(.orange)
             Text("Open the web admin to map this hole.")
-                .font(.system(size: 13))
+                .font(SticksFont.sans(13))
                 .foregroundStyle(.white.opacity(0.75))
         }
         .frame(maxWidth: .infinity)

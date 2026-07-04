@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Newsreader-Medium.ttf</string>
+		<string>Newsreader-SemiBold.ttf</string>
+		<string>Newsreader-Bold.ttf</string>
+		<string>Newsreader-SemiBoldItalic.ttf</string>
+		<string>Karla-Regular.ttf</string>
+		<string>Karla-SemiBold.ttf</string>
+		<string>Karla-Bold.ttf</string>
+		<string>DMMono-Regular.ttf</string>
+		<string>DMMono-Medium.ttf</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>SticksMark</string>
+	</dict>
+</dict>
+</plist>

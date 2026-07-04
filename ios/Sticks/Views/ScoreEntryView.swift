@@ -125,7 +125,7 @@ struct ScoreEntryView: View {
         } label: {
             HStack(spacing: 6) {
                 Text(player.displayName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(SticksFont.sans(13, weight: .semibold))
                     .lineLimit(1)
                 if let score {
                     Text("\(score)")
@@ -270,7 +270,7 @@ struct ScoreEntryView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 11, weight: .semibold))
                     Text(errorMessage)
-                        .font(.system(size: 13))
+                        .font(SticksFont.sans(13))
                         .multilineTextAlignment(.leading)
                 }
                 .foregroundStyle(Color.sticksError)

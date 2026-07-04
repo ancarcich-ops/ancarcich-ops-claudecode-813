@@ -53,7 +53,7 @@ struct LoginView: View {
 
                         if let errorMessage {
                             Text(errorMessage)
-                                .font(.system(size: 14, weight: .medium))
+                                .font(SticksFont.sans(14, weight: .medium))
                                 .foregroundStyle(Color.sticksError)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.top, 2)
@@ -136,7 +136,7 @@ struct LoginView: View {
         Button(action: submit) {
             ZStack {
                 Text("Sign In")
-                    .font(.system(size: 17, weight: .semibold, design: .serif))
+                    .font(SticksFont.sans(17, weight: .semibold))
                     .opacity(isSubmitting ? 0 : 1)
 
                 if isSubmitting {
@@ -184,7 +184,7 @@ private struct SticksFieldModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .font(.system(size: 17))
+            .font(SticksFont.sans(17))
             .foregroundStyle(Color.sticksInk)
             .padding(.horizontal, 16)
             .frame(height: 54)
