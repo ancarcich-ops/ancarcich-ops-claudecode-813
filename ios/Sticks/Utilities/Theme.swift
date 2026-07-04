@@ -32,6 +32,9 @@ extension Color {
 
     /// Error red tuned for the cream palette — #A63D2F
     static let sticksError = Color(red: 166 / 255, green: 61 / 255, blue: 47 / 255)
+
+    /// Trophy gold for the FINISH ROUND action — #C9A227
+    static let sticksGold = Color(red: 201 / 255, green: 162 / 255, blue: 39 / 255)
 }
 
 enum SticksFont {

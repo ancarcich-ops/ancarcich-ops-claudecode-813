@@ -104,6 +104,36 @@ final class MatchDetailViewModel {
         response = updated
     }
 
+    /// True when every seated player has a score on every hole of the
+    /// round — the condition for showing the FINISH ROUND button.
+    var isRoundComplete: Bool {
+        guard let detail = response?.match, !detail.players.isEmpty else { return false }
+        for index in 0 ..< detail.holes {
+            let hole = detail.holeNumber(at: index)
+            for player in detail.players where player.scoresByHole[hole] == nil {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// POSTs the round completion (idempotent server-side), then re-fetches
+    /// the match so the COMPLETED state renders immediately — no waiting
+    /// for the 30s poll. Throws APIError for the UI to display.
+    func completeMatch(session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            try await api.postComplete(matchId: matchId, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        await load(session: session, quiet: true)
+    }
+
     /// POSTs a FIX TEE crowdfix. Returns the server verdict — `ok: false`
     /// carries a `reason` the UI shows verbatim. On success a quiet re-fetch
     /// picks up the corrected tee geometry. Throws APIError on transport or

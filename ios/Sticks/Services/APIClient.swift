@@ -146,6 +146,13 @@ nonisolated struct APIClient {
         let _: OkResponse = try await perform(request)
     }
 
+    /// POST /matches/:id/complete — marks the round finished. No body;
+    /// idempotent, so re-posting on an already-completed match is safe.
+    func postComplete(matchId: String, token: String) async throws {
+        let request = makeRequest(path: "matches/\(matchId)/complete", method: "POST", token: token)
+        let _: OkResponse = try await perform(request)
+    }
+
     /// POST /matches/:id/tee — crowdfix the tee position from live GPS.
     func postTee(matchId: String, hole: Int, lat: Double, lng: Double, accuracyYd: Int, token: String) async throws -> TeeResponse {
         var request = makeRequest(path: "matches/\(matchId)/tee", method: "POST", token: token)

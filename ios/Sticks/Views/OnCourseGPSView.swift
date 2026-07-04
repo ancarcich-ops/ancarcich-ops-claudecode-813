@@ -18,6 +18,7 @@ struct OnCourseGPSView: View {
     let viewModel: MatchDetailViewModel
     let session: SessionStore
 
+    @Environment(\.dismiss) private var dismiss
     @State private var locationService = LocationService()
     @State private var camera: MapCameraPosition = .automatic
     @State private var holeIndex = 0
@@ -25,6 +26,8 @@ struct OnCourseGPSView: View {
     @State private var scoreCell: ScoreCellSelection?
     @State private var showFixTee = false
     @State private var hasInitialized = false
+    @State private var isFinishing = false
+    @State private var finishError: String?
 
     /// Where distances are measured from.
     private struct DistanceAnchor {
@@ -185,11 +188,22 @@ struct OnCourseGPSView: View {
 
             statusRow(detail: detail, anchor: anchor)
 
+            if canFinishRound(detail) {
+                if let finishError {
+                    Text(finishError)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                }
+                finishRoundButton
+            }
+
             if detail.canEnterScores {
                 Button {
                     openScoreSheet(detail, hole: hole)
                 } label: {
-                    Text("ENTER SCORE")
+                    Text(viewModel.isRoundComplete ? "EDIT A SCORE" : "ENTER SCORE")
                         .font(SticksFont.label(14, weight: .bold))
                         .kerning(2)
                         .foregroundStyle(Color.sticksCream)
@@ -297,6 +311,59 @@ struct OnCourseGPSView: View {
                 Spacer()
                 fixTeeButton
             }
+        }
+    }
+
+    /// FINISH ROUND appears only for seated players (never spectators) and
+    /// only once every player has a score on every hole.
+    private func canFinishRound(_ detail: MatchDetail) -> Bool {
+        detail.myMatchPlayerId != nil && viewModel.isRoundComplete
+    }
+
+    private var finishRoundButton: some View {
+        Button {
+            finishRound()
+        } label: {
+            HStack(spacing: 8) {
+                if isFinishing {
+                    ProgressView()
+                        .tint(Color.sticksInk)
+                } else {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                Text("FINISH ROUND")
+                    .font(SticksFont.label(14, weight: .bold))
+                    .kerning(2)
+            }
+            .foregroundStyle(Color.sticksInk)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(Color.sticksGold)
+            .clipShape(.rect(cornerRadius: 13))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(isFinishing)
+    }
+
+    /// POSTs the completion, fires a success haptic, and exits back to
+    /// match detail (already re-fetched by the view model, so it renders
+    /// the COMPLETED state immediately).
+    private func finishRound() {
+        guard !isFinishing else { return }
+        isFinishing = true
+        finishError = nil
+        Task {
+            do {
+                try await viewModel.completeMatch(session: session)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dismiss()
+            } catch let error as APIError {
+                finishError = error.message
+            } catch {
+                finishError = "Couldn't finish the round. Try again."
+            }
+            isFinishing = false
         }
     }
 
