@@ -56,7 +56,11 @@ struct OnCourseGPSView: View {
             WatchSessionService.shared.activate()
             syncCompanions()
         }
-        .onDisappear { locationService.stop() }
+        .onDisappear {
+            locationService.stop()
+            // Spec: the Live Activity ends when the GPS screen is left.
+            RoundActivityService.shared.end()
+        }
         .onChange(of: liveActivityContent) { _, _ in syncCompanions() }
         .sheet(item: $scoreCell) { cell in
             ScoreEntryView(cell: cell, viewModel: viewModel, session: session) {
@@ -452,21 +456,34 @@ struct OnCourseGPSView: View {
 
     // MARK: - Live Activity + Watch companion
 
-    /// State for the round Live Activity and watch snapshot — nil unless
-    /// the match is in progress. Equatable, so `.onChange` fires only on
-    /// meaningful changes (hole, par, rounded yardages, scores).
+    /// State for the round Live Activity — nil unless the match is in
+    /// progress. Equatable, so `.onChange` fires only on meaningful
+    /// changes (hole, par, rounded yardages, scores).
+    ///
+    /// Per the spec: `toPinYds` (and front/back) are nil unless there's a
+    /// live GPS fix anchored at the player AND a mapped green — the tee
+    /// fallback never masquerades as TO PIN on the lock screen.
     private var liveActivityContent: RoundActivityAttributes.ContentState? {
         guard let detail = viewModel.detail, detail.status == .inProgress else { return nil }
         let hole = detail.holeNumber(at: holeIndex)
         let geo = viewModel.response?.holeGeo[hole]
-        let distances = currentAnchor(geo).flatMap { geo?.distances(from: $0.coordinate) }
+        let anchor = currentAnchor(geo)
+        let playerDistances = anchor?.isPlayer == true
+            ? anchor.flatMap { geo?.distances(from: $0.coordinate) }
+            : nil
         let scores = myScores(detail)
 
         var holesScored = 0
+        var myScoredHoles = 0
         var toPar = 0
         for index in 0 ..< detail.holes {
-            if let strokes = scores[detail.holeNumber(at: index)] {
+            let holeNumber = detail.holeNumber(at: index)
+            if !detail.players.isEmpty,
+               detail.players.allSatisfy({ $0.scoresByHole[holeNumber] != nil }) {
                 holesScored += 1
+            }
+            if let strokes = scores[holeNumber] {
+                myScoredHoles += 1
                 toPar += strokes - detail.par(at: index)
             }
         }
@@ -475,12 +492,15 @@ struct OnCourseGPSView: View {
         return RoundActivityAttributes.ContentState(
             hole: hole,
             par: detail.par(at: holeIndex),
-            frontYds: distances.map { Int($0.front.rounded()) },
-            centerYds: distances.map { Int($0.center.rounded()) },
-            backYds: distances.map { Int($0.back.rounded()) },
+            toPinYds: playerDistances.map { Int($0.center.rounded()) },
+            frontYds: playerDistances.map { Int($0.front.rounded()) },
+            backYds: playerDistances.map { Int($0.back.rounded()) },
             holesScored: holesScored,
             totalHoles: detail.holes,
-            myToPar: isSeated && holesScored > 0 ? toPar : nil
+            myToPar: isSeated && myScoredHoles > 0 ? toPar : nil,
+            // Constant placeholder so Equatable dedupe works — the real
+            // timestamp is stamped by RoundActivityService at push time.
+            updatedAt: Date(timeIntervalSince1970: 0)
         )
     }
 
@@ -500,13 +520,17 @@ struct OnCourseGPSView: View {
             courseName: detail.courseName,
             state: state
         )
+        // The watch keeps the tee fallback so it stays useful off-course
+        // (unlike the Live Activity, which is strictly player-anchored).
+        let geo = viewModel.response?.holeGeo[state.hole]
+        let watchDistances = currentAnchor(geo).flatMap { geo?.distances(from: $0.coordinate) }
         WatchSessionService.shared.send(RoundSnapshot(
             courseName: detail.courseName,
             hole: state.hole,
             par: state.par,
-            frontYds: state.frontYds,
-            centerYds: state.centerYds,
-            backYds: state.backYds,
+            frontYds: watchDistances.map { Int($0.front.rounded()) },
+            centerYds: watchDistances.map { Int($0.center.rounded()) },
+            backYds: watchDistances.map { Int($0.back.rounded()) },
             holesScored: state.holesScored,
             totalHoles: state.totalHoles,
             myToPar: state.myToPar,

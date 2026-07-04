@@ -5,7 +5,7 @@
 //  ⚠️ Shared between the Sticks app and the SticksWidget extension —
 //  ActivityKit matches Live Activities by type name and Codable shape,
 //  so this copy and Sticks/Models/RoundActivityAttributes.swift MUST
-//  stay identical.
+//  stay byte-identical (same type names, same properties, same order).
 //
 
 import ActivityKit
@@ -16,18 +16,20 @@ nonisolated struct RoundActivityAttributes: ActivityAttributes {
         /// Absolute hole number currently being played/viewed.
         var hole: Int
         var par: Int
-        /// Rounded yardages to the green — nil when no GPS data exists.
+        /// Yards to the pin — nil when no GPS fix or no green mapped.
+        var toPinYds: Int?
         var frontYds: Int?
-        var centerYds: Int?
         var backYds: Int?
-        /// Holes the caller has scored so far.
+        /// Holes where every player has a score.
         var holesScored: Int
+        /// 9 or 18.
         var totalHoles: Int
-        /// Caller's running score relative to par — nil for spectators
-        /// or before any hole is scored.
+        /// Caller's running score vs par — nil for spectators.
         var myToPar: Int?
+        /// Stamped by RoundActivityService at push time.
+        var updatedAt: Date
     }
 
-    var courseName: String
     var matchId: String
+    var courseName: String
 }
