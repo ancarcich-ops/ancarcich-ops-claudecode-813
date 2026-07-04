@@ -43,6 +43,9 @@ final class RoundSessionService {
     private(set) var suggestedScoreIndex: Int?
 
     @ObservationIgnored private var viewModel: MatchDetailViewModel?
+    /// Auth session for watch-initiated score posts — weak because the
+    /// app root owns it; cleared with the round.
+    @ObservationIgnored private weak var session: SessionStore?
     @ObservationIgnored private var isGPSScreenVisible = false
     /// Bumped to invalidate in-flight observation loops when the session
     /// ends or restarts.
@@ -74,16 +77,18 @@ final class RoundSessionService {
     /// Starts (or re-attaches to) the round session for an IN_PROGRESS
     /// match. Opening a different match's GPS screen ends the previous
     /// round first — exactly one round at a time.
-    func beginRound(viewModel: MatchDetailViewModel, holeIndex: Int) {
+    func beginRound(viewModel: MatchDetailViewModel, holeIndex: Int, session: SessionStore) {
         guard let detail = viewModel.detail, detail.status == .inProgress else { return }
         if activeMatchId == detail.id {
             self.viewModel = viewModel
+            self.session = session
             return
         }
         if isActive { endRound() }
 
         activeMatchId = detail.id
         self.viewModel = viewModel
+        self.session = session
         self.holeIndex = holeIndex
         suggestedScoreIndex = nil
         resetAutoAdvance()
@@ -124,6 +129,7 @@ final class RoundSessionService {
         generation += 1
         activeMatchId = nil
         viewModel = nil
+        session = nil
         suggestedScoreIndex = nil
         resetAutoAdvance()
         location.setBackgroundUpdates(false)
@@ -220,20 +226,114 @@ final class RoundSessionService {
 
         // The watch keeps the tee fallback so it stays useful off-course
         // (unlike the Live Activity, which is strictly player-anchored).
-        let watchAnchor = playerCoordinate ?? geo?.teeCoordinate
-        let watchDistances = watchAnchor.flatMap { geo?.distances(from: $0) }
-        WatchSessionService.shared.send(RoundSnapshot(
+        WatchSessionService.shared.send(watchSnapshot(detail: detail))
+    }
+
+    // MARK: - Watch snapshot + commands (slice 9)
+
+    /// The active round's detail, or nil when no round is live — the
+    /// validity gate for every watch command.
+    private func activeDetail() -> MatchDetail? {
+        guard isActive,
+              let detail = viewModel?.detail,
+              detail.id == activeMatchId,
+              detail.status == .inProgress,
+              detail.holes > 0 else { return nil }
+        return detail
+    }
+
+    /// Snapshot of the current round state — the payload for both context
+    /// pushes and watch command replies.
+    func currentWatchSnapshot() -> RoundSnapshot? {
+        activeDetail().map { watchSnapshot(detail: $0) }
+    }
+
+    private func watchSnapshot(detail: MatchDetail) -> RoundSnapshot {
+        let index = min(holeIndex, detail.holes - 1)
+        let hole = detail.holeNumber(at: index)
+        let geo = viewModel?.response?.holeGeo[hole]
+        // Tee fallback keeps the watch useful off-course (unlike the
+        // Live Activity, which is strictly player-anchored).
+        let anchor = playerAnchorCoordinate(geo: geo) ?? geo?.teeCoordinate
+        let distances = anchor.flatMap { geo?.distances(from: $0) }
+        let myScores = detail.players.first { $0.id == detail.myMatchPlayerId }?.scoresByHole ?? [:]
+        let isSeated = detail.myMatchPlayerId != nil
+
+        var holesScored = 0
+        var myScoredHoles = 0
+        var toPar = 0
+        for holeOffset in 0 ..< detail.holes {
+            let holeNumber = detail.holeNumber(at: holeOffset)
+            if !detail.players.isEmpty,
+               detail.players.allSatisfy({ $0.scoresByHole[holeNumber] != nil }) {
+                holesScored += 1
+            }
+            if let strokes = myScores[holeNumber] {
+                myScoredHoles += 1
+                toPar += strokes - detail.par(at: holeOffset)
+            }
+        }
+
+        return RoundSnapshot(
             courseName: detail.courseName,
             hole: hole,
+            holeIndex: index,
             par: detail.par(at: index),
-            frontYds: watchDistances.map { Int($0.front.rounded()) },
-            centerYds: watchDistances.map { Int($0.center.rounded()) },
-            backYds: watchDistances.map { Int($0.back.rounded()) },
+            frontYds: distances.map { Int($0.front.rounded()) },
+            centerYds: distances.map { Int($0.center.rounded()) },
+            backYds: distances.map { Int($0.back.rounded()) },
             holesScored: holesScored,
             totalHoles: detail.holes,
             myToPar: isSeated && myScoredHoles > 0 ? toPar : nil,
+            isSeated: isSeated,
+            myScore: myScores[hole],
             updatedAt: Date()
-        ))
+        )
+    }
+
+    /// Applies a hole switch sent from the watch. `index` is the absolute
+    /// round index. Semantics match a manual rail tap — the auto-advance
+    /// gates reset inside `setHole`, and the GPS screen (if open) follows
+    /// via its holeIndex observation.
+    func applyWatchSetHole(index: Int) -> WatchCommandReply {
+        guard let detail = activeDetail() else {
+            return .failure("Open a round on your iPhone first.")
+        }
+        guard index >= 0, index < detail.holes else {
+            return .failure("That hole isn't in this round.")
+        }
+        setHole(index: index, matchId: detail.id)
+        guard let snapshot = currentWatchSnapshot() else {
+            return .failure("Open a round on your iPhone first.")
+        }
+        return .snapshot(snapshot)
+    }
+
+    /// Posts the WEARER's score from the watch through the existing score
+    /// path (optimistic local apply + quiet re-fetch), then replies with
+    /// the recomputed snapshot. Never posts for anyone else's seat.
+    func applyWatchScore(hole: Int, strokes: Int) async -> WatchCommandReply {
+        guard let viewModel, let session, let detail = activeDetail() else {
+            return .failure("Open a round on your iPhone first.")
+        }
+        guard let playerId = detail.myMatchPlayerId else {
+            return .failure("You don't have a seat in this match.")
+        }
+        guard (1 ... 30).contains(strokes),
+              (0 ..< detail.holes).contains(where: { detail.holeNumber(at: $0) == hole }) else {
+            return .failure("That score doesn't look right.")
+        }
+        do {
+            try await viewModel.submitScore(playerId: playerId, hole: hole, strokes: strokes, session: session)
+        } catch let error as APIError {
+            return .failure(error.message)
+        } catch {
+            return .failure("Couldn't save the score. Try again.")
+        }
+        guard let snapshot = currentWatchSnapshot() else {
+            return .failure("Open a round on your iPhone first.")
+        }
+        return .snapshot(snapshot)
     }
 
     // MARK: - GPS auto-advance (slice 7.2)

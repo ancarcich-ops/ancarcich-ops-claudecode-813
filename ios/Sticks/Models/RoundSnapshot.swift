@@ -12,6 +12,9 @@ import Foundation
 nonisolated struct RoundSnapshot: Codable, Hashable {
     var courseName: String
     var hole: Int
+    /// Round index (0-based) of the current hole — the index space for
+    /// the watch's setHole command.
+    var holeIndex: Int
     var par: Int
     var frontYds: Int?
     var centerYds: Int?
@@ -19,5 +22,9 @@ nonisolated struct RoundSnapshot: Codable, Hashable {
     var holesScored: Int
     var totalHoles: Int
     var myToPar: Int?
+    /// Wearer has a seat in the match — gates watch score entry.
+    var isSeated: Bool
+    /// Wearer's score on the CURRENT hole, if any.
+    var myScore: Int?
     var updatedAt: Date
 }

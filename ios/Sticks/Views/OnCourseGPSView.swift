@@ -63,7 +63,7 @@ struct OnCourseGPSView: View {
         .onAppear {
             RoundSessionService.shared.gpsScreenAppeared()
             initializeIfNeeded()
-            RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex)
+            RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex, session: session)
         }
         .onDisappear {
             // Round-scoped: the Live Activity, watch snapshot, and
@@ -75,7 +75,7 @@ struct OnCourseGPSView: View {
         // this screen is open — start the round session when it does.
         .onChange(of: viewModel.detail?.status) { _, status in
             if status == .inProgress {
-                RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex)
+                RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex, session: session)
             }
         }
         // Slice 7.2: GPS auto-advance — when the round session advances
