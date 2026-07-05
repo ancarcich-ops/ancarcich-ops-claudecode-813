@@ -2,8 +2,9 @@
 //  MatchListView.swift
 //  Sticks
 //
-//  Slice 2: the signed-in home screen. Groups matches into
-//  Live / Upcoming / Recent with pull-to-refresh.
+//  The signed-in home screen. Groups matches into Live / Upcoming /
+//  Recent with pull-to-refresh; each match renders as a status-aware
+//  card (MatchCardView) and the whole card navigates to the detail.
 //
 
 import SwiftUI
@@ -135,9 +136,9 @@ struct MatchListView: View {
 
             ForEach(matches) { match in
                 NavigationLink(value: match) {
-                    MatchRowView(match: match)
+                    MatchCardView(match: match)
                 }
-                .buttonStyle(MatchRowButtonStyle())
+                .buttonStyle(MatchCardButtonStyle())
             }
         }
     }
@@ -201,107 +202,7 @@ struct MatchListView: View {
     }
 }
 
-// MARK: - Row
-
-private struct MatchRowView: View {
-    let match: MatchSummary
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center) {
-                StatusChip(status: match.status)
-                Spacer()
-                Text(Self.dateText(for: match))
-                    .font(SticksFont.label(11, weight: .medium))
-                    .kerning(0.6)
-                    .foregroundStyle(Color.sticksMuted)
-            }
-
-            Text(match.courseName)
-                .font(SticksFont.display(22))
-                .foregroundStyle(Color.sticksInk)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            HStack(spacing: 10) {
-                AvatarStack(players: match.players)
-
-                Text(detailText)
-                    .font(SticksFont.sans(13))
-                    .foregroundStyle(Color.sticksMuted)
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.sticksHairline)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.sticksCard)
-        .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
-                .stroke(Color.sticksHairline, lineWidth: 1)
-        )
-    }
-
-    private var detailText: String {
-        let count = match.players.count
-        let playersPart = count == 1 ? "1 player" : "\(count) players"
-        return "\(playersPart) · \(match.holes) holes · \(match.scoringMode.capitalized)"
-    }
-
-    private static func dateText(for match: MatchSummary) -> String {
-        if Calendar.current.isDateInToday(match.scheduledAt) {
-            return "TODAY · \(match.scheduledAt.formatted(date: .omitted, time: .shortened))"
-        }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, MMM d"
-        return formatter.string(from: match.scheduledAt).uppercased()
-    }
-}
-
 // MARK: - Pieces
-
-private struct AvatarStack: View {
-    let players: [MatchPlayerSummary]
-
-    private var visible: [MatchPlayerSummary] { Array(players.prefix(4)) }
-    private var overflow: Int { max(0, players.count - 4) }
-
-    var body: some View {
-        HStack(spacing: -8) {
-            ForEach(visible) { player in
-                Text(initial(of: player.displayName))
-                    .font(SticksFont.label(11, weight: .bold))
-                    .foregroundStyle(Color.sticksCream)
-                    .frame(width: 26, height: 26)
-                    .background(Color.sticksGreen)
-                    .clipShape(.circle)
-                    .overlay(
-                        Circle().stroke(Color.sticksCard, lineWidth: 2)
-                    )
-            }
-            if overflow > 0 {
-                Text("+\(overflow)")
-                    .font(SticksFont.label(10, weight: .bold))
-                    .foregroundStyle(Color.sticksGreen)
-                    .frame(width: 26, height: 26)
-                    .background(Color.sticksPanel2)
-                    .clipShape(.circle)
-                    .overlay(
-                        Circle().stroke(Color.sticksCard, lineWidth: 2)
-                    )
-            }
-        }
-    }
-
-    private func initial(of name: String) -> String {
-        name.first.map { String($0).uppercased() } ?? "?"
-    }
-}
 
 private struct PulsingDot: View {
     @State private var isPulsing = false
@@ -316,7 +217,7 @@ private struct PulsingDot: View {
     }
 }
 
-private struct MatchRowButtonStyle: ButtonStyle {
+private struct MatchCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
