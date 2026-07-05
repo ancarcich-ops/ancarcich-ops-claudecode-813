@@ -298,11 +298,11 @@ private struct CaddieCardView: View {
         }
     }
 
-    /// Round index of the hole in play. Derived from the absolute hole
-    /// number — exact for rounds starting on hole 1 (the standard case);
-    /// shotgun starts rotate the marker by the starting offset.
+    /// Round-order index of the hole in play — pushed by the app, so
+    /// non-hole-1 starts mark the correct segment (the absolute `hole`
+    /// number stays for the "Hole 5" text only).
     private var inPlayIndex: Int {
-        context.state.hole - 1
+        context.state.holeRoundIndex
     }
 
     private func segmentColor(_ index: Int) -> Color {

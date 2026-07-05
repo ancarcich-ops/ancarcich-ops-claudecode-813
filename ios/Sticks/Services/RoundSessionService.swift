@@ -226,6 +226,7 @@ final class RoundSessionService {
                 totalHoles: detail.holes,
                 myToPar: isSeated && myScoredHoles > 0 ? toPar : nil,
                 holeDiffs: holeDiffs,
+                holeRoundIndex: index,
                 // Constant placeholder so Equatable dedupe works — the real
                 // timestamp is stamped by RoundActivityService at push time.
                 updatedAt: Date(timeIntervalSince1970: 0)
