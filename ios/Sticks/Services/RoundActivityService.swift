@@ -102,6 +102,9 @@ final class RoundActivityService {
         if new.hole != old.hole || new.par != old.par { return true }
         if new.holesScored != old.holesScored || new.totalHoles != old.totalHoles { return true }
         if new.myToPar != old.myToPar { return true }
+        // A wearer score landing flips a strip segment even when neither
+        // holesScored (all-players gate) nor myToPar (a par) moves.
+        if new.holeDiffs != old.holeDiffs { return true }
         switch (old.toPinYds, new.toPinYds) {
         case (nil, nil):
             break

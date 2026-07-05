@@ -193,6 +193,10 @@ final class RoundSessionService {
         var holesScored = 0
         var myScoredHoles = 0
         var toPar = 0
+        // Wearer's per-hole (strokes − par) in round order — the Live
+        // Activity's progress strip. All nil for spectators.
+        var holeDiffs: [Int?] = []
+        holeDiffs.reserveCapacity(detail.holes)
         for holeOffset in 0 ..< detail.holes {
             let holeNumber = detail.holeNumber(at: holeOffset)
             if !detail.players.isEmpty,
@@ -202,6 +206,9 @@ final class RoundSessionService {
             if let strokes = scores[holeNumber] {
                 myScoredHoles += 1
                 toPar += strokes - detail.par(at: holeOffset)
+                holeDiffs.append(strokes - detail.par(at: holeOffset))
+            } else {
+                holeDiffs.append(nil)
             }
         }
         let isSeated = detail.myMatchPlayerId != nil
@@ -218,6 +225,7 @@ final class RoundSessionService {
                 holesScored: holesScored,
                 totalHoles: detail.holes,
                 myToPar: isSeated && myScoredHoles > 0 ? toPar : nil,
+                holeDiffs: holeDiffs,
                 // Constant placeholder so Equatable dedupe works — the real
                 // timestamp is stamped by RoundActivityService at push time.
                 updatedAt: Date(timeIntervalSince1970: 0)

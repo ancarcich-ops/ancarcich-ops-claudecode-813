@@ -26,6 +26,9 @@ nonisolated struct RoundActivityAttributes: ActivityAttributes {
         var totalHoles: Int
         /// Caller's running score vs par — nil for spectators.
         var myToPar: Int?
+        /// Wearer's (strokes − par) per hole — exactly totalHoles entries,
+        /// index = round order, nil = not yet scored (all nil for spectators).
+        var holeDiffs: [Int?]
         /// Stamped by RoundActivityService at push time.
         var updatedAt: Date
     }
