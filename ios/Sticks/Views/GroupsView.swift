@@ -1,0 +1,631 @@
+//
+//  GroupsView.swift
+//  Sticks
+//
+//  Slice 12: the Groups tab. Group cards with a deterministic identity
+//  color spine, the invite ticket footer (tap = copy the code + join
+//  link), plus Create and Join cards. Card top rows push the group feed.
+//
+
+import SwiftUI
+import UIKit
+
+struct GroupsView: View {
+    let session: SessionStore
+    var tabSelection: Binding<SticksTab>? = nil
+
+    @State private var viewModel = GroupsViewModel()
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.sticksBg.ignoresSafeArea()
+
+                switch viewModel.phase {
+                case .loading:
+                    loadingView
+                case .failed(let message):
+                    failedView(message)
+                case .loaded:
+                    content
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let tabSelection {
+                    SticksTabBar(selection: tabSelection)
+                }
+            }
+            .navigationDestination(for: SticksGroup.self) { group in
+                GroupFeedView(group: group, session: session)
+            }
+            .navigationDestination(for: MatchSummary.self) { match in
+                MatchDetailView(match: match, session: session)
+            }
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .task {
+            await viewModel.load(session: session)
+        }
+    }
+
+    // MARK: - Content
+
+    private var content: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Groups")
+                    .font(SticksFont.display(40, weight: .bold))
+                    .kerning(-0.8)
+                    .foregroundStyle(Color.sticksInk)
+
+                Text("A group is a private feed. Matches you post are seen only by members. Share an invite code to add friends.")
+                    .font(SticksFont.sans(14.5))
+                    .foregroundStyle(Color.sticksMuted)
+                    .frame(maxWidth: 280, alignment: .leading)
+
+                sectionHeader
+
+                if viewModel.groups.isEmpty {
+                    emptyCard
+                } else {
+                    VStack(spacing: 13) {
+                        ForEach(viewModel.groups) { group in
+                            GroupCard(group: group)
+                        }
+                    }
+                }
+
+                CreateGroupCard(viewModel: viewModel, session: session)
+                JoinGroupCard(viewModel: viewModel, session: session)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 32)
+        }
+        .refreshable {
+            await viewModel.load(session: session)
+        }
+    }
+
+    private var sectionHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Your groups")
+                .font(SticksFont.display(19))
+                .foregroundStyle(Color.sticksInk)
+
+            Spacer()
+
+            Text(countText)
+                .font(SticksFont.mono(12))
+                .kerning(1)
+                .textCase(.uppercase)
+                .foregroundStyle(Color.sticksFaint)
+        }
+        .padding(.top, 4)
+    }
+
+    private var countText: String {
+        let count = viewModel.groups.count
+        return count == 1 ? "1 GROUP" : "\(count) GROUPS"
+    }
+
+    // MARK: - States
+
+    private var emptyCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("No groups yet.")
+                .font(SticksFont.display(18))
+                .foregroundStyle(Color.sticksInk)
+            Text("Spin one up below or drop in an invite code from a friend.")
+                .font(SticksFont.sans(13.5))
+                .foregroundStyle(Color.sticksMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 14) {
+            ProgressView()
+                .tint(Color.sticksGreen)
+            Text("Loading groups…")
+                .font(SticksFont.sans(14))
+                .foregroundStyle(Color.sticksMuted)
+        }
+    }
+
+    private func failedView(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 32, weight: .medium))
+                .foregroundStyle(Color.sticksMuted)
+            Text(message)
+                .font(SticksFont.sans(15))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.sticksInk)
+                .padding(.horizontal, 40)
+            Button {
+                Task { await viewModel.load(session: session) }
+            } label: {
+                Text("Try Again")
+                    .font(SticksFont.sans(15, weight: .semibold))
+                    .foregroundStyle(Color.sticksCream)
+                    .padding(.horizontal, 28)
+                    .frame(height: 44)
+                    .background(Color.sticksGreen)
+                    .clipShape(.rect(cornerRadius: 12))
+            }
+        }
+    }
+}
+
+// MARK: - Group identity
+
+/// Deterministic identity color per group — FNV-1a over the id (stable
+/// across launches, unlike String.hashValue) cycling the 5-color wheel.
+nonisolated enum GroupIdentity {
+    static let palette: [Color] = [
+        .sticksGreen,
+        .sticksGold,
+        Color(red: 50 / 255, green: 74 / 255, blue: 99 / 255),   // navy #324A63
+        .sticksError,
+        Color(red: 155 / 255, green: 90 / 255, blue: 107 / 255), // rose #9B5A6B
+    ]
+
+    static func color(for id: String) -> Color {
+        palette[index(for: id)]
+    }
+
+    static func index(for id: String) -> Int {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in id.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return Int(hash % UInt64(palette.count))
+    }
+
+    /// Copies the invite line to the pasteboard: "CODE — join link".
+    @MainActor static func copyInvite(code: String) {
+        UIPasteboard.general.string =
+            "\(code) — https://sticks-golf.vercel.app/groups/join?code=\(code)"
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+// MARK: - Group card
+
+private struct GroupCard: View {
+    let group: SticksGroup
+
+    @State private var showsCopied = false
+    @State private var copyResetTask: Task<Void, Never>?
+
+    private var spine: Color { GroupIdentity.color(for: group.id) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            NavigationLink(value: group) {
+                topRow
+            }
+            .buttonStyle(GroupCardPressStyle())
+
+            Rectangle()
+                .fill(Color.sticksHairline)
+                .frame(height: 1)
+
+            inviteTicket
+        }
+        .background(Color.sticksCard)
+        .overlay(alignment: .leading) {
+            spine.frame(width: 5).allowsHitTesting(false)
+        }
+        .clipShape(.rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.05), radius: 5, y: 3)
+        .onDisappear { copyResetTask?.cancel() }
+    }
+
+    // MARK: Top row
+
+    private var topRow: some View {
+        HStack(spacing: 12) {
+            monogram
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(group.name)
+                        .font(SticksFont.display(20))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+
+                    Text("→")
+                        .font(SticksFont.mono(12))
+                        .foregroundStyle(Color.sticksFaint)
+                }
+
+                metaLine
+            }
+
+            Spacer(minLength: 8)
+
+            avatarStack
+        }
+        .padding(.leading, 19) // 14 + the 5pt spine
+        .padding(.trailing, 14)
+        .padding(.vertical, 14)
+        .contentShape(.rect)
+    }
+
+    private var monogram: some View {
+        Text(group.initials)
+            .font(SticksFont.display(20))
+            .foregroundStyle(Color.sticksCream)
+            .frame(width: 46, height: 46)
+            .background(spine)
+            .clipShape(.rect(cornerRadius: 13))
+            .overlay(
+                // Subtle inner shadow — a soft dark rim inside the top edge.
+                RoundedRectangle(cornerRadius: 13)
+                    .strokeBorder(Color.black.opacity(0.18), lineWidth: 1.5)
+                    .blur(radius: 1.5)
+                    .clipShape(.rect(cornerRadius: 13))
+                    .allowsHitTesting(false)
+            )
+    }
+
+    /// "8 members · 24 matches" — numbers in ink, words mute.
+    private var metaLine: some View {
+        (
+            Text("\(group.memberCount)").foregroundStyle(Color.sticksInk)
+            + Text(group.memberCount == 1 ? " member" : " members").foregroundStyle(Color.sticksMuted)
+            + Text(" · ").foregroundStyle(Color.sticksMuted)
+            + Text("\(group.matchCount)").foregroundStyle(Color.sticksInk)
+            + Text(group.matchCount == 1 ? " match" : " matches").foregroundStyle(Color.sticksMuted)
+        )
+        .font(SticksFont.mono(12))
+        .lineLimit(1)
+    }
+
+    private var avatarStack: some View {
+        let names = Array(group.memberNames.prefix(3))
+        let overflow = group.memberCount - names.count
+        return HStack(spacing: -8) {
+            ForEach(Array(names.enumerated()), id: \.offset) { position, name in
+                MemberBubble(name: name, position: position)
+            }
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(SticksFont.mono(10))
+                    .foregroundStyle(Color.sticksMuted)
+                    .frame(width: 26, height: 26)
+                    .background(Color.sticksPanel2)
+                    .clipShape(.circle)
+                    .overlay(Circle().stroke(Color.sticksCard, lineWidth: 2))
+            }
+        }
+    }
+
+    // MARK: Invite ticket
+
+    private var inviteTicket: some View {
+        Button {
+            guard !showsCopied else { return }
+            GroupIdentity.copyInvite(code: group.inviteCode)
+            withAnimation(.easeOut(duration: 0.15)) { showsCopied = true }
+            copyResetTask?.cancel()
+            copyResetTask = Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.2)) { showsCopied = false }
+            }
+        } label: {
+            ZStack {
+                HStack(spacing: 10) {
+                    Text(group.inviteCode)
+                        .font(SticksFont.mono(13.5))
+                        .kerning(1.9)
+                        .foregroundStyle(Color.sticksInk)
+
+                    copyChip
+                }
+                .opacity(showsCopied ? 0 : 1)
+
+                if showsCopied {
+                    Text("✓ Copied")
+                        .font(SticksFont.sans(13, weight: .semibold))
+                        .foregroundStyle(Color.sticksGreen)
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+            .padding(.leading, 5) // visually center past the spine
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy invite code \(group.inviteCode)")
+    }
+
+    private var copyChip: some View {
+        Image(systemName: showsCopied ? "checkmark" : "doc.on.doc")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(showsCopied ? Color.sticksCream : Color.sticksMuted)
+            .frame(width: 24, height: 24)
+            .background(showsCopied ? Color.sticksGreen : Color.sticksPanel2)
+            .clipShape(.rect(cornerRadius: 7))
+    }
+}
+
+/// 26pt initials circle for the member stack — identity colors by
+/// position, 2pt panel ring, -8pt overlap handled by the stack.
+private struct MemberBubble: View {
+    let name: String
+    let position: Int
+
+    var body: some View {
+        Text(initials)
+            .font(SticksFont.label(9, weight: .bold))
+            .foregroundStyle(Color.sticksCream)
+            .frame(width: 26, height: 26)
+            .background(GroupIdentity.palette[position % GroupIdentity.palette.count])
+            .clipShape(.circle)
+            .overlay(Circle().stroke(Color.sticksCard, lineWidth: 2))
+    }
+
+    private var initials: String {
+        let parts = name.split(separator: " ").prefix(2)
+        let letters = parts.compactMap { $0.first.map(String.init) }
+        return letters.isEmpty ? "?" : letters.joined().uppercased()
+    }
+}
+
+private struct GroupCardPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Color.sticksPanel2.opacity(0.6) : Color.clear)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Create card
+
+private struct CreateGroupCard: View {
+    let viewModel: GroupsViewModel
+    let session: SessionStore
+
+    @State private var name = ""
+    @FocusState private var isFocused: Bool
+
+    private var canCreate: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isCreating
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("START SOMETHING")
+                .font(SticksFont.mono(10.5))
+                .kerning(1.47)
+                .foregroundStyle(Color.sticksGreen)
+
+            Text("Create a group")
+                .font(SticksFont.display(18))
+                .foregroundStyle(Color.sticksInk)
+
+            HStack(spacing: 10) {
+                TextField(
+                    "",
+                    text: $name,
+                    prompt: Text("Saturday foursome, College buddies…")
+                        .font(SticksFont.sans(15))
+                        .foregroundStyle(Color.sticksFaint)
+                )
+                .font(SticksFont.sans(15))
+                .foregroundStyle(Color.sticksInk)
+                .focused($isFocused)
+                .submitLabel(.done)
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(Color.sticksPanel2)
+                .clipShape(.rect(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isFocused ? Color.sticksGreen : Color.sticksHairline, lineWidth: 1)
+                )
+                .shadow(
+                    color: isFocused ? Color.sticksGreen.opacity(0.25) : .clear,
+                    radius: 5
+                )
+
+                Button {
+                    create()
+                } label: {
+                    Text("CREATE")
+                        .font(SticksFont.sans(15, weight: .bold))
+                        .foregroundStyle(Color.sticksCream)
+                        .padding(.horizontal, 18)
+                        .frame(height: 50)
+                }
+                .buttonStyle(LedgeButtonStyle(showsLedge: canCreate))
+                .disabled(!canCreate)
+                .opacity(canCreate ? 1 : 0.5)
+            }
+
+            if let error = viewModel.createError {
+                Text(error)
+                    .font(SticksFont.sans(12.5))
+                    .foregroundStyle(Color.sticksError)
+            }
+
+            (
+                Text("You'll get an invite code to share. ")
+                    .foregroundStyle(Color.sticksMuted)
+                + Text("Anyone with the code can join.")
+                    .font(SticksFont.sans(12.5, weight: .bold))
+                    .foregroundStyle(Color.sticksInk)
+            )
+            .font(SticksFont.sans(12.5))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
+    private func create() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        Task {
+            if await viewModel.create(name: trimmed, session: session) {
+                name = ""
+                isFocused = false
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        }
+    }
+}
+
+/// Accent-filled button sitting on a 2pt darker-green "ledge" that
+/// compresses on press. No ledge when disabled.
+private struct LedgeButtonStyle: ButtonStyle {
+    let showsLedge: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed && showsLedge
+        return ZStack {
+            if showsLedge {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.sticksGreenDark)
+                    .offset(y: 2)
+            }
+            configuration.label
+                .background(Color.sticksGreen)
+                .clipShape(.rect(cornerRadius: 12))
+                .offset(y: pressed ? 2 : 0)
+        }
+        .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Join card
+
+private struct JoinGroupCard: View {
+    let viewModel: GroupsViewModel
+    let session: SessionStore
+
+    @State private var code = ""
+    @FocusState private var isFocused: Bool
+
+    private var canJoin: Bool {
+        code.count == 6 && !viewModel.isJoining
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("GOT AN INVITE?")
+                .font(SticksFont.mono(10.5))
+                .kerning(1.47)
+                .foregroundStyle(Color.sticksGreen)
+
+            Text("Join with a code")
+                .font(SticksFont.display(18))
+                .foregroundStyle(Color.sticksInk)
+
+            HStack(spacing: 10) {
+                TextField(
+                    "",
+                    text: $code,
+                    prompt: Text("ABC123")
+                        .font(SticksFont.mono(15))
+                        .foregroundStyle(Color.sticksFaint)
+                )
+                .font(SticksFont.mono(15))
+                .kerning(3)
+                .foregroundStyle(Color.sticksInk)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .focused($isFocused)
+                .submitLabel(.join)
+                .onChange(of: code) { _, newValue in
+                    // Hard 6-char cap, auto-uppercased.
+                    let cleaned = String(newValue.uppercased().prefix(6))
+                    if cleaned != newValue { code = cleaned }
+                    if viewModel.joinError != nil { viewModel.clearJoinError() }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(Color.sticksPanel2)
+                .clipShape(.rect(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isFocused ? Color.sticksGreen : Color.sticksHairline, lineWidth: 1)
+                )
+                .shadow(
+                    color: isFocused ? Color.sticksGreen.opacity(0.25) : .clear,
+                    radius: 5
+                )
+
+                Button {
+                    join()
+                } label: {
+                    Text("JOIN")
+                        .font(SticksFont.sans(15, weight: .bold))
+                        .foregroundStyle(Color.sticksGreen)
+                        .padding(.horizontal, 20)
+                        .frame(height: 50)
+                        .background(Color.sticksPanel2)
+                        .clipShape(.rect(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.sticksHairline, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(!canJoin)
+                .opacity(canJoin ? 1 : 0.5)
+            }
+
+            if let error = viewModel.joinError {
+                Text(error)
+                    .font(SticksFont.sans(12.5))
+                    .foregroundStyle(Color.sticksError)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
+    private func join() {
+        guard code.count == 6 else { return }
+        Task {
+            if await viewModel.join(code: code, session: session) {
+                code = ""
+                isFocused = false
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        }
+    }
+}
+
+#Preview {
+    GroupsView(session: SessionStore())
+}

@@ -26,7 +26,7 @@ struct ContentView: View {
                     LoginView(session: session)
                         .transition(.opacity)
                 case .signedIn(let user):
-                    MatchListView(user: user, session: session)
+                    MainTabView(user: user, session: session)
                         .transition(.opacity)
                 case .unreachable(let message):
                     unreachableView(message)

@@ -44,6 +44,9 @@ extension Color {
 
     /// Eagle / FINISH ROUND gold — #A9762A (web `gold`)
     static let sticksGold = Color(red: 169 / 255, green: 118 / 255, blue: 42 / 255)
+
+    /// Faint/tertiary — #8A7C62 (labels, inactive tab items, dim units)
+    static let sticksFaint = Color(red: 138 / 255, green: 124 / 255, blue: 98 / 255)
 }
 
 /// The web app's three embedded families — Newsreader (display),

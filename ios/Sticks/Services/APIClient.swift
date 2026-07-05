@@ -60,6 +60,16 @@ nonisolated struct OkResponse: Decodable {
     let ok: Bool
 }
 
+/// Body for POST /groups.
+nonisolated struct CreateGroupRequest: Encodable {
+    let name: String
+}
+
+/// Body for POST /groups/join.
+nonisolated struct JoinGroupRequest: Encodable {
+    let code: String
+}
+
 /// Body for POST /matches/:id/tee (FIX TEE crowdfix).
 nonisolated struct TeeRequest: Encodable {
     let hole: Int
@@ -157,6 +167,27 @@ nonisolated struct APIClient {
     func postTee(matchId: String, hole: Int, lat: Double, lng: Double, accuracyYd: Int, token: String) async throws -> TeeResponse {
         var request = makeRequest(path: "matches/\(matchId)/tee", method: "POST", token: token)
         request.httpBody = try encoder.encode(TeeRequest(hole: hole, lat: lat, lng: lng, accuracyYd: accuracyYd))
+        return try await perform(request)
+    }
+
+    /// GET /groups — the caller's groups.
+    func groups(token: String) async throws -> GroupsResponse {
+        let request = makeRequest(path: "groups", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// POST /groups — creates a group and returns it (with invite code).
+    func createGroup(name: String, token: String) async throws -> GroupResponse {
+        var request = makeRequest(path: "groups", method: "POST", token: token)
+        request.httpBody = try encoder.encode(CreateGroupRequest(name: name))
+        return try await perform(request)
+    }
+
+    /// POST /groups/join — joins via invite code. A 404 carries the
+    /// server's error message, shown to the user verbatim.
+    func joinGroup(code: String, token: String) async throws -> GroupResponse {
+        var request = makeRequest(path: "groups/join", method: "POST", token: token)
+        request.httpBody = try encoder.encode(JoinGroupRequest(code: code))
         return try await perform(request)
     }
 
