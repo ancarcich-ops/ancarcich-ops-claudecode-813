@@ -56,16 +56,8 @@ struct MatchListView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
-            Image("SticksMark")
-                .resizable()
-                .scaledToFit()
+            SticksClubsMark()
                 .frame(width: 34, height: 34)
-                .clipShape(.rect(cornerRadius: 9))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9)
-                        .stroke(Color.sticksHairline, lineWidth: 1)
-                )
-                .accessibilityHidden(true)
 
             Text("Sticks")
                 .font(SticksFont.display(30))

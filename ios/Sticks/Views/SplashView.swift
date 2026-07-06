@@ -4,12 +4,13 @@
 //
 //  Full-screen branded splash matching the web app, shown over the root
 //  while the token check runs on cold launch. Cream background with a
-//  faint accent grid under a radial fade, the clubs mark popping in with
-//  an overshoot spring, the lowercase "sticks" wordmark with a forever-
-//  pulsing accent dot, and the tagline fading up last. ContentView owns
+//  faint accent grid under a radial fade, the three vector clubs popping
+//  in staggered (each dropping onto its own baseline with an overshoot
+//  spring), the lowercase "sticks" wordmark with a forever-pulsing
+//  accent dot fading up next, and the tagline last. ContentView owns
 //  the hold (≥2.5s or until data is ready) and the 240ms fade-out.
 //  Respects Reduce Motion: entrances are skipped and the finished
-//  layout renders static.
+//  vector mark renders static.
 //
 
 import SwiftUI
@@ -17,9 +18,13 @@ import SwiftUI
 struct SplashView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var markVisible = false
+    @State private var clubsVisible: [Bool] = [false, false, false]
+    @State private var wordmarkVisible = false
     @State private var taglineVisible = false
     @State private var isPulsing = false
+
+    /// Per-club stagger, matching the web: 0s / 0.13s / 0.26s.
+    private static let clubDelays: [Double] = [0, 0.13, 0.26]
 
     var body: some View {
         ZStack {
@@ -40,18 +45,16 @@ struct SplashView: View {
     private func start() {
         guard !reduceMotion else {
             // Reduce Motion: finished layout, static — no entrances, no pulse.
-            markVisible = true
+            clubsVisible = [true, true, true]
+            wordmarkVisible = true
             taglineVisible = true
             return
         }
-        // Overshoot spring: 0.82s, rising 18pt from 82% scale.
-        withAnimation(.spring(duration: 0.82, bounce: 0.38)) {
-            markVisible = true
-        }
-        // Tagline fades up 0.6s after the wordmark.
-        withAnimation(.easeOut(duration: 0.6).delay(0.6)) {
-            taglineVisible = true
-        }
+        // All entrances are driven by scoped `.animation(value:)` modifiers
+        // with their own delays — one state flip kicks off the sequence.
+        clubsVisible = [true, true, true]
+        wordmarkVisible = true
+        taglineVisible = true
         isPulsing = true
     }
 
@@ -94,21 +97,44 @@ struct SplashView: View {
 
     // MARK: - Mark
 
+    /// The vector clubs, each popping in with its own delay: an 0.82s
+    /// overshoot spring rising 18pt from 82% scale anchored at that
+    /// club's own bottom-center, while the fill fades in over the first
+    /// ~60% of the pop.
     private var mark: some View {
-        Image("SticksMark")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 135, height: 135)
-            .clipShape(.rect(cornerRadius: 30))
-            .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
-            .scaleEffect(markVisible ? 1 : 0.82)
-            .offset(y: markVisible ? 0 : 18)
-            .opacity(markVisible ? 1 : 0)
-            .accessibilityHidden(true)
+        ZStack {
+            ForEach(SticksClub.allCases) { club in
+                clubView(club)
+            }
+        }
+        .frame(width: 120, height: 120)
+        .accessibilityHidden(true)
+    }
+
+    private func clubView(_ club: SticksClub) -> some View {
+        let index = club.rawValue
+        let visible = clubsVisible[index]
+        let delay = Self.clubDelays[index]
+
+        return SticksClubShape(club: club)
+            .fill(Color.sticksGreen)
+            .opacity(visible ? 1 : 0)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.5).delay(delay),
+                value: visible
+            )
+            .scaleEffect(visible ? 1 : 0.82, anchor: club.baselineAnchor)
+            .offset(y: visible ? 0 : 18)
+            .animation(
+                reduceMotion ? nil : .spring(duration: 0.82, bounce: 0.38).delay(delay),
+                value: visible
+            )
     }
 
     // MARK: - Wordmark
 
+    /// Fades up over 0.6s starting at 0.64s; the dot's pulse starts
+    /// with it.
     private var wordmark: some View {
         HStack(alignment: .bottom, spacing: 7) {
             Text("sticks")
@@ -118,13 +144,18 @@ struct SplashView: View {
             pulsingDot
                 .padding(.bottom, 15)
         }
-        .scaleEffect(markVisible ? 1 : 0.94)
-        .opacity(markVisible ? 1 : 0)
+        .opacity(wordmarkVisible ? 1 : 0)
+        .offset(y: wordmarkVisible ? 0 : 8)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.6).delay(0.64),
+            value: wordmarkVisible
+        )
         .accessibilityLabel("Sticks")
     }
 
     /// 10pt accent dot with a soft ring expanding to ~12pt+ and fading,
-    /// on a forever 2.4s cycle. Static under Reduce Motion.
+    /// on a forever 2.4s cycle starting with the wordmark. Static under
+    /// Reduce Motion.
     private var pulsingDot: some View {
         ZStack {
             Circle()
@@ -132,7 +163,7 @@ struct SplashView: View {
                 .frame(width: 10, height: 10)
                 .scaleEffect(isPulsing ? 1.5 : 1)
                 .animation(
-                    .easeOut(duration: 2.4).repeatForever(autoreverses: false),
+                    .easeOut(duration: 2.4).repeatForever(autoreverses: false).delay(0.64),
                     value: isPulsing
                 )
             Circle()
@@ -144,6 +175,7 @@ struct SplashView: View {
 
     // MARK: - Tagline
 
+    /// Fades up starting at 1.02s.
     private var tagline: some View {
         HStack(spacing: 5) {
             Text("All your games.")
@@ -154,6 +186,10 @@ struct SplashView: View {
         .font(SticksFont.sans(15, weight: .medium))
         .opacity(taglineVisible ? 1 : 0)
         .offset(y: taglineVisible ? 0 : 8)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.6).delay(1.02),
+            value: taglineVisible
+        )
     }
 }
 

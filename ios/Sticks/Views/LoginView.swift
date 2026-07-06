@@ -79,17 +79,8 @@ struct LoginView: View {
 
     private var wordmark: some View {
         VStack(spacing: 14) {
-            Image("SticksMark")
-                .resizable()
-                .scaledToFit()
+            SticksClubsMark()
                 .frame(width: 76, height: 76)
-                .clipShape(.rect(cornerRadius: 18))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.sticksHairline, lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.07), radius: 12, y: 5)
-                .accessibilityHidden(true)
 
             Text("Sticks")
                 .font(SticksFont.display(56))
