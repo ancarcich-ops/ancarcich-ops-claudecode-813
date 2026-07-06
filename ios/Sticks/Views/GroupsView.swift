@@ -38,6 +38,9 @@ struct GroupsView: View {
             .navigationDestination(for: SticksGroup.self) { group in
                 GroupFeedView(group: group, session: session)
             }
+            .navigationDestination(for: LeaderboardDestination.self) { destination in
+                GroupLeaderboardView(group: destination.group, session: session)
+            }
             .navigationDestination(for: MatchSummary.self) { match in
                 MatchDetailView(match: match, session: session)
             }
@@ -220,7 +223,7 @@ private struct GroupCard: View {
                 .fill(Color.sticksHairline)
                 .frame(height: 1)
 
-            inviteTicket
+            footer
         }
         .background(Color.sticksCard)
         .overlay(alignment: .leading) {
@@ -315,6 +318,49 @@ private struct GroupCard: View {
         }
     }
 
+    // MARK: Footer (LEADERBOARD | ticket)
+
+    /// The design handoff's split footer: LEADERBOARD (flex 1) | 1pt
+    /// hairline | the invite ticket (flex 1.15).
+    private var footer: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                leaderboardButton
+                    .frame(width: (proxy.size.width - 1) / 2.15)
+
+                Rectangle()
+                    .fill(Color.sticksHairline)
+                    .frame(width: 1)
+
+                inviteTicket
+            }
+        }
+        .frame(height: 46)
+    }
+
+    /// Pushes the group leaderboard. Disabled (no tap, 50% opacity)
+    /// until the group has at least one match.
+    private var leaderboardButton: some View {
+        NavigationLink(value: LeaderboardDestination(group: group)) {
+            HStack(spacing: 7) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Leaderboard")
+                    .font(SticksFont.sans(13.5, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color.sticksGreen)
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+            .padding(.leading, 5) // visually center past the spine
+            .contentShape(.rect)
+        }
+        .buttonStyle(LeaderboardPressStyle())
+        .disabled(group.matchCount == 0)
+        .opacity(group.matchCount == 0 ? 0.5 : 1)
+        .accessibilityLabel("Group leaderboard")
+    }
+
     // MARK: Invite ticket
 
     private var inviteTicket: some View {
@@ -349,7 +395,6 @@ private struct GroupCard: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 46)
-            .padding(.leading, 5) // visually center past the spine
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -393,6 +438,15 @@ private struct GroupCardPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(configuration.isPressed ? Color.sticksPanel2.opacity(0.6) : Color.clear)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// LEADERBOARD footer press feedback — accent 10% background.
+private struct LeaderboardPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Color.sticksGreen.opacity(0.1) : Color.clear)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

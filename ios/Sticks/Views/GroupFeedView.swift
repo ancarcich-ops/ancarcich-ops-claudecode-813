@@ -82,7 +82,9 @@ struct GroupFeedView: View {
                 subtitle
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+
+            leaderboardEntry
         }
         .padding(.horizontal, 20)
         .padding(.top, 4)
@@ -123,6 +125,32 @@ struct GroupFeedView: View {
 
     private var memberText: String {
         group.memberCount == 1 ? "1 member" : "\(group.memberCount) members"
+    }
+
+    /// Same leaderboard entry point as the group card's footer —
+    /// disabled until the group has at least one match.
+    private var leaderboardEntry: some View {
+        NavigationLink(value: LeaderboardDestination(group: group)) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Leaderboard")
+                    .font(SticksFont.sans(13.5, weight: .semibold))
+            }
+            .foregroundStyle(Color.sticksGreen)
+            .padding(.horizontal, 11)
+            .frame(height: 34)
+            .background(Color.sticksGreen.opacity(0.08))
+            .clipShape(.capsule)
+            .overlay(
+                Capsule().stroke(Color.sticksGreen.opacity(0.25), lineWidth: 1)
+            )
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .disabled(group.matchCount == 0)
+        .opacity(group.matchCount == 0 ? 0.5 : 1)
+        .accessibilityLabel("Group leaderboard")
     }
 
     // MARK: - Feed

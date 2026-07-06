@@ -191,6 +191,14 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /groups/:id/leaderboard — group standings, champions, course
+    /// records and streaks. 403 (not a member) and 404 (unknown group)
+    /// carry server messages shown verbatim.
+    func groupLeaderboard(groupId: String, token: String) async throws -> GroupLeaderboardResponse {
+        let request = makeRequest(path: "groups/\(groupId)/leaderboard", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     // MARK: - Plumbing
 
     private func makeRequest(path: String, method: String, token: String? = nil) -> URLRequest {
