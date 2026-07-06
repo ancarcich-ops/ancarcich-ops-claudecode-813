@@ -39,6 +39,20 @@ struct MatchDetailView: View {
                         failedCard(message)
                     case .loaded:
                         if let detail = viewModel.detail {
+                            if detail.status == .inProgress {
+                                if detail.myMatchPlayerId != nil {
+                                    MatchHeroCard(
+                                        detail: detail,
+                                        holeGeo: viewModel.response?.holeGeo ?? [:],
+                                        currentHoleIndex: currentHoleIndex(detail)
+                                    )
+                                }
+                                StandingsCard(
+                                    detail: detail,
+                                    probabilities: viewModel.response?.odds?.probabilities ?? [:],
+                                    sideGames: viewModel.response?.sideGames ?? []
+                                )
+                            }
                             scorecardCard(detail)
                             if detail.status != .completed {
                                 gpsButton

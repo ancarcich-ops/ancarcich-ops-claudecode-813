@@ -141,6 +141,82 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     }
 }
 
+/// Win probabilities keyed by matchPlayerId (0..1). Absent or empty
+/// when the server has no live odds for the match.
+nonisolated struct MatchOdds: Decodable, Hashable {
+    let probabilities: [String: Double]
+
+    private enum CodingKeys: String, CodingKey { case probabilities }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        probabilities = (try? container.decode([String: Double].self, forKey: .probabilities)) ?? [:]
+    }
+}
+
+/// One row of a side-game leaderboard. `value` is pre-formatted by the
+/// server and displayed verbatim.
+nonisolated struct SideGameRow: Decodable, Hashable {
+    let playerId: String
+    let player: String
+    let value: String
+    let numeric: Double?
+    let isLeader: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case playerId, player, value, numeric, isLeader
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        playerId = (try? container.decode(String.self, forKey: .playerId)) ?? ""
+        player = (try? container.decode(String.self, forKey: .player)) ?? ""
+        value = (try? container.decode(String.self, forKey: .value)) ?? "—"
+        numeric = try? container.decode(Double.self, forKey: .numeric)
+        isLeader = (try? container.decode(Bool.self, forKey: .isLeader)) ?? false
+    }
+}
+
+nonisolated struct SideGameLeaderboard: Decodable, Hashable, Identifiable {
+    let key: String
+    let kind: String
+    let title: String
+    let subtitle: String?
+    let rows: [SideGameRow]
+
+    var id: String { key.isEmpty ? title : key }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, kind, title, subtitle, rows
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? container.decode(String.self, forKey: .key)) ?? ""
+        kind = (try? container.decode(String.self, forKey: .kind)) ?? ""
+        title = (try? container.decode(String.self, forKey: .title)) ?? ""
+        subtitle = try? container.decode(String.self, forKey: .subtitle)
+        rows = (try? container.decode([SideGameRow].self, forKey: .rows)) ?? []
+    }
+}
+
+/// A side game attached to the match — SKINS, NASSAU, WOLF, etc. — with
+/// its pre-computed leaderboards.
+nonisolated struct SideGame: Decodable, Hashable, Identifiable {
+    let kind: String
+    let leaderboards: [SideGameLeaderboard]
+
+    var id: String { kind }
+
+    private enum CodingKeys: String, CodingKey { case kind, leaderboards }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = (try? container.decode(String.self, forKey: .kind)) ?? ""
+        leaderboards = (try? container.decode([SideGameLeaderboard].self, forKey: .leaderboards)) ?? []
+    }
+}
+
 nonisolated struct MatchDetailResponse: Decodable {
     var match: MatchDetail
     /// Keyed by absolute hole number (converted from string keys).
@@ -149,9 +225,13 @@ nonisolated struct MatchDetailResponse: Decodable {
     let hazards: [Int: [Hazard]]
     /// Wind conditions — nil when the server has none.
     let wind: Wind?
+    /// Live win odds — nil/empty when the server has none (solo rounds).
+    let odds: MatchOdds?
+    /// Side games with pre-computed leaderboards — empty when none.
+    let sideGames: [SideGame]
 
     private enum CodingKeys: String, CodingKey {
-        case match, holeGeo, hazards, wind
+        case match, holeGeo, hazards, wind, odds, sideGames
     }
 
     init(from decoder: Decoder) throws {
@@ -169,5 +249,7 @@ nonisolated struct MatchDetailResponse: Decodable {
         })
 
         wind = try container.decodeIfPresent(Wind.self, forKey: .wind)
+        odds = try? container.decode(MatchOdds.self, forKey: .odds)
+        sideGames = (try? container.decode([SideGame].self, forKey: .sideGames)) ?? []
     }
 }

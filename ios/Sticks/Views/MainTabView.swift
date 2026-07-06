@@ -41,6 +41,17 @@ struct MainTabView: View {
                 .allowsHitTesting(selection == .settings)
                 .accessibilityHidden(selection != .settings)
         }
+        // Slice 13: hidden tabs stay mounted, so an open GPS screen on a
+        // match with NO active round would keep foreground location
+        // running after switching tabs. Stop it when HOME hides; resume
+        // when HOME returns with the GPS screen still visible.
+        .onChange(of: selection) { oldValue, newValue in
+            if oldValue == .home {
+                RoundSessionService.shared.homeTabHidden()
+            } else if newValue == .home {
+                RoundSessionService.shared.homeTabShown()
+            }
+        }
     }
 }
 

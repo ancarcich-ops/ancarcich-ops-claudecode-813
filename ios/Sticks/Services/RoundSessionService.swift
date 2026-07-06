@@ -72,6 +72,24 @@ final class RoundSessionService {
         if !isActive { location.stop() }
     }
 
+    // MARK: - Tab visibility (slice 13)
+
+    /// Hidden tabs stay mounted — switching away from HOME with the GPS
+    /// screen open on a match with NO active round would keep foreground
+    /// location running. Stop it; the round-scoped path is untouched.
+    func homeTabHidden() {
+        guard !isActive else { return }
+        location.stop()
+    }
+
+    /// Back on HOME: resume foreground location only when the GPS screen
+    /// is still the visible pushed screen (idempotent if a round already
+    /// keeps location running).
+    func homeTabShown() {
+        guard isGPSScreenVisible else { return }
+        location.start()
+    }
+
     // MARK: - Round lifecycle
 
     /// Starts (or re-attaches to) the round session for an IN_PROGRESS
