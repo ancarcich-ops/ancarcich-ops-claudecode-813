@@ -67,6 +67,9 @@ extension LeaderboardRow: Decodable {
 nonisolated struct CourseRecord: Identifiable, Hashable {
     let courseName: String
     let bestDisplayName: String
+    /// Holder's user id when the server provides one — drives the
+    /// identity-color dot next to the holder name.
+    let userId: String?
     let gross: Int?
     let net: Double?
     let scheduledAt: Date?
@@ -76,16 +79,68 @@ nonisolated struct CourseRecord: Identifiable, Hashable {
 
 extension CourseRecord: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case courseName, bestDisplayName, gross, net, scheduledAt
+        case courseName, bestDisplayName, userId, bestUserId, gross, net, scheduledAt
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         courseName = try container.decodeIfPresent(String.self, forKey: .courseName) ?? ""
         bestDisplayName = try container.decodeIfPresent(String.self, forKey: .bestDisplayName) ?? ""
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+            ?? container.decodeIfPresent(String.self, forKey: .bestUserId)
         gross = try container.decodeIfPresent(Int.self, forKey: .gross)
         net = try container.decodeIfPresent(Double.self, forKey: .net)
         scheduledAt = try container.decodeIfPresent(Date.self, forKey: .scheduledAt)
+    }
+}
+
+/// Head-to-head main-game results between Sticks-linked members.
+/// `wins[A][B]` = times A beat B in a main-game result they both played.
+nonisolated struct HeadToHead: Hashable {
+    nonisolated struct Member: Identifiable, Hashable {
+        let userId: String
+        let displayName: String
+        let username: String
+
+        var id: String { userId }
+
+        /// Preferred display name — falls back to the username.
+        var name: String { displayName.isEmpty ? username : displayName }
+    }
+
+    let users: [Member]
+    let wins: [String: [String: Int]]
+
+    static let empty = HeadToHead(users: [], wins: [:])
+
+    /// Times `userId` beat `opponentId`.
+    func wins(of userId: String, over opponentId: String) -> Int {
+        wins[userId]?[opponentId] ?? 0
+    }
+}
+
+extension HeadToHead.Member: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case userId, displayName, username
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decode(String.self, forKey: .userId)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+    }
+}
+
+extension HeadToHead: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case users, wins
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        users = try container.decodeIfPresent([Member].self, forKey: .users) ?? []
+        wins = try container.decodeIfPresent([String: [String: Int]].self, forKey: .wins) ?? [:]
     }
 }
 
@@ -162,6 +217,7 @@ nonisolated struct GroupLeaderboard {
     let courseRecords: [CourseRecord]
     let champions: [ChampionEntry]
     let streaks: [StreakEntry]
+    let headToHead: HeadToHead
 
     /// Rows sorted by totalWins desc, ties: matchesPlayed asc, then name.
     var sortedRows: [LeaderboardRow] {
@@ -177,7 +233,7 @@ extension GroupLeaderboard: Decodable {
     private enum CodingKeys: String, CodingKey {
         case rows, completedMatches
         case hasMain, hasStableford, hasSkins, hasNassau, hasBbb, hasSnake, hasWolf
-        case courseRecords, champions, streaks
+        case courseRecords, champions, streaks, headToHead
     }
 
     init(from decoder: Decoder) throws {
@@ -194,6 +250,7 @@ extension GroupLeaderboard: Decodable {
         courseRecords = try container.decodeIfPresent([CourseRecord].self, forKey: .courseRecords) ?? []
         champions = try container.decodeIfPresent([ChampionEntry].self, forKey: .champions) ?? []
         streaks = try container.decodeIfPresent([StreakEntry].self, forKey: .streaks) ?? []
+        headToHead = try container.decodeIfPresent(HeadToHead.self, forKey: .headToHead) ?? .empty
     }
 }
 
