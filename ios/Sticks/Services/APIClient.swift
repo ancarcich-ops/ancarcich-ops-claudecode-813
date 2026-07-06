@@ -191,6 +191,13 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /stats — the caller's personal stats + handicap baselines.
+    /// 404 means nothing is logged yet (shown as an empty state).
+    func stats(token: String) async throws -> StatsResponse {
+        let request = makeRequest(path: "stats", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     /// GET /groups/:id/leaderboard — group standings, champions, course
     /// records and streaks. 403 (not a member) and 404 (unknown group)
     /// carry server messages shown verbatim.
