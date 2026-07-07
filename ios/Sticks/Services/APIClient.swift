@@ -206,10 +206,62 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /courses?q= — course search by name.
+    func searchCourses(query: String, token: String) async throws -> CoursesResponse {
+        let request = makeRequest(
+            path: "courses",
+            method: "GET",
+            queryItems: [URLQueryItem(name: "q", value: query)],
+            token: token
+        )
+        return try await perform(request)
+    }
+
+    /// GET /courses?lat=&lng= — nearest courses first, with distanceMi.
+    func nearbyCourses(lat: Double, lng: Double, token: String) async throws -> CoursesResponse {
+        let request = makeRequest(
+            path: "courses",
+            method: "GET",
+            queryItems: [
+                URLQueryItem(name: "lat", value: String(lat)),
+                URLQueryItem(name: "lng", value: String(lng)),
+            ],
+            token: token
+        )
+        return try await perform(request)
+    }
+
+    /// GET /players/suggest — recent partners (nil query, carries
+    /// lastHandicap + myLastHandicap) or a name search (?q=).
+    func suggestPlayers(query: String?, token: String) async throws -> PlayerSuggestResponse {
+        let items = query.map { [URLQueryItem(name: "q", value: $0)] } ?? []
+        let request = makeRequest(path: "players/suggest", method: "GET", queryItems: items, token: token)
+        return try await perform(request)
+    }
+
+    /// POST /matches — creates a round. 400/403 carry server messages
+    /// shown verbatim.
+    func createMatch(_ body: CreateMatchRequest, token: String) async throws -> CreateMatchResponse {
+        var request = makeRequest(path: "matches", method: "POST", token: token)
+        request.httpBody = try encoder.encode(body)
+        return try await perform(request)
+    }
+
     // MARK: - Plumbing
 
-    private func makeRequest(path: String, method: String, token: String? = nil) -> URLRequest {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+    private func makeRequest(
+        path: String,
+        method: String,
+        queryItems: [URLQueryItem] = [],
+        token: String? = nil
+    ) -> URLRequest {
+        var url = baseURL.appendingPathComponent(path)
+        if !queryItems.isEmpty,
+           var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            components.queryItems = queryItems
+            url = components.url ?? url
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
