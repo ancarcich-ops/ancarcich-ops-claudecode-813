@@ -2,9 +2,11 @@
 //  ScoreEntryView.swift
 //  Sticks
 //
-//  Slice 5: one-tap score entry sheet, shared by the scorecard grid and
-//  the on-course GPS screen. Tapping a value posts /score immediately,
-//  updates the scorecard optimistically, then cycles to the next
+//  Score entry sheet, shared by the scorecard grid and the on-course GPS
+//  screen. Slice 18: the web app's par-relative grid — one 5-column grid
+//  whose cells self-describe against the hole's par (tap selects, SAVE
+//  posts), plus X (pickup, logs par × 2) and — (skip, dismisses blank).
+//  Saving updates the scorecard optimistically, then cycles to the next
 //  seat-ordered player still missing a score on the hole. When the hole
 //  is complete the sheet dismisses and notifies the caller (the GPS
 //  screen advances to the next hole).
@@ -21,6 +23,7 @@ struct ScoreEntryView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var currentPlayerId: String
+    @State private var pendingScore: Int?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -36,6 +39,7 @@ struct ScoreEntryView: View {
         self.par = cell.par
         self.onHoleComplete = onHoleComplete
         _currentPlayerId = State(initialValue: cell.player.id)
+        _pendingScore = State(initialValue: cell.player.scoresByHole[cell.hole])
     }
 
     /// Live view of the current player so optimistic updates show through.
@@ -55,9 +59,9 @@ struct ScoreEntryView: View {
                 playerCycleRow
             }
 
-            quickChips
+            scoreGrid
 
-            numberGrid
+            saveButton
 
             footer
         }
@@ -66,7 +70,7 @@ struct ScoreEntryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .opacity(isSaving ? 0.65 : 1)
         .animation(.easeOut(duration: 0.15), value: isSaving)
-        .presentationDetents([.height(478)])
+        .presentationDetents([.height(544)])
         .presentationBackground(Color.sticksBg)
         .presentationDragIndicator(.visible)
     }
@@ -121,6 +125,7 @@ struct ScoreEntryView: View {
         return Button {
             guard !isSaving else { return }
             withAnimation(.easeInOut(duration: 0.2)) { currentPlayerId = player.id }
+            pendingScore = player.scoresByHole[hole]
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             HStack(spacing: 6) {
@@ -158,107 +163,183 @@ struct ScoreEntryView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Par-relative chips
+    // MARK: - Par-relative grid
 
-    /// Quick values from eagle range through triple bogey, clamped at 1.
-    private var quickValues: [Int] {
-        Array(max(1, par - 2) ... (par + 3))
+    /// Unselected cell tone for a par-relative value.
+    private struct CellTone {
+        let fill: Color
+        let border: Color
+        let text: Color
     }
 
-    private var quickChips: some View {
-        HStack(spacing: 8) {
-            ForEach(quickValues, id: \.self) { value in
-                quickChip(value)
+    private func cellTone(relative: Int) -> CellTone {
+        switch relative {
+        case ..<(-1):
+            return CellTone(
+                fill: Color.sticksGold.opacity(0.1),
+                border: Color.sticksGold.opacity(0.4),
+                text: .sticksGold
+            )
+        case -1:
+            return CellTone(
+                fill: Color.sticksGreen.opacity(0.1),
+                border: Color.sticksGreen.opacity(0.35),
+                text: .sticksGreen
+            )
+        case 0:
+            return CellTone(fill: .sticksCard, border: .sticksHairline, text: .sticksInk)
+        case 1:
+            return CellTone(fill: .sticksCard, border: .sticksHairline, text: .sticksMuted)
+        default:
+            return CellTone(fill: .sticksCard, border: .sticksHairline, text: .sticksError)
+        }
+    }
+
+    /// Par-relative label under the stroke number; nil below albatross.
+    private func relativeLabel(_ relative: Int) -> String? {
+        switch relative {
+        case -3: return "ALBATROSS"
+        case -2: return "EAGLE"
+        case -1: return "BIRDIE"
+        case 0: return "PAR"
+        case 1: return "BOGEY"
+        case 2: return "DOUBLE"
+        case 3: return "TRIPLE"
+        case let diff where diff > 3: return "+\(diff)"
+        default: return nil
+        }
+    }
+
+    /// 5-column grid: strokes 1–9, then PICKUP (X) and SKIP (—) on the
+    /// last row. Labels and tones recompute against this hole's par.
+    private var scoreGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5),
+            spacing: 8
+        ) {
+            ForEach(1 ... 9, id: \.self) { value in
+                numberCell(value)
+            }
+            // Spacer completing the second row so the special cells sit
+            // together on the last row.
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+            specialCell(glyph: "X") {
+                // Pickup: log par × 2 so the round rolls forward.
+                save(par * 2)
+            }
+            specialCell(glyph: "—") {
+                // Skip: leave the hole blank.
+                dismiss()
             }
         }
     }
 
-    /// Par-relative chip in the web app's score-state colors: selecting a
-    /// value renders it exactly as it will appear on the scorecard.
-    private func quickChip(_ value: Int) -> some View {
-        let selected = currentScore == value
-        let style = ScoreStyle.forScore(value, par: par)
+    private func numberCell(_ value: Int) -> some View {
+        let selected = pendingScore == value
+        let relative = value - par
+        let tone = cellTone(relative: relative)
         return Button {
-            save(value)
+            guard !isSaving else { return }
+            pendingScore = value
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
-            VStack(spacing: 3) {
-                Text(quickLabel(for: value))
-                    .font(SticksFont.label(8.5, weight: .bold))
-                    .kerning(0.6)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .foregroundStyle(selected ? style.text.opacity(0.85) : Color.sticksMuted)
+            VStack(spacing: 2) {
                 Text("\(value)")
-                    .font(SticksFont.display(23))
-                    .foregroundStyle(selected ? style.text : Color.sticksInk)
+                    .font(SticksFont.mono(22))
+                    .monospacedDigit()
+                    .foregroundStyle(selected ? Color.sticksCream : tone.text)
+                if let label = relativeLabel(relative) {
+                    Text(label)
+                        .font(SticksFont.label(9))
+                        .kerning(0.7)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .foregroundStyle(selected ? Color.sticksCream.opacity(0.85) : tone.text.opacity(0.8))
+                }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 58)
-            .background(selected ? style.fill : Color.sticksCard)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .background(selected ? Color.sticksGreen : tone.fill)
             .clipShape(.rect(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(
-                        selected ? (style.ring ?? (style.border == .clear ? style.fill : style.border)) : Color.sticksHairline,
-                        lineWidth: selected && style.ring != nil ? 1.6 : 1
-                    )
+                    .stroke(selected ? Color.clear : tone.border, lineWidth: 1)
+            )
+            .shadow(
+                color: selected ? Color.sticksGreen.opacity(0.35) : .clear,
+                radius: 8,
+                y: 3
             )
         }
         .buttonStyle(PressableButtonStyle())
         .disabled(isSaving)
     }
 
-    private func quickLabel(for value: Int) -> String {
-        if value == 1 { return "ACE" }
-        switch value - par {
-        case -3: return "ALBA"
-        case -2: return "EAGLE"
-        case -1: return "BIRDIE"
-        case 0: return "PAR"
-        case 1: return "BOGEY"
-        case 2: return "DBL"
-        case 3: return "TRPL"
-        case let diff where diff > 0: return "+\(diff)"
-        case let diff: return "\(diff)"
-        }
-    }
-
-    // MARK: - Number grid 1–12
-
-    private var numberGrid: some View {
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6),
-            spacing: 8
-        ) {
-            ForEach(1 ... 12, id: \.self) { value in
-                numberCell(value)
-            }
-        }
-    }
-
-    private func numberCell(_ value: Int) -> some View {
-        let selected = currentScore == value
-        let style = ScoreStyle.forScore(value, par: par)
-        return Button {
-            save(value)
+    /// Dashed, faint action cell — X (pickup) and — (skip).
+    private func specialCell(glyph: String, action: @escaping () -> Void) -> some View {
+        Button {
+            guard !isSaving else { return }
+            action()
         } label: {
-            Text("\(value)")
-                .font(SticksFont.display(19))
-                .foregroundStyle(selected ? style.text : Color.sticksInk)
-                .frame(maxWidth: .infinity)
-                .frame(height: 46)
-                .background(selected ? style.fill : Color.sticksCard)
-                .clipShape(.rect(cornerRadius: 11))
+            Text(glyph)
+                .font(SticksFont.mono(18))
+                .foregroundStyle(Color.sticksFaint)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .contentShape(.rect(cornerRadius: 12))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(
-                            selected ? (style.ring ?? (style.border == .clear ? style.fill : style.border)) : Color.sticksHairline,
-                            lineWidth: 1
+                            Color.sticksHairline,
+                            style: StrokeStyle(lineWidth: 1.2, dash: [4, 3])
                         )
                 )
         }
         .buttonStyle(PressableButtonStyle())
         .disabled(isSaving)
+    }
+
+    // MARK: - Save button
+
+    /// True when another player (not the current one) still has no score
+    /// on this hole after the pending save.
+    private var othersStillNeedScore: Bool {
+        viewModel.nextUnscoredPlayer(onHole: hole, after: currentPlayerId) != nil
+    }
+
+    /// "Save" while others still need a score on this hole; when the
+    /// caller is the last, "Save · go to {next}" or "Save · finish round"
+    /// on the round's final hole.
+    private var saveLabel: String {
+        if othersStillNeedScore { return "Save" }
+        guard let detail = viewModel.detail,
+              let index = (0 ..< detail.holes).first(where: { detail.holeNumber(at: $0) == hole })
+        else { return "Save" }
+        if index + 1 < detail.holes {
+            return "Save · go to \(detail.holeNumber(at: index + 1))"
+        }
+        return "Save · finish round"
+    }
+
+    private var saveButton: some View {
+        Button {
+            if let pendingScore {
+                save(pendingScore)
+            }
+        } label: {
+            Text(saveLabel)
+                .font(SticksFont.sans(15, weight: .bold))
+                .foregroundStyle(Color.sticksCream)
+                .frame(height: 52)
+                .frame(maxWidth: .infinity)
+                .background(Color.sticksGreen)
+                .clipShape(.rect(cornerRadius: 12))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .opacity(pendingScore == nil ? 0.5 : 1)
+        .disabled(isSaving || pendingScore == nil)
     }
 
     // MARK: - Footer (clear / error)
@@ -315,12 +396,14 @@ struct ScoreEntryView: View {
                 isSaving = false
                 if strokes == nil {
                     // Cleared — stay on this player so a new score can go in.
+                    pendingScore = nil
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     return
                 }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 if let next = viewModel.nextUnscoredPlayer(onHole: hole, after: playerId) {
                     withAnimation(.easeInOut(duration: 0.2)) { currentPlayerId = next.id }
+                    pendingScore = next.scoresByHole[hole]
                 } else {
                     dismiss()
                     onHoleComplete()
