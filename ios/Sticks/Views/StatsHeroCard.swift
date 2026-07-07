@@ -321,10 +321,10 @@ private struct StatCellsPanel: View {
         return "\(Int(avg.rounded()))"
     }
 
-    /// "Jul 4" — the best round's date.
+    /// "Jul 4, 2026" — the best round's date.
     private static func shortDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
+        formatter.dateFormat = "MMM d, yyyy"
         return formatter.string(from: date)
     }
 }
