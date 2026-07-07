@@ -80,6 +80,27 @@ nonisolated struct TargetIndexResponse: Decodable {
     let targetIndex: Double?
 }
 
+/// Body for POST /me/profile — only sent keys change server-side, so
+/// nil fields must be OMITTED entirely (an empty string clears a field).
+nonisolated struct UpdateProfileRequest: Encodable {
+    let displayName: String?
+    let ghinNumber: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case displayName, ghinNumber
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let displayName {
+            try container.encode(displayName, forKey: .displayName)
+        }
+        if let ghinNumber {
+            try container.encode(ghinNumber, forKey: .ghinNumber)
+        }
+    }
+}
+
 /// Body for POST /groups.
 nonisolated struct CreateGroupRequest: Encodable {
     let name: String
@@ -215,6 +236,22 @@ nonisolated struct APIClient {
     /// 404 means nothing is logged yet (shown as an empty state).
     func stats(token: String) async throws -> StatsResponse {
         let request = makeRequest(path: "stats", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// GET /me/profile — the caller's editable profile.
+    func profile(token: String) async throws -> ProfileResponse {
+        let request = makeRequest(path: "me/profile", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// POST /me/profile — updates only the keys provided (nil = untouched,
+    /// empty string = cleared). 400s carry server messages shown verbatim.
+    func updateProfile(displayName: String? = nil, ghinNumber: String? = nil, token: String) async throws -> ProfileResponse {
+        var request = makeRequest(path: "me/profile", method: "POST", token: token)
+        request.httpBody = try encoder.encode(
+            UpdateProfileRequest(displayName: displayName, ghinNumber: ghinNumber)
+        )
         return try await perform(request)
     }
 
