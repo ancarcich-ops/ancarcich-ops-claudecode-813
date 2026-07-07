@@ -377,10 +377,18 @@ private struct GroupCard: View {
         } label: {
             ZStack {
                 HStack(spacing: 10) {
-                    Text(group.inviteCode)
-                        .font(SticksFont.mono(13.5))
-                        .kerning(1.9)
-                        .foregroundStyle(Color.sticksInk)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("INVITE CODE")
+                            .font(SticksFont.mono(8.5))
+                            .kerning(0.9)
+                            .textCase(.uppercase)
+                            .foregroundStyle(Color.sticksFaint)
+
+                        Text(group.inviteCode)
+                            .font(SticksFont.mono(13.5))
+                            .kerning(1.9)
+                            .foregroundStyle(Color.sticksInk)
+                    }
 
                     copyChip
                 }

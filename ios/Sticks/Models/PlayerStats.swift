@@ -17,6 +17,10 @@ nonisolated struct LoggedRound: Identifiable, Hashable {
     let holesPlayed: Int
     let vsPar: Int
     let gross: Int
+    /// The match creator's userId — deletes are creator-only.
+    let creatorId: String?
+    /// Server-computed "the caller created this match" flag.
+    let createdByMe: Bool
 
     var id: String { matchId }
 }
@@ -24,6 +28,7 @@ nonisolated struct LoggedRound: Identifiable, Hashable {
 extension LoggedRound: Decodable {
     private enum CodingKeys: String, CodingKey {
         case matchId, courseName, scheduledAt, holesPlayed, vsPar, gross
+        case creatorId, createdById, createdByMe
     }
 
     init(from decoder: Decoder) throws {
@@ -34,6 +39,12 @@ extension LoggedRound: Decodable {
         holesPlayed = try container.decodeIfPresent(Int.self, forKey: .holesPlayed) ?? 0
         vsPar = try container.decodeIfPresent(Int.self, forKey: .vsPar) ?? 0
         gross = try container.decodeIfPresent(Int.self, forKey: .gross) ?? 0
+        if let direct = try container.decodeIfPresent(String.self, forKey: .creatorId) {
+            creatorId = direct
+        } else {
+            creatorId = try container.decodeIfPresent(String.self, forKey: .createdById)
+        }
+        createdByMe = try container.decodeIfPresent(Bool.self, forKey: .createdByMe) ?? false
     }
 }
 
@@ -203,6 +214,8 @@ nonisolated struct PlayerStats {
     let indexTrajectory: [Double]
     let roundsCompleted: Int
     let ghin: String?
+    /// The player's self-set index goal — nil when unset.
+    let targetIndex: Double?
     let avg18Gross: Double?
     let bestRound: BestRound?
     /// Chronological (oldest first).
@@ -223,7 +236,7 @@ nonisolated struct PlayerStats {
 extension PlayerStats: Decodable {
     private enum CodingKeys: String, CodingKey {
         case username, displayName, index, indexFromRounds, indexDelta30
-        case indexTrajectory, roundsCompleted, ghin, avg18Gross, bestRound
+        case indexTrajectory, roundsCompleted, ghin, targetIndex, avg18Gross, bestRound
         case rounds, par3, par4, par5, distribution
         case matchesPlayed, totalWins, mainWins, currentMainStreak, bestMainStreak
         case winsByGame, courseRecords
@@ -246,6 +259,7 @@ extension PlayerStats: Decodable {
         } else {
             ghin = nil
         }
+        targetIndex = try container.decodeIfPresent(Double.self, forKey: .targetIndex)
         avg18Gross = try container.decodeIfPresent(Double.self, forKey: .avg18Gross)
         bestRound = try container.decodeIfPresent(BestRound.self, forKey: .bestRound)
         rounds = try container.decodeIfPresent([LoggedRound].self, forKey: .rounds) ?? []

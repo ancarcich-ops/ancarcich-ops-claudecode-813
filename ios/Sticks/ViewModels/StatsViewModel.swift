@@ -3,7 +3,9 @@
 //  Sticks
 //
 //  Loads GET /stats. A 404 means no stats yet (empty state); refreshes
-//  keep the previous stats on transient failures.
+//  keep the previous stats on transient failures. Also posts the index
+//  goal (POST /me/target-index) and deletes rounds (DELETE /matches/:id),
+//  reloading stats after either so every derived number stays honest.
 //
 
 import Foundation
@@ -30,6 +32,48 @@ final class StatsViewModel {
 
     init(api: APIClient = .shared) {
         self.api = api
+    }
+
+    /// POSTs the index goal (nil clears it) and reloads stats.
+    /// Returns a user-facing error message, or nil on success.
+    func setTargetIndex(_ value: Double?, session: SessionStore) async -> String? {
+        guard let token = session.token else {
+            session.signOut()
+            return nil
+        }
+        do {
+            _ = try await api.setTargetIndex(value, token: token)
+            await load(session: session)
+            return nil
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            return nil
+        } catch let error as APIError {
+            return error.message
+        } catch {
+            return "Can't reach Sticks. Check your connection and try again."
+        }
+    }
+
+    /// DELETEs a round and reloads stats. Returns a user-facing error
+    /// message (the server's own text on 403), or nil on success.
+    func deleteRound(matchId: String, session: SessionStore) async -> String? {
+        guard let token = session.token else {
+            session.signOut()
+            return nil
+        }
+        do {
+            try await api.deleteMatch(id: matchId, token: token)
+            await load(session: session)
+            return nil
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            return nil
+        } catch let error as APIError {
+            return error.message
+        } catch {
+            return "Can't reach Sticks. Check your connection and try again."
+        }
     }
 
     func load(session: SessionStore) async {

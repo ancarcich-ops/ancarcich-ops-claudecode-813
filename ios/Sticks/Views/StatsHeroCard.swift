@@ -12,10 +12,12 @@ import SwiftUI
 
 struct StatsHeroCard: View {
     let stats: PlayerStats
+    /// Opens the "Set goal" editor — shown as a pencil on the green panel.
+    var onEditGoal: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
-            IndexPanel(stats: stats)
+            IndexPanel(stats: stats, onEditGoal: onEditGoal)
                 .containerRelativeFrame(.horizontal) { length, _ in
                     // Card is inset 20pt each side; left = 1.15 / 2.15.
                     max(0, length - 40) * (1.15 / 2.15)
@@ -39,6 +41,7 @@ struct StatsHeroCard: View {
 
 private struct IndexPanel: View {
     let stats: PlayerStats
+    let onEditGoal: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -56,6 +59,10 @@ private struct IndexPanel: View {
 
                 if let delta = stats.indexDelta30, abs(delta) >= 0.1 {
                     trendPill(delta: delta)
+                }
+
+                if let target = stats.targetIndex {
+                    targetLine(target: target, index: index)
                 }
 
                 if stats.indexTrajectory.count >= 2 {
@@ -100,6 +107,34 @@ private struct IndexPanel: View {
             }
         }
         .clipped()
+        .overlay(alignment: .topTrailing) {
+            if let onEditGoal {
+                Button(action: onEditGoal) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.sticksCream.opacity(0.85))
+                        .frame(width: 28, height: 28)
+                        .background(Color.sticksCream.opacity(0.12))
+                        .clipShape(.circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .padding(6)
+                .accessibilityLabel("Set index goal")
+            }
+        }
+    }
+
+    /// "TARGET 9.0 · 2.6 TO GO" — or "· ON TRACK" once the gap closes.
+    private func targetLine(target: Double, index: Double) -> some View {
+        let gap = index - target
+        let suffix = gap <= 0 ? " · ON TRACK" : String(format: " · %.1f TO GO", gap)
+        return Text(String(format: "TARGET %.1f", target) + suffix)
+            .font(SticksFont.mono(10))
+            .kerning(0.6)
+            .foregroundStyle(Color.sticksCream.opacity(0.85))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
     private func trendPill(delta: Double) -> some View {
@@ -253,6 +288,14 @@ private struct StatCellsPanel: View {
                         .kerning(0.6)
                         .foregroundStyle(Color.sticksGold)
                         .lineLimit(1)
+
+                    if let date = best.scheduledAt {
+                        Text(Self.shortDate(date))
+                            .font(SticksFont.mono(10))
+                            .kerning(0.6)
+                            .foregroundStyle(Color.sticksFaint)
+                            .lineLimit(1)
+                    }
                 } else {
                     Text("—")
                         .font(SticksFont.display(27, weight: .bold))
@@ -276,6 +319,13 @@ private struct StatCellsPanel: View {
     private var avgScoreText: String {
         guard let avg = stats.avg18Gross else { return "—" }
         return "\(Int(avg.rounded()))"
+    }
+
+    /// "Jul 4" — the best round's date.
+    private static func shortDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
     }
 }
 

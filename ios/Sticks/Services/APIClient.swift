@@ -60,6 +60,26 @@ nonisolated struct OkResponse: Decodable {
     let ok: Bool
 }
 
+/// Body for POST /me/target-index. `targetIndex: null` clears the goal,
+/// so nil MUST encode as an explicit JSON null.
+nonisolated struct TargetIndexRequest: Encodable {
+    let targetIndex: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case targetIndex
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(targetIndex, forKey: .targetIndex)
+    }
+}
+
+nonisolated struct TargetIndexResponse: Decodable {
+    let ok: Bool
+    let targetIndex: Double?
+}
+
 /// Body for POST /groups.
 nonisolated struct CreateGroupRequest: Encodable {
     let name: String
@@ -196,6 +216,21 @@ nonisolated struct APIClient {
     func stats(token: String) async throws -> StatsResponse {
         let request = makeRequest(path: "stats", method: "GET", token: token)
         return try await perform(request)
+    }
+
+    /// POST /me/target-index — sets (or clears, with nil) the player's
+    /// index goal.
+    func setTargetIndex(_ targetIndex: Double?, token: String) async throws -> TargetIndexResponse {
+        var request = makeRequest(path: "me/target-index", method: "POST", token: token)
+        request.httpBody = try encoder.encode(TargetIndexRequest(targetIndex: targetIndex))
+        return try await perform(request)
+    }
+
+    /// DELETE /matches/:id — removes a round. 403 (non-creator) carries
+    /// a server message shown verbatim.
+    func deleteMatch(id: String, token: String) async throws {
+        let request = makeRequest(path: "matches/\(id)", method: "DELETE", token: token)
+        let _: OkResponse = try await perform(request)
     }
 
     /// GET /groups/:id/leaderboard — group standings, champions, course

@@ -4,8 +4,9 @@
 //
 //  Slice 15: the Stats tab — identity header with SHARE, the hero index
 //  card, rounds-over-time bars, scoring analysis vs handicap baselines,
-//  at-a-glance grid, wins by game, course bests, and logged rounds
-//  (tap → match detail, read-only on iOS).
+//  at-a-glance grid, wins by game, course bests, and logged rounds.
+//  Slice 19: index goal (set/clear via the hero pencil) and logged-round
+//  delete (creator-only, confirm alert, verbatim 403 messages).
 //
 
 import SwiftUI
@@ -16,6 +17,10 @@ struct StatsView: View {
     var tabSelection: Binding<SticksTab>? = nil
 
     @State private var viewModel = StatsViewModel()
+
+    @State private var showsGoalAlert = false
+    @State private var goalText = ""
+    @State private var goalError: String?
 
     var body: some View {
         NavigationStack {
@@ -57,7 +62,10 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 26) {
                 identityHeader(stats)
 
-                StatsHeroCard(stats: stats)
+                StatsHeroCard(stats: stats) {
+                    goalText = stats.targetIndex.map { String(format: "%.1f", $0) } ?? ""
+                    showsGoalAlert = true
+                }
 
                 if stats.rounds.count >= 2 {
                     RoundsOverTimeCard(
@@ -80,7 +88,12 @@ struct StatsView: View {
                 }
 
                 if !stats.rounds.isEmpty {
-                    LoggedRoundsCard(rounds: stats.rounds)
+                    LoggedRoundsCard(
+                        rounds: stats.rounds,
+                        currentUserId: user.id
+                    ) { round in
+                        await viewModel.deleteRound(matchId: round.matchId, session: session)
+                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -89,6 +102,46 @@ struct StatsView: View {
         }
         .refreshable {
             await viewModel.load(session: session)
+        }
+        .alert("Set index goal", isPresented: $showsGoalAlert) {
+            TextField("9.0", text: $goalText)
+                .keyboardType(.numbersAndPunctuation)
+            Button("Save") { saveGoal() }
+            if stats.targetIndex != nil {
+                Button("Clear goal", role: .destructive) { postGoal(nil) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your target Sticks index — it shows on the hero card with how far there is to go.")
+        }
+        .alert(
+            "Couldn't save goal",
+            isPresented: Binding(
+                get: { goalError != nil },
+                set: { if !$0 { goalError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(goalError ?? "")
+        }
+    }
+
+    // MARK: - Index goal
+
+    private func saveGoal() {
+        let normalized = goalText
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespaces)
+        guard let value = Double(normalized) else { return }
+        postGoal(value)
+    }
+
+    private func postGoal(_ value: Double?) {
+        Task {
+            if let error = await viewModel.setTargetIndex(value, session: session) {
+                goalError = error
+            }
         }
     }
 
@@ -713,9 +766,18 @@ private struct CourseBestsCard: View {
 
 // MARK: - Logged rounds
 
-/// Read-only round history, newest first — tap pushes the match detail.
+/// Round history, newest first — tap pushes the match detail (scores are
+/// editable there); rounds the caller created get a trailing … → Delete
+/// with a confirm alert. 403s surface the server's message verbatim.
 private struct LoggedRoundsCard: View {
     let rounds: [LoggedRound]
+    let currentUserId: String
+    /// Returns a user-facing error message, or nil on success.
+    let onDelete: (LoggedRound) async -> String?
+
+    @State private var pendingDelete: LoggedRound?
+    @State private var deletingId: String?
+    @State private var deleteError: String?
 
     var body: some View {
         StatsSectionCard(title: "Logged rounds") {
@@ -724,11 +786,80 @@ private struct LoggedRoundsCard: View {
                     if position > 0 {
                         Rectangle().fill(Color.sticksHairline).frame(height: 1)
                     }
-                    NavigationLink(value: matchSummary(for: round)) {
-                        row(round)
+                    HStack(spacing: 2) {
+                        NavigationLink(value: matchSummary(for: round)) {
+                            row(round)
+                        }
+                        .buttonStyle(.plain)
+
+                        if deletingId == round.matchId {
+                            ProgressView()
+                                .tint(Color.sticksGreen)
+                                .frame(width: 30, height: 30)
+                        } else if isDeletable(round) {
+                            deleteMenu(round)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
+            }
+        }
+        .alert(
+            "Delete this round?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            presenting: pendingDelete
+        ) { round in
+            Button("Delete", role: .destructive) { performDelete(round) }
+            Button("Cancel", role: .cancel) {}
+        } message: { round in
+            Text("\(round.courseName) will be removed for everyone in the match.")
+        }
+        .alert(
+            "Couldn't delete",
+            isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    // MARK: Delete
+
+    /// Delete is creator-only — trust the server flag, fall back to the id.
+    private func isDeletable(_ round: LoggedRound) -> Bool {
+        round.createdByMe || round.creatorId == currentUserId
+    }
+
+    private func deleteMenu(_ round: LoggedRound) -> some View {
+        Menu {
+            Button(role: .destructive) {
+                pendingDelete = round
+            } label: {
+                Label("Delete round", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.sticksFaint)
+                .frame(width: 30, height: 30)
+                .contentShape(.rect)
+        }
+        .accessibilityLabel("Round options")
+    }
+
+    private func performDelete(_ round: LoggedRound) {
+        deletingId = round.matchId
+        Task {
+            let error = await onDelete(round)
+            deletingId = nil
+            if let error {
+                deleteError = error
             }
         }
     }
