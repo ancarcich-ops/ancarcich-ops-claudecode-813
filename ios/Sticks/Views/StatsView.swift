@@ -10,6 +10,10 @@
 //  Slice 22: bar score labels + per-round HI reference ticks on the
 //  chart, the baseline selector moved atop Scoring analysis (with an HI
 //  option), and remove-my-score on rounds the caller didn't create.
+//  Slice 25: web-parity chart + scoring analysis — the compact VS HI
+//  picker (shared by both headers), a continuous dotted baseline across
+//  the chart, strokes-gained par cards, and track+triangle distribution
+//  rows.
 //
 
 import SwiftUI
@@ -20,6 +24,7 @@ struct StatsView: View {
     var tabSelection: Binding<SticksTab>? = nil
 
     @State private var viewModel = StatsViewModel()
+    @State private var baselineSelection: BaselineSelection = .hcp(10)
 
     var body: some View {
         NavigationStack {
@@ -66,12 +71,18 @@ struct StatsView: View {
                 if stats.rounds.count >= 2 {
                     RoundsOverTimeCard(
                         rounds: Array(stats.rounds.suffix(20)),
-                        index: stats.index
+                        index: stats.index,
+                        baselines: viewModel.baselines,
+                        selection: $baselineSelection
                     )
                 }
 
                 if stats.distribution.totalHolesPlayed > 0 {
-                    ScoringAnalysisCard(stats: stats, baselines: viewModel.baselines)
+                    ScoringAnalysisCard(
+                        stats: stats,
+                        baselines: viewModel.baselines,
+                        selection: $baselineSelection
+                    )
                 }
 
                 if stats.matchesPlayed > 0 {
@@ -206,15 +217,32 @@ struct StatsView: View {
 
 // MARK: - Section card shell
 
-private struct StatsSectionCard<Content: View>: View {
+private struct StatsSectionCard<Content: View, Accessory: View>: View {
     let title: String
-    @ViewBuilder let content: Content
+    let accessory: Accessory
+    let content: Content
+
+    init(
+        title: String,
+        @ViewBuilder accessory: () -> Accessory,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.accessory = accessory()
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(SticksFont.display(13, weight: .bold))
-                .foregroundStyle(Color.sticksInk)
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(SticksFont.display(13, weight: .bold))
+                    .foregroundStyle(Color.sticksInk)
+
+                Spacer(minLength: 0)
+
+                accessory
+            }
 
             content
         }
@@ -230,80 +258,226 @@ private struct StatsSectionCard<Content: View>: View {
     }
 }
 
+extension StatsSectionCard where Accessory == EmptyView {
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.init(title: title, accessory: { EmptyView() }, content: content)
+    }
+}
+
+// MARK: - Baseline selection
+
+/// A fixed comparison handicap, or the player's own index ("HI") —
+/// shared by the chart and the scoring analysis so both stay in sync.
+private enum BaselineSelection: Equatable {
+    case hcp(Int)
+    case myIndex
+}
+
+/// The compact "VS HI [10 ▾]" control — a bordered capsule showing the
+/// selected comparison handicap; tapping opens a menu of the fixed
+/// baselines plus HI (the player's own index). Selection applies
+/// instantly — the baselines are already local.
+private struct BaselinePickerControl: View {
+    @Binding var selection: BaselineSelection
+    let baselines: [StatsBaseline]
+    let hasIndex: Bool
+
+    private var selectedLabel: String {
+        switch selection {
+        case .hcp(let value): return "\(value)"
+        case .myIndex: return "HI"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("VS HI")
+                .font(SticksFont.mono(9))
+                .kerning(0.8)
+                .foregroundStyle(Color.sticksFaint)
+
+            Menu {
+                ForEach(baselines.sorted { $0.hcp < $1.hcp }) { entry in
+                    Button {
+                        selection = .hcp(entry.hcp)
+                    } label: {
+                        if selection == .hcp(entry.hcp) {
+                            Label("\(entry.hcp)", systemImage: "checkmark")
+                        } else {
+                            Text("\(entry.hcp)")
+                        }
+                    }
+                }
+
+                if hasIndex {
+                    Button {
+                        selection = .myIndex
+                    } label: {
+                        if selection == .myIndex {
+                            Label("HI — my index", systemImage: "checkmark")
+                        } else {
+                            Text("HI — my index")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(selectedLabel)
+                        .font(SticksFont.mono(11))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sticksGreen)
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Color.sticksFaint)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Color.sticksPanel2)
+                .clipShape(.rect(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.sticksHairline, lineWidth: 1)
+                )
+                .contentShape(.rect)
+            }
+            .accessibilityLabel("Comparison handicap")
+        }
+    }
+}
+
 // MARK: - Rounds over time
 
-/// Vertical bars, one per round — height ∝ |vsPar|, over par in accent
-/// green, under par in gold, zero a 3pt nub. Every bar carries its
-/// vs-par score, and each gets a faint per-round reference tick at what
-/// the index predicts for that round's length (index × holesPlayed / 18)
-/// — a bar above its tick means worse than the index, below means
-/// better. Sparse month labels underneath.
+/// Vertical accent-green bars, one per round — height ∝ |vsPar| — each
+/// carrying its vs-par score. A dark-green dotted baseline weaves across
+/// the chart at every round's expected vs-par for the selected
+/// comparison handicap (18-hole expectation scaled to that round's
+/// holes). Control row, sparse month labels, and a legend underneath.
 private struct RoundsOverTimeCard: View {
     /// Chronological, capped to the last ~20 by the caller.
     let rounds: [LoggedRound]
     let index: Double?
+    let baselines: [StatsBaseline]
+    @Binding var selection: BaselineSelection
 
     private let chartHeight: CGFloat = 84
     /// Headroom above the tallest bar for its score label.
     private let labelBand: CGFloat = 13
-    /// Trailing gutter reserved for the "HI" reference label.
-    private let hiGutter: CGFloat = 15
+    private let barSpacing: CGFloat = 3
 
-    /// Bars AND ticks share one scale so every reference fits.
-    private var maxAbs: Double {
-        let bars = rounds.map { Double(abs($0.vsPar)) }.max() ?? 1
-        let ticks = rounds.compactMap { expectedVsPar($0) }.max() ?? 0
-        return max(bars, ticks, 1)
+    /// The handicap the dotted baseline tracks — the player's own index
+    /// for HI.
+    private var targetHcp: Double? {
+        switch selection {
+        case .hcp(let value): return Double(value)
+        case .myIndex: return index
+        }
     }
 
-    /// The newest round's expectation — where the "HI" label sits.
-    private var referenceExpected: Double? {
-        rounds.reversed().compactMap { expectedVsPar($0) }.first
+    /// Bars AND the baseline share one scale so everything fits.
+    private var maxAbs: Double {
+        let bars = rounds.map { Double(abs($0.vsPar)) }.max() ?? 1
+        let line = rounds.compactMap { expectedVsPar($0) }.max() ?? 0
+        return max(bars, line, 1)
+    }
+
+    private var recentAvg: Double? {
+        guard !rounds.isEmpty else { return nil }
+        return Double(rounds.reduce(0) { $0 + $1.vsPar }) / Double(rounds.count)
+    }
+
+    /// The legend's baseline name — the fixed handicap, or the player's
+    /// own index for HI.
+    private var baselineName: String? {
+        switch selection {
+        case .hcp(let value): return "\(value)"
+        case .myIndex: return index.map { String(format: "%.1f", $0) }
+        }
     }
 
     var body: some View {
         StatsSectionCard(title: "Rounds over time") {
-            VStack(spacing: 6) {
-                chart
-                monthLabels
+            Text("vs par · lower is better")
+                .font(SticksFont.sans(11))
+                .foregroundStyle(Color.sticksFaint)
+        } content: {
+            VStack(alignment: .leading, spacing: 8) {
+                controlRow
+
+                VStack(spacing: 6) {
+                    chart
+                    monthLabels
+                }
+
+                if hasBaseline, let baselineName {
+                    Text("Dotted line = \(baselineName) HI baseline")
+                        .font(SticksFont.mono(9))
+                        .kerning(0.4)
+                        .foregroundStyle(Color.sticksFaint)
+                }
+            }
+        }
+    }
+
+    private var hasBaseline: Bool {
+        !baselines.isEmpty && targetHcp != nil
+    }
+
+    private var controlRow: some View {
+        HStack(spacing: 8) {
+            Text("\(rounds.count) ROUNDS")
+                .font(SticksFont.mono(9))
+                .kerning(0.8)
+                .foregroundStyle(Color.sticksFaint)
+
+            Spacer(minLength: 4)
+
+            if !baselines.isEmpty {
+                BaselinePickerControl(
+                    selection: $selection,
+                    baselines: baselines,
+                    hasIndex: index != nil
+                )
+            }
+
+            Spacer(minLength: 4)
+
+            if let recentAvg {
+                (
+                    Text("recent avg ")
+                        .foregroundStyle(Color.sticksFaint)
+                    + Text(String(format: "%+.1f", recentAvg))
+                        .foregroundStyle(Color.sticksInk)
+                )
+                .font(SticksFont.mono(9))
+                .kerning(0.4)
             }
         }
     }
 
     private var chart: some View {
-        HStack(alignment: .bottom, spacing: 3) {
-            ForEach(rounds) { round in
-                column(round)
+        ZStack(alignment: .bottom) {
+            HStack(alignment: .bottom, spacing: barSpacing) {
+                ForEach(rounds) { round in
+                    column(round)
+                }
             }
 
-            if let referenceExpected {
-                Text("HI")
-                    .font(SticksFont.mono(8))
-                    .kerning(0.6)
-                    .foregroundStyle(Color.sticksFaint)
-                    .frame(width: hiGutter, alignment: .leading)
-                    .padding(.bottom, max(tickOffset(referenceExpected) - 4, 0))
+            if hasBaseline {
+                baselineLine
             }
         }
         .frame(height: chartHeight + labelBand, alignment: .bottom)
     }
 
-    /// One bar: the score label riding the bar top, the bar itself, and
-    /// the faint per-round index-expectation tick.
+    /// One accent-green bar with its score label riding the top.
     private func column(_ round: LoggedRound) -> some View {
         let height = barHeight(round.vsPar)
         return ZStack(alignment: .bottom) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(barColor(round.vsPar))
+                .fill(Color.sticksGreen)
                 .frame(height: height)
                 .frame(maxWidth: .infinity)
-
-            if let expected = expectedVsPar(round) {
-                Rectangle()
-                    .fill(Color.sticksFaint.opacity(0.55))
-                    .frame(height: 1.5)
-                    .offset(y: -tickOffset(expected))
-            }
 
             Text(StatsFormat.vsPar(round.vsPar))
                 .font(SticksFont.mono(7.5))
@@ -317,25 +491,49 @@ private struct RoundsOverTimeCard: View {
         .allowsHitTesting(false)
     }
 
-    /// index × (holesPlayed / 18) — the reference scales with the round
-    /// length, so a 9-hole tick sits about half as high as an 18-hole
-    /// one. Holes-scaled only (no per-round slope/rating is stored).
+    /// The continuous dotted baseline — one point per round at
+    /// targetHcp × (holesPlayed / 18), connected across the chart so a
+    /// 9-hole round's expectation dips to about half an 18-hole one's.
+    private var baselineLine: some View {
+        GeometryReader { geo in
+            let count = max(rounds.count, 1)
+            let columnWidth = (geo.size.width - barSpacing * CGFloat(count - 1)) / CGFloat(count)
+            Path { path in
+                var started = false
+                for (position, round) in rounds.enumerated() {
+                    guard let expected = expectedVsPar(round) else { continue }
+                    let x = CGFloat(position) * (columnWidth + barSpacing) + columnWidth / 2
+                    let y = geo.size.height - lineOffset(expected)
+                    if started {
+                        path.addLine(to: CGPoint(x: x, y: y))
+                    } else {
+                        path.move(to: CGPoint(x: x, y: y))
+                        started = true
+                    }
+                }
+            }
+            .stroke(
+                Color.sticksGreenDark,
+                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2.5, 3.5])
+            )
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// targetHcp × (holesPlayed / 18) — the expectation scales with the
+    /// round length. Holes-scaled only (no per-round slope/rating is
+    /// stored) — course difficulty shows up naturally in the bar height.
     private func expectedVsPar(_ round: LoggedRound) -> Double? {
-        guard let index, index > 0, round.holesPlayed > 0 else { return nil }
-        return index * Double(round.holesPlayed) / 18
+        guard let targetHcp, targetHcp >= 0, round.holesPlayed > 0 else { return nil }
+        return targetHcp * Double(round.holesPlayed) / 18
     }
 
-    private func tickOffset(_ expected: Double) -> CGFloat {
-        min(CGFloat(expected / maxAbs) * chartHeight, chartHeight - 2)
+    private func lineOffset(_ expected: Double) -> CGFloat {
+        min(CGFloat(expected / maxAbs) * chartHeight, chartHeight - 1)
     }
 
-    private func barColor(_ vsPar: Int) -> Color {
-        if vsPar > 0 { return .sticksGreen }
-        if vsPar < 0 { return .sticksGold }
-        return .sticksFaint
-    }
-
-    /// Even-par labels read mute (a faint label on a faint nub vanishes).
+    /// Labels keep their quality color even though bars are uniform:
+    /// over par green, under par gold, even par mute (readable on cream).
     private func labelColor(_ vsPar: Int) -> Color {
         if vsPar > 0 { return .sticksGreen }
         if vsPar < 0 { return .sticksGold }
@@ -347,10 +545,9 @@ private struct RoundsOverTimeCard: View {
         return max(3, CGFloat(Double(abs(vsPar)) / maxAbs) * chartHeight)
     }
 
-    /// Sparse month labels — only where the month changes. A clear
-    /// spacer mirrors the chart's HI gutter so columns line up.
+    /// Sparse month labels — only where the month changes.
     private var monthLabels: some View {
-        HStack(alignment: .top, spacing: 3) {
+        HStack(alignment: .top, spacing: barSpacing) {
             ForEach(Array(rounds.enumerated()), id: \.element.id) { position, round in
                 Group {
                     if let label = monthLabel(at: position) {
@@ -364,10 +561,6 @@ private struct RoundsOverTimeCard: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-            }
-
-            if referenceExpected != nil {
-                Color.clear.frame(width: hiGutter, height: 1)
             }
         }
         .frame(height: 12, alignment: .top)
@@ -390,20 +583,14 @@ private struct RoundsOverTimeCard: View {
 
 // MARK: - Scoring analysis
 
-/// Par-bucket cards + distribution bars, compared against a selectable
-/// handicap baseline (local state only, default 10). The selector sits
-/// at the top, labeled; "HI" compares against the player's own index.
+/// Strokes-gained par cards + track-and-triangle distribution rows,
+/// compared against a selectable handicap baseline. The compact VS HI
+/// picker sits in the header; "HI" compares against the player's own
+/// index. Selection is shared with the chart above.
 private struct ScoringAnalysisCard: View {
     let stats: PlayerStats
     let baselines: [StatsBaseline]
-
-    /// A fixed handicap, or the player's own index ("HI").
-    private enum BaselineSelection: Equatable {
-        case hcp(Int)
-        case myIndex
-    }
-
-    @State private var selection: BaselineSelection = .hcp(10)
+    @Binding var selection: BaselineSelection
 
     /// The handicap the selection points at — the player's own index
     /// for HI.
@@ -421,21 +608,27 @@ private struct ScoringAnalysisCard: View {
         }
     }
 
-    /// Kicker on the par cards' expected line.
-    private var expectedLabel: String {
+    /// The footer's baseline name — the fixed handicap, or the player's
+    /// own index for HI.
+    private var baselineName: String {
         switch selection {
-        case .hcp(let value): return "\(value) HI"
-        case .myIndex: return "MY HI"
+        case .hcp(let value): return "\(value)"
+        case .myIndex:
+            return stats.index.map { String(format: "%.1f", $0) } ?? "HI"
         }
     }
 
     var body: some View {
         StatsSectionCard(title: "Scoring analysis") {
+            if !baselines.isEmpty {
+                BaselinePickerControl(
+                    selection: $selection,
+                    baselines: baselines,
+                    hasIndex: stats.index != nil
+                )
+            }
+        } content: {
             VStack(alignment: .leading, spacing: 14) {
-                if !baselines.isEmpty {
-                    baselinePicker
-                }
-
                 HStack(spacing: 8) {
                     parCard(title: "PAR 3S", bucket: stats.par3, expected: baseline?.avgScores.par3)
                     parCard(title: "PAR 4S", bucket: stats.par4, expected: baseline?.avgScores.par4)
@@ -443,12 +636,21 @@ private struct ScoringAnalysisCard: View {
                 }
 
                 distributionRows
+
+                if baseline != nil {
+                    Text("Per 18 holes vs a \(baselineName) HI baseline. Triangle = baseline, bar = your average.")
+                        .font(SticksFont.sans(11))
+                        .foregroundStyle(Color.sticksFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
 
     // MARK: Par cards
 
+    /// "PAR 3S / 4.0 / Avg. Score / -0.5 SG / Hole" — strokes gained per
+    /// hole vs the baseline (baseline expected avg − player avg).
     private func parCard(title: String, bucket: ParBucket, expected: Double?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
@@ -461,18 +663,15 @@ private struct ScoringAnalysisCard: View {
                 .monospacedDigit()
                 .foregroundStyle(Color.sticksInk)
 
-            Text(vsParLine(bucket.avgVsPar))
-                .font(SticksFont.mono(10))
-                .kerning(0.4)
-                .foregroundStyle(vsParColor(bucket.avgVsPar))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            Text("Avg. Score")
+                .font(SticksFont.sans(10))
+                .foregroundStyle(Color.sticksMuted)
 
-            if let expected, expected > 0 {
-                Text("\(expectedLabel): \(String(format: "%.1f", expected))")
+            if let sg = strokesGained(bucket: bucket, expected: expected) {
+                Text(String(format: "%+.1f SG / Hole", sg))
                     .font(SticksFont.mono(9))
-                    .kerning(0.4)
-                    .foregroundStyle(Color.sticksFaint)
+                    .kerning(0.2)
+                    .foregroundStyle(sgColor(sg))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -483,15 +682,16 @@ private struct ScoringAnalysisCard: View {
         .clipShape(.rect(cornerRadius: 10))
     }
 
-    private func vsParLine(_ avgVsPar: Double?) -> String {
-        guard let avgVsPar else { return "—" }
-        return String(format: "%+.1f VS PAR", avgVsPar)
+    private func strokesGained(bucket: ParBucket, expected: Double?) -> Double? {
+        guard let avg = bucket.avgScore, let expected, expected > 0 else { return nil }
+        return expected - avg
     }
 
-    private func vsParColor(_ avgVsPar: Double?) -> Color {
-        guard let avgVsPar else { return .sticksFaint }
-        if avgVsPar < 0 { return .sticksGreen }
-        if avgVsPar > 0 { return .sticksError }
+    /// Gaining strokes reads green, losing reads danger; a rounding-flat
+    /// value stays neutral so "+0.0" never screams either way.
+    private func sgColor(_ sg: Double) -> Color {
+        if sg > 0.049 { return .sticksGreen }
+        if sg < -0.049 { return .sticksError }
         return .sticksMuted
     }
 
@@ -501,6 +701,8 @@ private struct ScoringAnalysisCard: View {
         let label: String
         let player: Double
         let expected: Double
+        /// Birdies/pars: more is better. Bogeys/doubles: fewer is better.
+        let moreIsBetter: Bool
         var id: String { label }
     }
 
@@ -508,24 +710,33 @@ private struct ScoringAnalysisCard: View {
         let player = stats.distribution.per18
         let expected = baseline?.distribution ?? .zero
         return [
-            DistributionKind(label: "BIRDIES−", player: player.birdiesOrBetter, expected: expected.birdiesOrBetter),
-            DistributionKind(label: "PARS", player: player.pars, expected: expected.pars),
-            DistributionKind(label: "BOGEYS", player: player.bogeys, expected: expected.bogeys),
-            DistributionKind(label: "DOUBLES+", player: player.doublesOrWorse, expected: expected.doublesOrWorse),
+            DistributionKind(label: "BIRDIES−", player: player.birdiesOrBetter, expected: expected.birdiesOrBetter, moreIsBetter: true),
+            DistributionKind(label: "PARS", player: player.pars, expected: expected.pars, moreIsBetter: true),
+            DistributionKind(label: "BOGEYS", player: player.bogeys, expected: expected.bogeys, moreIsBetter: false),
+            DistributionKind(label: "DOUBLES+", player: player.doublesOrWorse, expected: expected.doublesOrWorse, moreIsBetter: false),
         ]
     }
 
+    /// Shared scale — the max count across rows nearly fills the track.
+    private var scaleMax: Double {
+        max(kinds.flatMap { [$0.player, $0.expected] }.max() ?? 1, 0.5) * 1.05
+    }
+
     private var distributionRows: some View {
-        let maxValue = max(kinds.flatMap { [$0.player, $0.expected] }.max() ?? 1, 0.1)
-        return VStack(spacing: 10) {
+        VStack(spacing: 6) {
             ForEach(kinds) { kind in
-                distributionRow(kind, maxValue: maxValue)
+                distributionRow(kind)
             }
         }
     }
 
-    private func distributionRow(_ kind: DistributionKind, maxValue: Double) -> some View {
-        HStack(spacing: 10) {
+    /// One track row: a light tan full-width track, the player's colored
+    /// bar over it (green when beating the baseline, danger when
+    /// trailing), the player's count above the bar end, and a triangle +
+    /// number marking the baseline's position on the track.
+    private func distributionRow(_ kind: DistributionKind) -> some View {
+        let showBaseline = baseline != nil
+        return HStack(spacing: 10) {
             Text(kind.label)
                 .font(SticksFont.mono(9.5))
                 .kerning(0.6)
@@ -533,77 +744,57 @@ private struct ScoringAnalysisCard: View {
                 .frame(width: 66, alignment: .leading)
 
             GeometryReader { geo in
-                VStack(alignment: .leading, spacing: 3) {
+                let width = geo.size.width
+                let barEnd = max(x(kind.player, in: width), 3)
+                let baselineX = min(max(x(kind.expected, in: width), 6), width - 6)
+
+                ZStack(alignment: .topLeading) {
+                    Text(String(format: "%.1f", kind.player))
+                        .font(SticksFont.mono(9.5))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sticksInk)
+                        .position(x: min(max(barEnd, 10), width - 10), y: 5)
+
                     Capsule()
-                        .fill(Color.sticksGreen)
-                        .frame(width: barWidth(kind.player, maxValue: maxValue, available: geo.size.width), height: 4)
+                        .fill(Color.sticksHairline.opacity(0.45))
+                        .frame(width: width, height: 6)
+                        .position(x: width / 2, y: 16)
+
                     Capsule()
-                        .fill(Color.sticksHairline)
-                        .frame(width: barWidth(kind.expected, maxValue: maxValue, available: geo.size.width), height: 4)
-                }
-            }
-            .frame(height: 11)
+                        .fill(barColor(kind))
+                        .frame(width: barEnd, height: 6)
+                        .position(x: barEnd / 2, y: 16)
 
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(String(format: "%.1f", kind.player))
-                    .font(SticksFont.mono(10.5))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.sticksInk)
-                Text(String(format: "%.1f", kind.expected))
-                    .font(SticksFont.mono(9))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.sticksFaint)
-            }
-            .frame(width: 36, alignment: .trailing)
-        }
-    }
+                    if showBaseline {
+                        Image(systemName: "arrowtriangle.up.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(Color.sticksMuted)
+                            .position(x: baselineX, y: 24)
 
-    private func barWidth(_ value: Double, maxValue: Double, available: CGFloat) -> CGFloat {
-        max(2, CGFloat(value / maxValue) * available)
-    }
-
-    // MARK: Baseline picker
-
-    /// A label line over the value segments — the server's fixed
-    /// handicaps plus HI (the player's own index, hidden until it
-    /// exists). The par cards and distribution bars react to it.
-    private var baselinePicker: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("Compare my scoring to a handicap of:")
-                .font(SticksFont.sans(12))
-                .foregroundStyle(Color.sticksMuted)
-
-            HStack(spacing: 6) {
-                ForEach(baselines.sorted { $0.hcp < $1.hcp }) { entry in
-                    segment("\(entry.hcp)", isSelected: selection == .hcp(entry.hcp)) {
-                        selection = .hcp(entry.hcp)
+                        Text(String(format: "%.1f", kind.expected))
+                            .font(SticksFont.mono(8.5))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.sticksFaint)
+                            .position(x: baselineX, y: 33)
                     }
                 }
-
-                if stats.index != nil {
-                    segment("HI", isSelected: selection == .myIndex) {
-                        selection = .myIndex
-                    }
-                }
-
-                Spacer(minLength: 0)
             }
+            .frame(height: showBaseline ? 38 : 22)
         }
     }
 
-    private func segment(_ text: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(text)
-                .font(SticksFont.mono(11))
-                .monospacedDigit()
-                .foregroundStyle(isSelected ? Color.sticksGreen : Color.sticksFaint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(isSelected ? Color.sticksGreen.opacity(0.1) : .clear)
-                .clipShape(.capsule)
-                .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
+    private func x(_ value: Double, in width: CGFloat) -> CGFloat {
+        CGFloat(value / scaleMax) * width
+    }
+
+    /// Green when beating the baseline for this category, danger when
+    /// trailing it (no baseline reads neutral green).
+    private func barColor(_ kind: DistributionKind) -> Color {
+        guard baseline != nil else { return .sticksGreen }
+        let beating = kind.moreIsBetter
+            ? kind.player >= kind.expected
+            : kind.player <= kind.expected
+        return beating ? .sticksGreen : .sticksError
     }
 }
 
