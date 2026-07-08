@@ -23,6 +23,9 @@ final class CreateMatchViewModel {
         var username: String?
         var avatarUrl: String?
         let isMe: Bool
+        /// The chosen tee's id (CourseTee.id) — nil until tees load or
+        /// when the course has no rated tees.
+        var teeId: String?
     }
 
     // MARK: Course
@@ -30,7 +33,15 @@ final class CreateMatchViewModel {
     var courseQuery = ""
     private(set) var courseResults: [CourseResult] = []
     private(set) var isSearchingCourses = false
-    var selectedCourse: CourseResult?
+    var selectedCourse: CourseResult? {
+        didSet {
+            guard oldValue?.name != selectedCourse?.name else { return }
+            teesTask?.cancel()
+            tees = []
+            defaultTeeName = nil
+            for index in seats.indices { seats[index].teeId = nil }
+        }
+    }
     private(set) var isLocating = false
     /// Set when a "Near me" attempt couldn't get a fix — degrade to name search.
     private(set) var nearMeFailed = false
@@ -50,6 +61,14 @@ final class CreateMatchViewModel {
     }
     var startsOnBack = false
     var scoringMode = "NET"
+
+    // MARK: Tees
+
+    /// Rated tee sets for the selected course. Empty = no rating yet —
+    /// the picker is hidden and players post without teeName.
+    private(set) var tees: [CourseTee] = []
+    private(set) var defaultTeeName: String?
+    private var teesTask: Task<Void, Never>?
 
     // MARK: Players
 
@@ -107,7 +126,8 @@ final class CreateMatchViewModel {
                 userId: user.id,
                 username: user.username,
                 avatarUrl: nil,
-                isMe: true
+                isMe: true,
+                teeId: nil
             )]
         }
         guard let token = session.token else { return }
@@ -183,11 +203,61 @@ final class CreateMatchViewModel {
         }
     }
 
-    func selectCourse(_ course: CourseResult) {
+    func selectCourse(_ course: CourseResult, session: SessionStore) {
         selectedCourse = course
         courseQuery = ""
         courseResults = []
         nearMeFailed = false
+        loadTees(for: course.name, session: session)
+    }
+
+    // MARK: - Tees
+
+    /// GET /courses/tees for the selected course, cached for the flow
+    /// (the didSet on selectedCourse clears it when the course changes).
+    /// A failed fetch leaves tees empty — the picker simply stays hidden
+    /// and the round posts without teeName (server falls back).
+    private func loadTees(for courseName: String, session: SessionStore) {
+        teesTask?.cancel()
+        guard let token = session.token else { return }
+        teesTask = Task {
+            let response = try? await api.courseTees(name: courseName, token: token)
+            guard !Task.isCancelled, selectedCourse?.name == courseName else { return }
+            tees = response?.tees ?? []
+            defaultTeeName = response?.defaultTeeName
+            applyDefaultTees()
+        }
+    }
+
+    /// The seed selection: defaultTeeName's men's option, degrading to
+    /// any tee of that name, any men's tee, then the first tee.
+    private func defaultTee() -> CourseTee? {
+        if let name = defaultTeeName {
+            if let tee = tees.first(where: { $0.name == name && $0.gender == "M" }) { return tee }
+            if let tee = tees.first(where: { $0.name == name }) { return tee }
+        }
+        return tees.first(where: { $0.gender == "M" }) ?? tees.first
+    }
+
+    /// Points every seat without a valid selection at the default tee.
+    private func applyDefaultTees() {
+        guard !tees.isEmpty, let fallback = defaultTee() else { return }
+        for index in seats.indices {
+            let current = seats[index].teeId
+            if current == nil || !tees.contains(where: { $0.id == current }) {
+                seats[index].teeId = fallback.id
+            }
+        }
+    }
+
+    func tee(withId id: String?) -> CourseTee? {
+        guard let id else { return nil }
+        return tees.first { $0.id == id }
+    }
+
+    func setTee(seatId: UUID, teeId: String) {
+        guard let index = seats.firstIndex(where: { $0.id == seatId }) else { return }
+        seats[index].teeId = teeId
     }
 
     // MARK: - Players
@@ -237,7 +307,8 @@ final class CreateMatchViewModel {
             userId: nil,
             username: nil,
             avatarUrl: nil,
-            isMe: false
+            isMe: false,
+            teeId: defaultTee()?.id
         ))
     }
 
@@ -305,10 +376,15 @@ final class CreateMatchViewModel {
         defer { isCreating = false }
 
         let players = seats.map { seat in
-            CreateMatchPlayer(
+            // Seats on the default still send their tee explicitly; when
+            // the course has no rated tees the keys are omitted entirely.
+            let tee = tee(withId: seat.teeId)
+            return CreateMatchPlayer(
                 displayName: seat.name.trimmingCharacters(in: .whitespacesAndNewlines),
                 handicap: Self.parseHandicap(seat.handicapText) ?? 0,
-                userId: seat.userId
+                userId: seat.userId,
+                teeName: tee?.name,
+                teeGender: tee?.gender
             )
         }
         // Belt & braces on the server's rules: 18-hole rounds always

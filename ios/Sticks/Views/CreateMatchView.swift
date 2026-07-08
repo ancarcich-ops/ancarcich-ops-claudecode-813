@@ -209,7 +209,7 @@ struct CreateMatchView: View {
                     Rectangle().fill(Color.sticksHairline).frame(height: 1)
                 }
                 Button {
-                    viewModel.selectCourse(course)
+                    viewModel.selectCourse(course, session: session)
                     isCourseFieldFocused = false
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
@@ -367,7 +367,12 @@ struct CreateMatchView: View {
                     VStack(spacing: 8) {
                         SeatRow(
                             seat: $seat,
+                            tees: viewModel.tees,
                             focusedSeat: $focusedSeat,
+                            onSelectTee: { tee in
+                                viewModel.setTee(seatId: seat.id, teeId: tee.id)
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            },
                             onNameEdited: { query in
                                 viewModel.unlinkIfEdited(seatId: seat.id)
                                 viewModel.searchPlayers(query: query, session: session)
@@ -669,12 +674,36 @@ struct CreateMatchView: View {
 
 private struct SeatRow: View {
     @Binding var seat: CreateMatchViewModel.Seat
+    let tees: [CourseTee]
     var focusedSeat: FocusState<UUID?>.Binding
+    let onSelectTee: (CourseTee) -> Void
     let onNameEdited: (String) -> Void
     let onStep: (Double) -> Void
     let onRemove: () -> Void
 
     var body: some View {
+        VStack(spacing: 0) {
+            mainRow
+
+            if !tees.isEmpty {
+                Rectangle()
+                    .fill(Color.sticksHairline)
+                    .frame(height: 1)
+                    .padding(.horizontal, 12)
+
+                teeRow
+            }
+        }
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+        .animation(.easeOut(duration: 0.18), value: tees.isEmpty)
+    }
+
+    private var mainRow: some View {
         HStack(spacing: 10) {
             PlayerBubble(
                 name: seat.name,
@@ -738,12 +767,85 @@ private struct SeatRow: View {
         .padding(.leading, 12)
         .padding(.trailing, seat.isMe ? 12 : 6)
         .padding(.vertical, 10)
-        .background(Color.sticksCard)
-        .clipShape(.rect(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.sticksHairline, lineWidth: 1)
-        )
+    }
+
+    // MARK: Tee picker
+
+    private var selectedTee: CourseTee? {
+        tees.first { $0.id == seat.teeId }
+    }
+
+    /// Compact per-seat tee menu — always seeded with the course default
+    /// when tees exist, so it never blocks Create.
+    private var teeRow: some View {
+        Menu {
+            ForEach(tees) { tee in
+                Button {
+                    onSelectTee(tee)
+                } label: {
+                    if tee.id == seat.teeId {
+                        Label(Self.teeLabel(tee, withEstTag: true), systemImage: "checkmark")
+                    } else {
+                        Text(Self.teeLabel(tee, withEstTag: true))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text("TEE")
+                    .font(SticksFont.mono(9))
+                    .kerning(1.1)
+                    .foregroundStyle(Color.sticksFaint)
+
+                Spacer(minLength: 8)
+
+                if let tee = selectedTee {
+                    Text(Self.teeLabel(tee, withEstTag: false))
+                        .font(SticksFont.mono(10.5))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+
+                    if tee.estimated {
+                        Text("est.")
+                            .font(SticksFont.mono(8.5, weight: .regular))
+                            .foregroundStyle(Color.sticksFaint)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.sticksPanel2)
+                            .clipShape(.capsule)
+                    }
+                } else {
+                    Text("Choose tee")
+                        .font(SticksFont.mono(10.5, weight: .regular))
+                        .foregroundStyle(Color.sticksMuted)
+                }
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.sticksFaint)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .contentShape(.rect)
+        }
+        .accessibilityLabel("Tee for \(seat.name.isEmpty ? "player" : seat.name)")
+    }
+
+    /// "Blue · M · 70.0/118 · 6445y" (+ " · est." inside menus, where
+    /// the tag can't render as a separate chip).
+    private static func teeLabel(_ tee: CourseTee, withEstTag: Bool) -> String {
+        var parts = [
+            tee.name,
+            tee.gender,
+            String(format: "%.1f", tee.rating) + "/\(tee.slope)",
+        ]
+        if let yardage = tee.yardage {
+            parts.append("\(yardage)y")
+        }
+        if withEstTag, tee.estimated {
+            parts.append("est.")
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// −/+ around a typeable handicap value. Blank = invalid (the

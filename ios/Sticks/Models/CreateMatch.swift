@@ -43,6 +43,53 @@ nonisolated struct CoursesResponse: Decodable {
     let courses: [CourseResult]
 }
 
+// MARK: - Tees
+
+/// One tee set from GET /courses/tees?name=. Identified by name+gender
+/// ("Blue · M" and "Blue · W" are distinct rows with their own ratings).
+nonisolated struct CourseTee: Identifiable, Hashable {
+    let name: String
+    let gender: String
+    let rating: Double
+    let slope: Int
+    let yardage: Int?
+    /// True when the rating/slope are estimated, not officially rated.
+    let estimated: Bool
+
+    var id: String { "\(name)|\(gender)" }
+}
+
+extension CourseTee: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case name, gender, rating, slope, yardage, estimated
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        gender = try container.decodeIfPresent(String.self, forKey: .gender) ?? "M"
+        rating = try container.decode(Double.self, forKey: .rating)
+        slope = try container.decode(Int.self, forKey: .slope)
+        yardage = try container.decodeIfPresent(Int.self, forKey: .yardage)
+        estimated = try container.decodeIfPresent(Bool.self, forKey: .estimated) ?? false
+    }
+}
+
+nonisolated struct CourseTeesResponse: Decodable {
+    let tees: [CourseTee]
+    let defaultTeeName: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case tees, defaultTeeName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tees = try container.decodeIfPresent([CourseTee].self, forKey: .tees) ?? []
+        defaultTeeName = try container.decodeIfPresent(String.self, forKey: .defaultTeeName)
+    }
+}
+
 // MARK: - Player suggestions
 
 /// One row of GET /players/suggest — a recent partner (no query, carries
@@ -93,12 +140,17 @@ nonisolated struct PlayerSuggestResponse: Decodable {
 // MARK: - POST /matches
 
 /// One seat in the POST /matches body. `userId` present = a linked
-/// Sticks account; absent = a guest seat. Synthesized encoding drops
-/// nil keys (encodeIfPresent), which is exactly what the server expects.
+/// Sticks account; absent = a guest seat. `teeName`/`teeGender` lock the
+/// round's differential to the tee played — omitted when the course has
+/// no rated tees (the server falls back to the course default).
+/// Synthesized encoding drops nil keys (encodeIfPresent), which is
+/// exactly what the server expects.
 nonisolated struct CreateMatchPlayer: Encodable {
     let displayName: String
     let handicap: Double
     let userId: String?
+    let teeName: String?
+    let teeGender: String?
 }
 
 /// Body for POST /matches. `scheduledAt` is intentionally omitted —

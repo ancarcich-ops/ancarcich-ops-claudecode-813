@@ -311,6 +311,19 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /courses/tees?name= — the rated tee sets for a course plus
+    /// its default tee name. An empty tees array means the course has no
+    /// rating yet — the create flow hides the picker entirely.
+    func courseTees(name: String, token: String) async throws -> CourseTeesResponse {
+        let request = makeRequest(
+            path: "courses/tees",
+            method: "GET",
+            queryItems: [URLQueryItem(name: "name", value: name)],
+            token: token
+        )
+        return try await perform(request)
+    }
+
     /// GET /players/suggest — recent partners (nil query, carries
     /// lastHandicap + myLastHandicap) or a name search (?q=).
     func suggestPlayers(query: String?, token: String) async throws -> PlayerSuggestResponse {
