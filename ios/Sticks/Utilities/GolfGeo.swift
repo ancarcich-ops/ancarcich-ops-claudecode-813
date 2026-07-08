@@ -26,6 +26,17 @@ nonisolated enum GolfGeo {
     /// FIX TEE requires GPS accuracy of ±35y or better (server rejects worse).
     static let maxTeeFixAccuracyYards: Double = 35
 
+    /// True when a server-provided lat/lng pair is safe to hand to MapKit.
+    /// MapKit throws NSInvalidArgumentException (a hard crash) on
+    /// out-of-range or non-finite coordinates, and (0, 0) is null-island
+    /// junk from unmapped courses — all of it must degrade to "no geo"
+    /// instead of crashing the GPS screen.
+    static func isUsable(lat: Double, lng: Double) -> Bool {
+        lat.isFinite && lng.isFinite
+            && abs(lat) <= 90 && abs(lng) <= 180
+            && !(lat == 0 && lng == 0)
+    }
+
     /// Haversine distance in yards.
     static func yards(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) -> Double {
         let lat1 = a.latitude * .pi / 180
@@ -93,27 +104,34 @@ nonisolated enum GolfGeo {
 
 extension HoleGeo {
     var teeCoordinate: CLLocationCoordinate2D? {
-        guard let teeLat, let teeLng else { return nil }
+        guard let teeLat, let teeLng, GolfGeo.isUsable(lat: teeLat, lng: teeLng) else { return nil }
         return CLLocationCoordinate2D(latitude: teeLat, longitude: teeLng)
     }
 
     var greenCoordinate: CLLocationCoordinate2D? {
-        guard let greenLat, let greenLng else { return nil }
+        guard let greenLat, let greenLng, GolfGeo.isUsable(lat: greenLat, lng: greenLng) else { return nil }
         return CLLocationCoordinate2D(latitude: greenLat, longitude: greenLng)
     }
 
     var greenFrontCoordinate: CLLocationCoordinate2D? {
-        guard let greenFrontLat, let greenFrontLng else { return nil }
+        guard let greenFrontLat, let greenFrontLng,
+              GolfGeo.isUsable(lat: greenFrontLat, lng: greenFrontLng) else { return nil }
         return CLLocationCoordinate2D(latitude: greenFrontLat, longitude: greenFrontLng)
     }
 
     var greenBackCoordinate: CLLocationCoordinate2D? {
-        guard let greenBackLat, let greenBackLng else { return nil }
+        guard let greenBackLat, let greenBackLng,
+              GolfGeo.isUsable(lat: greenBackLat, lng: greenBackLng) else { return nil }
         return CLLocationCoordinate2D(latitude: greenBackLat, longitude: greenBackLng)
     }
 
+    /// Invalid vertices are dropped — callers already require ≥3 points
+    /// before drawing the polygon.
     var greenPolygonCoordinates: [CLLocationCoordinate2D] {
-        (greenPolygon ?? []).map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) }
+        (greenPolygon ?? []).compactMap { point in
+            guard GolfGeo.isUsable(lat: point.lat, lng: point.lng) else { return nil }
+            return CLLocationCoordinate2D(latitude: point.lat, longitude: point.lng)
+        }
     }
 
     /// FRONT / CENTER / BACK from an anchor point, per the spec:

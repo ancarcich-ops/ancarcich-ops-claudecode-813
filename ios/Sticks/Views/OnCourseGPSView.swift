@@ -202,7 +202,7 @@ struct OnCourseGPSView: View {
 
         ForEach(0 ..< hazards.count, id: \.self) { index in
             let hazard = hazards[index]
-            if let lat = hazard.lat, let lng = hazard.lng {
+            if let lat = hazard.lat, let lng = hazard.lng, GolfGeo.isUsable(lat: lat, lng: lng) {
                 let coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
                 Annotation("", coordinate: coordinate) {
                     HazardChip(
@@ -563,7 +563,8 @@ struct OnCourseGPSView: View {
             // onto the hole axis (meters from midpoint, + = up-course).
             var points = [tee, green]
             points += (viewModel.response?.hazards[hole] ?? []).compactMap { hazard in
-                guard let lat = hazard.lat, let lng = hazard.lng else { return nil }
+                guard let lat = hazard.lat, let lng = hazard.lng,
+                      GolfGeo.isUsable(lat: lat, lng: lng) else { return nil }
                 return CLLocationCoordinate2D(latitude: lat, longitude: lng)
             }
             let projections = points.map {
@@ -578,9 +579,15 @@ struct OnCourseGPSView: View {
             // Slide the center up-course so the up-most point sits exactly
             // at the top of the visible band, clear of the rail row.
             let centerOffset = upMost - span * (0.5 - Self.cameraTopFraction)
+            let center = GolfGeo.coordinate(from: midpoint, bearing: heading, meters: centerOffset)
+            let distance = span / Self.groundSpanPerDistance
+            // MapKit throws (hard crash) on non-finite camera values — bad
+            // geo degrades to the un-reframed map instead.
+            guard GolfGeo.isUsable(lat: center.latitude, lng: center.longitude),
+                  distance.isFinite, distance > 0, heading.isFinite else { return }
             target = .camera(MapCamera(
-                centerCoordinate: GolfGeo.coordinate(from: midpoint, bearing: heading, meters: centerOffset),
-                distance: span / Self.groundSpanPerDistance,
+                centerCoordinate: center,
+                distance: distance,
                 heading: heading,
                 pitch: 0
             ))

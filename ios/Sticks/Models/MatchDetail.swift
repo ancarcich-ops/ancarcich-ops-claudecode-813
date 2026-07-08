@@ -238,15 +238,17 @@ nonisolated struct MatchDetailResponse: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         match = try container.decode(MatchDetail.self, forKey: .match)
 
+        // uniquingKeysWith: keys like "1" and "01" both map to 1 —
+        // Dictionary(uniqueKeysWithValues:) would trap on that.
         let rawGeo = try container.decodeIfPresent([String: HoleGeo].self, forKey: .holeGeo) ?? [:]
-        holeGeo = Dictionary(uniqueKeysWithValues: rawGeo.compactMap { key, value in
+        holeGeo = Dictionary(rawGeo.compactMap { key, value in
             Int(key).map { ($0, value) }
-        })
+        }, uniquingKeysWith: { first, _ in first })
 
         let rawHazards = try container.decodeIfPresent([String: [Hazard]].self, forKey: .hazards) ?? [:]
-        hazards = Dictionary(uniqueKeysWithValues: rawHazards.compactMap { key, value in
+        hazards = Dictionary(rawHazards.compactMap { key, value in
             Int(key).map { ($0, value) }
-        })
+        }, uniquingKeysWith: { first, _ in first })
 
         wind = try container.decodeIfPresent(Wind.self, forKey: .wind)
         odds = try? container.decode(MatchOdds.self, forKey: .odds)
