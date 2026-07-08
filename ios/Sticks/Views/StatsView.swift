@@ -21,10 +21,6 @@ struct StatsView: View {
 
     @State private var viewModel = StatsViewModel()
 
-    @State private var showsGoalAlert = false
-    @State private var goalText = ""
-    @State private var goalError: String?
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -65,10 +61,7 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 26) {
                 identityHeader(stats)
 
-                StatsHeroCard(stats: stats) {
-                    goalText = stats.targetIndex.map { String(format: "%.1f", $0) } ?? ""
-                    showsGoalAlert = true
-                }
+                StatsHeroCard(stats: stats)
 
                 if stats.rounds.count >= 2 {
                     RoundsOverTimeCard(
@@ -109,46 +102,6 @@ struct StatsView: View {
         }
         .refreshable {
             await viewModel.load(session: session)
-        }
-        .alert("Set index goal", isPresented: $showsGoalAlert) {
-            TextField("9.0", text: $goalText)
-                .keyboardType(.numbersAndPunctuation)
-            Button("Save") { saveGoal() }
-            if stats.targetIndex != nil {
-                Button("Clear goal", role: .destructive) { postGoal(nil) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your target Sticks index — it shows on the hero card with how far there is to go.")
-        }
-        .alert(
-            "Couldn't save goal",
-            isPresented: Binding(
-                get: { goalError != nil },
-                set: { if !$0 { goalError = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(goalError ?? "")
-        }
-    }
-
-    // MARK: - Index goal
-
-    private func saveGoal() {
-        let normalized = goalText
-            .replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespaces)
-        guard let value = Double(normalized) else { return }
-        postGoal(value)
-    }
-
-    private func postGoal(_ value: Double?) {
-        Task {
-            if let error = await viewModel.setTargetIndex(value, session: session) {
-                goalError = error
-            }
         }
     }
 

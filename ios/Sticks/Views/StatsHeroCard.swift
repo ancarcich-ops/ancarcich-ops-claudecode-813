@@ -12,12 +12,10 @@ import SwiftUI
 
 struct StatsHeroCard: View {
     let stats: PlayerStats
-    /// Opens the "Set goal" editor — shown as a pencil on the green panel.
-    var onEditGoal: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
-            IndexPanel(stats: stats, onEditGoal: onEditGoal)
+            IndexPanel(stats: stats)
                 .containerRelativeFrame(.horizontal) { length, _ in
                     // Card is inset 20pt each side; left = 1.15 / 2.15.
                     max(0, length - 40) * (1.15 / 2.15)
@@ -41,7 +39,6 @@ struct StatsHeroCard: View {
 
 private struct IndexPanel: View {
     let stats: PlayerStats
-    let onEditGoal: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -107,22 +104,6 @@ private struct IndexPanel: View {
             }
         }
         .clipped()
-        .overlay(alignment: .topTrailing) {
-            if let onEditGoal {
-                Button(action: onEditGoal) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.sticksCream.opacity(0.85))
-                        .frame(width: 28, height: 28)
-                        .background(Color.sticksCream.opacity(0.12))
-                        .clipShape(.circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .padding(6)
-                .accessibilityLabel("Set index goal")
-            }
-        }
     }
 
     /// "TARGET 9.0 · 2.6 TO GO" — or "· ON TRACK" once the gap closes.
