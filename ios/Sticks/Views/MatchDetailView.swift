@@ -10,6 +10,10 @@
 //  UPCOMING, no scores), Mark final (in progress), Reopen (creator,
 //  completed), Delete round (creator, any status).
 //
+//  The same actions also render as a visible "Round actions" card at
+//  the bottom of the page (the ⋯ menu alone was too easy to miss),
+//  plus a prominent gold FINISH ROUND button once every score is in.
+//
 
 import SwiftUI
 import UIKit
@@ -66,6 +70,9 @@ struct MatchDetailView: View {
                                 )
                             }
                             scorecardCard(detail)
+                            if showsFinishCTA {
+                                finishRoundButton
+                            }
                             if detail.status != .completed {
                                 gpsButton
                             }
@@ -74,6 +81,9 @@ struct MatchDetailView: View {
                                     .font(SticksFont.sans(12))
                                     .foregroundStyle(Color.sticksMuted)
                                     .padding(.horizontal, 4)
+                            }
+                            if hasMenuActions {
+                                roundActionsCard
                             }
                         }
                     }
@@ -191,6 +201,11 @@ struct MatchDetailView: View {
 
     private var hasMenuActions: Bool {
         canEditDetails || canMarkFinal || canReopen || canDelete
+    }
+
+    /// The big gold FINISH ROUND moment — live round, every hole scored.
+    private var showsFinishCTA: Bool {
+        canMarkFinal && viewModel.isRoundComplete
     }
 
     private var actionsMenu: some View {
@@ -367,6 +382,128 @@ struct MatchDetailView: View {
             }
         }
         return detail.holes - 1
+    }
+
+    // MARK: - Visible round actions
+
+    /// All scores are in — the one moment marking final is THE next step,
+    /// so it gets a full-width gold CTA instead of hiding in the ⋯ menu.
+    private var finishRoundButton: some View {
+        Button {
+            showsFinalConfirm = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "flag.checkered")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Finish Round — Mark Final")
+                    .font(SticksFont.sans(16, weight: .semibold))
+            }
+            .foregroundStyle(Color.sticksCream)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(Color.sticksGold)
+            .clipShape(.rect(cornerRadius: 14))
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
+    /// The ⋯ menu's actions as visible, labeled rows at the bottom of
+    /// the page — discoverable by scrolling, no hidden gestures.
+    private var roundActionsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("ROUND ACTIONS")
+                .font(SticksFont.label(11, weight: .semibold))
+                .kerning(1.4)
+                .foregroundStyle(Color.sticksFaint)
+                .padding(.horizontal, 4)
+
+            VStack(spacing: 0) {
+                if canEditDetails {
+                    actionRow(
+                        icon: "pencil",
+                        title: "Edit details",
+                        subtitle: "Course, tee time, players — until scoring starts"
+                    ) { showsEdit = true }
+                    if canMarkFinal || canReopen || canDelete { actionDivider }
+                }
+                if canMarkFinal {
+                    actionRow(
+                        icon: "flag.checkered",
+                        title: "Mark final",
+                        subtitle: "Lock scores and move the round to Recent"
+                    ) { showsFinalConfirm = true }
+                    if canReopen || canDelete { actionDivider }
+                }
+                if canReopen {
+                    actionRow(
+                        icon: "arrow.uturn.backward",
+                        title: "Reopen round",
+                        subtitle: "Unlock scoring — it won't count until finished again"
+                    ) { showsReopenConfirm = true }
+                    if canDelete { actionDivider }
+                }
+                if canDelete {
+                    actionRow(
+                        icon: "trash",
+                        title: "Delete round",
+                        subtitle: "Removes it for everyone — can't be undone",
+                        isDestructive: true
+                    ) { showsDeleteConfirm = true }
+                }
+            }
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+        }
+        .padding(.top, 6)
+    }
+
+    private var actionDivider: some View {
+        Rectangle()
+            .fill(Color.sticksHairline.opacity(0.6))
+            .frame(height: 1)
+            .padding(.leading, 58)
+    }
+
+    private func actionRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        isDestructive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        let tint: Color = isDestructive ? .sticksError : .sticksGreen
+        return Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 32, height: 32)
+                    .background(tint.opacity(0.1))
+                    .clipShape(.circle)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(SticksFont.sans(15, weight: .semibold))
+                        .foregroundStyle(isDestructive ? Color.sticksError : Color.sticksInk)
+                    Text(subtitle)
+                        .font(SticksFont.sans(12))
+                        .foregroundStyle(Color.sticksMuted)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.sticksFaint)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDeleting)
     }
 
     // MARK: - CTA
