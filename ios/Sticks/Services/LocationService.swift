@@ -76,9 +76,22 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     /// indicator is shown while enabled — honest, and required for
     /// when-in-use authorization to keep delivering in the background.
     func setBackgroundUpdates(_ enabled: Bool) {
+        // Setting allowsBackgroundLocationUpdates without the `location`
+        // UIBackgroundMode in the built Info.plist raises an NSException
+        // (hard crash). Verify the mode is actually present in the bundle
+        // before touching the flag — if it's missing, degrade to
+        // foreground-only updates instead of crashing the GPS screen.
+        guard Self.hasLocationBackgroundMode else { return }
         manager.allowsBackgroundLocationUpdates = enabled
         manager.showsBackgroundLocationIndicator = enabled
     }
+
+    /// True when the built Info.plist declares the `location` background
+    /// mode — the precondition CoreLocation enforces with an NSException.
+    private static let hasLocationBackgroundMode: Bool = {
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        return modes.contains("location")
+    }()
 
     private func beginUpdates() {
         guard !isUpdating else { return }
