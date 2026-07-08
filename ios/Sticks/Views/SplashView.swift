@@ -21,7 +21,7 @@ struct SplashView: View {
     @State private var clubsVisible: [Bool] = [false, false, false]
     @State private var wordmarkVisible = false
     @State private var taglineVisible = false
-    @State private var isPulsing = false
+    @State private var pulseStart: Date?
 
     /// Per-club stagger, matching the web: 0s / 0.13s / 0.26s.
     private static let clubDelays: [Double] = [0, 0.13, 0.26]
@@ -55,7 +55,7 @@ struct SplashView: View {
         clubsVisible = [true, true, true]
         wordmarkVisible = true
         taglineVisible = true
-        isPulsing = true
+        pulseStart = Date()
     }
 
     // MARK: - Background grid
@@ -153,24 +153,60 @@ struct SplashView: View {
         .accessibilityLabel("Sticks")
     }
 
-    /// 10pt accent dot with a soft ring expanding to ~12pt+ and fading,
-    /// on a forever 2.4s cycle starting with the wordmark. Static under
-    /// Reduce Motion.
+    /// The pulse cycle length; two rings ride the same cycle, the second
+    /// phase-offset by half of it, so a new ripple begins as the previous
+    /// one finishes fading — no dead gap.
+    private static let pulseCycle: Double = 2.4
+
+    /// The pulse waits for the wordmark's fade-up before rippling.
+    private static let pulseDelay: Double = 0.64
+
+    /// 10pt solid accent dot with a concentric aura rippling outward:
+    /// soft blurred rings expanding from the dot's size to ~3.5× while
+    /// fading from 0.5 to 0 on an ease-out 2.4s cycle, forever. Built as
+    /// an overlay on the dot itself so the rings share its exact center.
+    /// Static solid dot only under Reduce Motion.
     private var pulsingDot: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.sticksGreen.opacity(isPulsing ? 0 : 0.55), lineWidth: 1.5)
-                .frame(width: 10, height: 10)
-                .scaleEffect(isPulsing ? 1.5 : 1)
-                .animation(
-                    .easeOut(duration: 2.4).repeatForever(autoreverses: false).delay(0.64),
-                    value: isPulsing
-                )
-            Circle()
-                .fill(Color.sticksGreen)
-                .frame(width: 10, height: 10)
+        Circle()
+            .fill(Color.sticksGreen)
+            .frame(width: 10, height: 10)
+            .overlay(alignment: .center) {
+                if let pulseStart, !reduceMotion {
+                    auraRipple(since: pulseStart)
+                }
+            }
+            .accessibilityHidden(true)
+    }
+
+    /// Two phase-offset rings driven off the shared clock, radiating
+    /// away from the dot behind it.
+    private func auraRipple(since start: Date) -> some View {
+        TimelineView(.animation) { timeline in
+            let elapsed = timeline.date.timeIntervalSince(start) - Self.pulseDelay
+            ZStack {
+                auraRing(elapsed: elapsed)
+                auraRing(elapsed: elapsed - Self.pulseCycle / 2)
+            }
         }
-        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
+
+    /// One ring of the ripple at the given point in its own timeline.
+    /// Before its start it stays hidden; afterwards it loops the 2.4s
+    /// expand-and-fade with an ease-out curve.
+    @ViewBuilder
+    private func auraRing(elapsed: TimeInterval) -> some View {
+        if elapsed >= 0 {
+            let linear = elapsed.truncatingRemainder(dividingBy: Self.pulseCycle) / Self.pulseCycle
+            // Ease-out cubic: fast expansion at the start, gentle finish.
+            let progress = 1 - pow(1 - linear, 3)
+            Circle()
+                .stroke(Color.sticksGreen, lineWidth: 2)
+                .frame(width: 10, height: 10)
+                .scaleEffect(1 + 2.5 * progress)
+                .opacity(0.5 * (1 - progress))
+                .blur(radius: 2.5)
+        }
     }
 
     // MARK: - Tagline
