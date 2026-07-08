@@ -7,6 +7,9 @@
 //  at-a-glance grid, wins by game, course bests, and logged rounds.
 //  Slice 19: index goal (set/clear via the hero pencil) and logged-round
 //  delete (creator-only, confirm alert, verbatim 403 messages).
+//  Slice 22: bar score labels + per-round HI reference ticks on the
+//  chart, the baseline selector moved atop Scoring analysis (with an HI
+//  option), and remove-my-score on rounds the caller didn't create.
 //
 
 import SwiftUI
@@ -90,10 +93,14 @@ struct StatsView: View {
                 if !stats.rounds.isEmpty {
                     LoggedRoundsCard(
                         rounds: stats.rounds,
-                        currentUserId: user.id
-                    ) { round in
-                        await viewModel.deleteRound(matchId: round.matchId, session: session)
-                    }
+                        currentUserId: user.id,
+                        onDelete: { round in
+                            await viewModel.deleteRound(matchId: round.matchId, session: session)
+                        },
+                        onRemoveScores: { round in
+                            await viewModel.removeMyScores(matchId: round.matchId, session: session)
+                        }
+                    )
                 }
             }
             .padding(.horizontal, 20)
@@ -273,17 +280,32 @@ private struct StatsSectionCard<Content: View>: View {
 // MARK: - Rounds over time
 
 /// Vertical bars, one per round — height ∝ |vsPar|, over par in accent
-/// green, under par in gold, zero a 3pt nub — with a dotted line at the
-/// current index labeled "HI" and sparse month labels underneath.
+/// green, under par in gold, zero a 3pt nub. Every bar carries its
+/// vs-par score, and each gets a faint per-round reference tick at what
+/// the index predicts for that round's length (index × holesPlayed / 18)
+/// — a bar above its tick means worse than the index, below means
+/// better. Sparse month labels underneath.
 private struct RoundsOverTimeCard: View {
     /// Chronological, capped to the last ~20 by the caller.
     let rounds: [LoggedRound]
     let index: Double?
 
     private let chartHeight: CGFloat = 84
+    /// Headroom above the tallest bar for its score label.
+    private let labelBand: CGFloat = 13
+    /// Trailing gutter reserved for the "HI" reference label.
+    private let hiGutter: CGFloat = 15
 
+    /// Bars AND ticks share one scale so every reference fits.
     private var maxAbs: Double {
-        max(rounds.map { Double(abs($0.vsPar)) }.max() ?? 1, 1)
+        let bars = rounds.map { Double(abs($0.vsPar)) }.max() ?? 1
+        let ticks = rounds.compactMap { expectedVsPar($0) }.max() ?? 0
+        return max(bars, ticks, 1)
+    }
+
+    /// The newest round's expectation — where the "HI" label sits.
+    private var referenceExpected: Double? {
+        rounds.reversed().compactMap { expectedVsPar($0) }.first
     }
 
     var body: some View {
@@ -296,41 +318,62 @@ private struct RoundsOverTimeCard: View {
     }
 
     private var chart: some View {
-        ZStack(alignment: .bottom) {
-            HStack(alignment: .bottom, spacing: 3) {
-                ForEach(rounds) { round in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(barColor(round.vsPar))
-                        .frame(height: barHeight(round.vsPar))
-                        .frame(maxWidth: .infinity)
-                }
+        HStack(alignment: .bottom, spacing: 3) {
+            ForEach(rounds) { round in
+                column(round)
             }
-            .frame(height: chartHeight, alignment: .bottom)
 
-            if let index, index > 0 {
-                indexLine(at: index)
+            if let referenceExpected {
+                Text("HI")
+                    .font(SticksFont.mono(8))
+                    .kerning(0.6)
+                    .foregroundStyle(Color.sticksFaint)
+                    .frame(width: hiGutter, alignment: .leading)
+                    .padding(.bottom, max(tickOffset(referenceExpected) - 4, 0))
             }
         }
-        .frame(height: chartHeight)
+        .frame(height: chartHeight + labelBand, alignment: .bottom)
     }
 
-    private func indexLine(at index: Double) -> some View {
-        let offset = min(CGFloat(index / maxAbs) * chartHeight, chartHeight - 4)
-        return HStack(spacing: 4) {
-            DottedLine()
-                .stroke(
-                    Color.sticksFaint,
-                    style: StrokeStyle(lineWidth: 1, dash: [3, 3])
-                )
-                .frame(height: 1)
+    /// One bar: the score label riding the bar top, the bar itself, and
+    /// the faint per-round index-expectation tick.
+    private func column(_ round: LoggedRound) -> some View {
+        let height = barHeight(round.vsPar)
+        return ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(barColor(round.vsPar))
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
 
-            Text("HI")
-                .font(SticksFont.mono(8))
-                .kerning(0.6)
-                .foregroundStyle(Color.sticksFaint)
+            if let expected = expectedVsPar(round) {
+                Rectangle()
+                    .fill(Color.sticksFaint.opacity(0.55))
+                    .frame(height: 1.5)
+                    .offset(y: -tickOffset(expected))
+            }
+
+            Text(StatsFormat.vsPar(round.vsPar))
+                .font(SticksFont.mono(7.5))
+                .monospacedDigit()
+                .foregroundStyle(labelColor(round.vsPar))
+                .fixedSize()
+                .offset(y: -(height + 3))
         }
-        .offset(y: -offset)
+        .frame(maxWidth: .infinity)
+        .frame(height: chartHeight + labelBand, alignment: .bottom)
         .allowsHitTesting(false)
+    }
+
+    /// index × (holesPlayed / 18) — the reference scales with the round
+    /// length, so a 9-hole tick sits about half as high as an 18-hole
+    /// one. Holes-scaled only (no per-round slope/rating is stored).
+    private func expectedVsPar(_ round: LoggedRound) -> Double? {
+        guard let index, index > 0, round.holesPlayed > 0 else { return nil }
+        return index * Double(round.holesPlayed) / 18
+    }
+
+    private func tickOffset(_ expected: Double) -> CGFloat {
+        min(CGFloat(expected / maxAbs) * chartHeight, chartHeight - 2)
     }
 
     private func barColor(_ vsPar: Int) -> Color {
@@ -339,12 +382,20 @@ private struct RoundsOverTimeCard: View {
         return .sticksFaint
     }
 
+    /// Even-par labels read mute (a faint label on a faint nub vanishes).
+    private func labelColor(_ vsPar: Int) -> Color {
+        if vsPar > 0 { return .sticksGreen }
+        if vsPar < 0 { return .sticksGold }
+        return .sticksMuted
+    }
+
     private func barHeight(_ vsPar: Int) -> CGFloat {
         guard vsPar != 0 else { return 3 }
         return max(3, CGFloat(Double(abs(vsPar)) / maxAbs) * chartHeight)
     }
 
-    /// Sparse month labels — only where the month changes.
+    /// Sparse month labels — only where the month changes. A clear
+    /// spacer mirrors the chart's HI gutter so columns line up.
     private var monthLabels: some View {
         HStack(alignment: .top, spacing: 3) {
             ForEach(Array(rounds.enumerated()), id: \.element.id) { position, round in
@@ -360,6 +411,10 @@ private struct RoundsOverTimeCard: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+            }
+
+            if referenceExpected != nil {
+                Color.clear.frame(width: hiGutter, height: 1)
             }
         }
         .frame(height: 12, alignment: .top)
@@ -380,33 +435,54 @@ private struct RoundsOverTimeCard: View {
     }
 }
 
-private struct DottedLine: Shape {
-    nonisolated func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-        return path
-    }
-}
-
 // MARK: - Scoring analysis
 
 /// Par-bucket cards + distribution bars, compared against a selectable
-/// handicap baseline (local state only, default 10).
+/// handicap baseline (local state only, default 10). The selector sits
+/// at the top, labeled; "HI" compares against the player's own index.
 private struct ScoringAnalysisCard: View {
     let stats: PlayerStats
     let baselines: [StatsBaseline]
 
-    @State private var selectedHcp: Int = 10
+    /// A fixed handicap, or the player's own index ("HI").
+    private enum BaselineSelection: Equatable {
+        case hcp(Int)
+        case myIndex
+    }
+
+    @State private var selection: BaselineSelection = .hcp(10)
+
+    /// The handicap the selection points at — the player's own index
+    /// for HI.
+    private var targetHcp: Double? {
+        switch selection {
+        case .hcp(let value): return Double(value)
+        case .myIndex: return stats.index
+        }
+    }
 
     private var baseline: StatsBaseline? {
-        baselines.first { $0.hcp == selectedHcp }
-            ?? baselines.min { abs($0.hcp - selectedHcp) < abs($1.hcp - selectedHcp) }
+        guard let targetHcp else { return nil }
+        return baselines.min {
+            abs(Double($0.hcp) - targetHcp) < abs(Double($1.hcp) - targetHcp)
+        }
+    }
+
+    /// Kicker on the par cards' expected line.
+    private var expectedLabel: String {
+        switch selection {
+        case .hcp(let value): return "\(value) HI"
+        case .myIndex: return "MY HI"
+        }
     }
 
     var body: some View {
         StatsSectionCard(title: "Scoring analysis") {
             VStack(alignment: .leading, spacing: 14) {
+                if !baselines.isEmpty {
+                    baselinePicker
+                }
+
                 HStack(spacing: 8) {
                     parCard(title: "PAR 3S", bucket: stats.par3, expected: baseline?.avgScores.par3)
                     parCard(title: "PAR 4S", bucket: stats.par4, expected: baseline?.avgScores.par4)
@@ -414,10 +490,6 @@ private struct ScoringAnalysisCard: View {
                 }
 
                 distributionRows
-
-                if !baselines.isEmpty {
-                    baselinePicker
-                }
             }
         }
     }
@@ -444,7 +516,7 @@ private struct ScoringAnalysisCard: View {
                 .minimumScaleFactor(0.8)
 
             if let expected, expected > 0 {
-                Text("\(selectedHcp) HI: \(String(format: "%.1f", expected))")
+                Text("\(expectedLabel): \(String(format: "%.1f", expected))")
                     .font(SticksFont.mono(9))
                     .kerning(0.4)
                     .foregroundStyle(Color.sticksFaint)
@@ -539,38 +611,46 @@ private struct ScoringAnalysisCard: View {
 
     // MARK: Baseline picker
 
+    /// A label line over the value segments — the server's fixed
+    /// handicaps plus HI (the player's own index, hidden until it
+    /// exists). The par cards and distribution bars react to it.
     private var baselinePicker: some View {
-        HStack(spacing: 6) {
-            Text("VS")
-                .font(SticksFont.mono(9))
-                .kerning(0.6)
-                .foregroundStyle(Color.sticksFaint)
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Compare my scoring to a handicap of:")
+                .font(SticksFont.sans(12))
+                .foregroundStyle(Color.sticksMuted)
 
-            ForEach(baselines.sorted { $0.hcp < $1.hcp }) { entry in
-                let isSelected = baseline?.hcp == entry.hcp
-                Button {
-                    selectedHcp = entry.hcp
-                } label: {
-                    Text("\(entry.hcp)")
-                        .font(SticksFont.mono(11))
-                        .monospacedDigit()
-                        .foregroundStyle(isSelected ? Color.sticksGreen : Color.sticksFaint)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(isSelected ? Color.sticksGreen.opacity(0.1) : .clear)
-                        .clipShape(.capsule)
-                        .contentShape(.capsule)
+            HStack(spacing: 6) {
+                ForEach(baselines.sorted { $0.hcp < $1.hcp }) { entry in
+                    segment("\(entry.hcp)", isSelected: selection == .hcp(entry.hcp)) {
+                        selection = .hcp(entry.hcp)
+                    }
                 }
-                .buttonStyle(.plain)
+
+                if stats.index != nil {
+                    segment("HI", isSelected: selection == .myIndex) {
+                        selection = .myIndex
+                    }
+                }
+
+                Spacer(minLength: 0)
             }
-
-            Text("HI")
-                .font(SticksFont.mono(9))
-                .kerning(0.6)
-                .foregroundStyle(Color.sticksFaint)
-
-            Spacer(minLength: 0)
         }
+    }
+
+    private func segment(_ text: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text)
+                .font(SticksFont.mono(11))
+                .monospacedDigit()
+                .foregroundStyle(isSelected ? Color.sticksGreen : Color.sticksFaint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isSelected ? Color.sticksGreen.opacity(0.1) : .clear)
+                .clipShape(.capsule)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -767,17 +847,30 @@ private struct CourseBestsCard: View {
 // MARK: - Logged rounds
 
 /// Round history, newest first — tap pushes the match detail (scores are
-/// editable there); rounds the caller created get a trailing … → Delete
-/// with a confirm alert. 403s surface the server's message verbatim.
+/// editable there). Rounds the caller created get … → Delete round
+/// (removes it for everyone); rounds they're merely in get … → Remove my
+/// score (their scores only). Both confirm first; 403s surface the
+/// server's message verbatim.
 private struct LoggedRoundsCard: View {
     let rounds: [LoggedRound]
     let currentUserId: String
-    /// Returns a user-facing error message, or nil on success.
+    /// DELETE /matches/:id — returns a user-facing error, or nil.
     let onDelete: (LoggedRound) async -> String?
+    /// DELETE /matches/:id/my-scores — returns a user-facing error, or nil.
+    let onRemoveScores: (LoggedRound) async -> String?
 
-    @State private var pendingDelete: LoggedRound?
-    @State private var deletingId: String?
-    @State private var deleteError: String?
+    private struct PendingAction: Identifiable {
+        enum Kind { case deleteRound, removeMyScores }
+
+        let kind: Kind
+        let round: LoggedRound
+
+        var id: String { round.matchId }
+    }
+
+    @State private var pendingAction: PendingAction?
+    @State private var busyId: String?
+    @State private var actionError: String?
 
     var body: some View {
         StatsSectionCard(title: "Logged rounds") {
@@ -792,56 +885,75 @@ private struct LoggedRoundsCard: View {
                         }
                         .buttonStyle(.plain)
 
-                        if deletingId == round.matchId {
+                        if busyId == round.matchId {
                             ProgressView()
                                 .tint(Color.sticksGreen)
                                 .frame(width: 30, height: 30)
-                        } else if isDeletable(round) {
-                            deleteMenu(round)
+                        } else {
+                            actionsMenu(round)
                         }
                     }
                 }
             }
         }
         .alert(
-            "Delete this round?",
+            pendingAction?.kind == .removeMyScores ? "Remove your score?" : "Delete this round?",
             isPresented: Binding(
-                get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
             ),
-            presenting: pendingDelete
-        ) { round in
-            Button("Delete", role: .destructive) { performDelete(round) }
+            presenting: pendingAction
+        ) { action in
+            Button(
+                action.kind == .removeMyScores ? "Remove" : "Delete",
+                role: .destructive
+            ) {
+                perform(action)
+            }
             Button("Cancel", role: .cancel) {}
-        } message: { round in
-            Text("\(round.courseName) will be removed for everyone in the match.")
+        } message: { action in
+            switch action.kind {
+            case .deleteRound:
+                Text("\(action.round.courseName) will be removed for everyone in the match.")
+            case .removeMyScores:
+                Text("This removes your scores from this round. Other players keep theirs.")
+            }
         }
         .alert(
-            "Couldn't delete",
+            "That didn't work",
             isPresented: Binding(
-                get: { deleteError != nil },
-                set: { if !$0 { deleteError = nil } }
+                get: { actionError != nil },
+                set: { if !$0 { actionError = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(deleteError ?? "")
+            Text(actionError ?? "")
         }
     }
 
-    // MARK: Delete
+    // MARK: Actions
 
-    /// Delete is creator-only — trust the server flag, fall back to the id.
-    private func isDeletable(_ round: LoggedRound) -> Bool {
+    /// Full delete is creator-only — trust the server flag, fall back to
+    /// the id. Everyone else gets remove-my-score.
+    private func isCreator(_ round: LoggedRound) -> Bool {
         round.createdByMe || round.creatorId == currentUserId
     }
 
-    private func deleteMenu(_ round: LoggedRound) -> some View {
+    private func actionsMenu(_ round: LoggedRound) -> some View {
         Menu {
-            Button(role: .destructive) {
-                pendingDelete = round
-            } label: {
-                Label("Delete round", systemImage: "trash")
+            if isCreator(round) {
+                Button(role: .destructive) {
+                    pendingAction = PendingAction(kind: .deleteRound, round: round)
+                } label: {
+                    Label("Delete round", systemImage: "trash")
+                }
+            } else {
+                Button(role: .destructive) {
+                    pendingAction = PendingAction(kind: .removeMyScores, round: round)
+                } label: {
+                    Label("Remove my score", systemImage: "minus.circle")
+                }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -853,13 +965,19 @@ private struct LoggedRoundsCard: View {
         .accessibilityLabel("Round options")
     }
 
-    private func performDelete(_ round: LoggedRound) {
-        deletingId = round.matchId
+    private func perform(_ action: PendingAction) {
+        busyId = action.round.matchId
         Task {
-            let error = await onDelete(round)
-            deletingId = nil
+            let error: String?
+            switch action.kind {
+            case .deleteRound:
+                error = await onDelete(action.round)
+            case .removeMyScores:
+                error = await onRemoveScores(action.round)
+            }
+            busyId = nil
             if let error {
-                deleteError = error
+                actionError = error
             }
         }
     }

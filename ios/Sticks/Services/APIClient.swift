@@ -270,6 +270,14 @@ nonisolated struct APIClient {
         let _: OkResponse = try await perform(request)
     }
 
+    /// DELETE /matches/:id/my-scores — removes only the caller's scores
+    /// from a round; other players keep theirs. 403 (not a player)
+    /// carries a server message shown verbatim.
+    func removeMyScores(matchId: String, token: String) async throws {
+        let request = makeRequest(path: "matches/\(matchId)/my-scores", method: "DELETE", token: token)
+        let _: OkResponse = try await perform(request)
+    }
+
     /// GET /groups/:id/leaderboard — group standings, champions, course
     /// records and streaks. 403 (not a member) and 404 (unknown group)
     /// carry server messages shown verbatim.
