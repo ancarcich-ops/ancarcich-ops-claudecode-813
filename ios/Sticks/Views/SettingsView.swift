@@ -2,14 +2,17 @@
 //  SettingsView.swift
 //  Sticks
 //
-//  Slice 21: the Settings tab mirrors the web profile — an editable
-//  profile card (avatar, display name, @username), a handicap card
+//  Slice 26: the Settings tab matches the web /settings page — a profile
+//  photo card (PhotosPicker upload, downscaled JPEG ≤ 4 MB, remove),
+//  an editable profile card (display name, @username), a handicap card
 //  (computed Sticks index, index goal, GHIN), and the account card
 //  (version + sign out with a confirm). Every successful save re-fetches
 //  /me/profile so all dependent lines stay consistent.
 //
 
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     let user: User
@@ -34,6 +37,9 @@ struct SettingsView: View {
     @State private var showsSignOutConfirm = false
     @State private var saveError: String?
 
+    // Profile photo picking
+    @State private var photoItem: PhotosPickerItem?
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -47,6 +53,7 @@ struct SettingsView: View {
                             loadErrorCard(loadError)
                         }
 
+                        profilePhotoCard
                         profileCard
                         handicapCard
                         accountCard
@@ -68,6 +75,11 @@ struct SettingsView: View {
         }
         .task {
             await viewModel.load(session: session)
+        }
+        .onChange(of: photoItem) { _, newItem in
+            guard let newItem else { return }
+            photoItem = nil
+            uploadPickedPhoto(newItem)
         }
         .alert("Edit display name", isPresented: $showsNameAlert) {
             TextField(username, text: $nameText)
@@ -151,14 +163,85 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Profile photo card
+
+    private var profilePhotoCard: some View {
+        sectionBlock("PROFILE PHOTO") {
+            panelCard {
+                VStack(spacing: 14) {
+                    ZStack {
+                        SettingsAvatar(
+                            userId: user.id,
+                            name: displayName,
+                            avatarUrl: viewModel.profile?.avatarUrl,
+                            size: 72
+                        )
+                        .opacity(viewModel.isUploadingAvatar ? 0.35 : 1)
+
+                        if viewModel.isUploadingAvatar {
+                            ProgressView()
+                                .tint(Color.sticksGreen)
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        PhotosPicker(
+                            selection: $photoItem,
+                            matching: .images,
+                            photoLibrary: .shared()
+                        ) {
+                            photoButtonLabel("CHANGE PHOTO", color: .sticksGreen)
+                        }
+                        .disabled(viewModel.profile == nil || viewModel.isUploadingAvatar)
+
+                        if viewModel.profile?.avatarUrl != nil {
+                            Button {
+                                Task { await viewModel.removeAvatar(session: session) }
+                            } label: {
+                                photoButtonLabel("REMOVE", color: .sticksError)
+                            }
+                            .buttonStyle(PressableButtonStyle())
+                            .disabled(viewModel.isUploadingAvatar)
+                        }
+                    }
+                    .opacity(viewModel.profile == nil ? 0.5 : 1)
+
+                    if let error = viewModel.avatarError {
+                        Text(error)
+                            .font(SticksFont.sans(12))
+                            .foregroundStyle(Color.sticksError)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 18)
+            }
+        }
+    }
+
+    private func photoButtonLabel(_ title: String, color: Color) -> some View {
+        Text(title)
+            .font(SticksFont.mono(10))
+            .kerning(1.1)
+            .foregroundStyle(color)
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .background(Color.sticksBg)
+            .clipShape(.capsule)
+            .overlay(
+                Capsule()
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+            .contentShape(.capsule)
+    }
+
     // MARK: - Profile card
 
     private var profileCard: some View {
         sectionBlock("PROFILE") {
             panelCard {
-                avatarRow
-                hairline
-
                 editableRow(
                     label: "DISPLAY NAME",
                     value: displayName,
@@ -172,33 +255,6 @@ struct SettingsView: View {
                 readOnlyRow(label: "USERNAME", value: "@\(username)", mono: true)
             }
         }
-    }
-
-    private var avatarRow: some View {
-        HStack(spacing: 14) {
-            SettingsAvatar(
-                userId: user.id,
-                name: displayName,
-                avatarUrl: viewModel.profile?.avatarUrl,
-                size: 56
-            )
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(displayName)
-                    .font(SticksFont.sans(16, weight: .bold))
-                    .foregroundStyle(Color.sticksInk)
-                    .lineLimit(1)
-
-                Text("PHOTO EDITS ON THE WEB")
-                    .font(SticksFont.mono(8.5))
-                    .kerning(0.8)
-                    .foregroundStyle(Color.sticksFaint)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
     }
 
     // MARK: - Handicap card
@@ -300,6 +356,62 @@ struct SettingsView: View {
                 .buttonStyle(PressableButtonStyle())
             }
         }
+    }
+
+    // MARK: - Photo upload
+
+    /// Loads the picked photo, downscales to ≤1024px on the long edge,
+    /// compresses to JPEG under 4 MB, and POSTs the raw bytes.
+    private func uploadPickedPhoto(_ item: PhotosPickerItem) {
+        Task {
+            guard
+                let data = try? await item.loadTransferable(type: Data.self),
+                let image = UIImage(data: data)
+            else {
+                viewModel.avatarError = "Couldn't read that photo. Try a different one."
+                return
+            }
+
+            guard let jpeg = Self.avatarJPEGData(from: image) else {
+                viewModel.avatarError = "Couldn't prepare that photo for upload. Try a different one."
+                return
+            }
+
+            await viewModel.uploadAvatar(jpeg, session: session)
+        }
+    }
+
+    /// Downscales to a 1024px long edge and steps compression down until
+    /// the JPEG fits the server's 4 MB cap.
+    private static func avatarJPEGData(from image: UIImage) -> Data? {
+        let maxDimension: CGFloat = 1024
+        let maxBytes = 4 * 1024 * 1024
+
+        let longEdge = max(image.size.width, image.size.height)
+        let scale = longEdge > 0 ? min(1, maxDimension / longEdge) : 1
+        let targetSize = CGSize(
+            width: (image.size.width * scale).rounded(),
+            height: (image.size.height * scale).rounded()
+        )
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        var quality: CGFloat = 0.85
+        while quality >= 0.3 {
+            if let data = resized.jpegData(compressionQuality: quality), data.count <= maxBytes {
+                return data
+            }
+            quality -= 0.15
+        }
+        if let data = resized.jpegData(compressionQuality: 0.25), data.count <= maxBytes {
+            return data
+        }
+        return nil
     }
 
     // MARK: - Save actions

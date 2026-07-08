@@ -2,8 +2,9 @@
 //  SettingsViewModel.swift
 //  Sticks
 //
-//  Slice 21: loads GET /me/profile and posts profile edits (display name,
-//  GHIN via POST /me/profile) and the index goal (POST /me/target-index).
+//  Slice 26: loads GET /me/profile and posts profile edits (display name,
+//  GHIN via POST /me/profile), the index goal (POST /me/target-index),
+//  and the profile photo (POST/DELETE /me/avatar with raw JPEG bytes).
 //  Every successful save re-fetches the profile so all dependent lines
 //  stay consistent. Refreshes keep the previous profile on transient
 //  failures.
@@ -19,6 +20,10 @@ final class SettingsViewModel {
     private(set) var loadError: String?
     private(set) var isLoading = false
     private(set) var isSaving = false
+    private(set) var isUploadingAvatar = false
+    /// Inline avatar error — server messages shown verbatim under the
+    /// photo card. Cleared on the next avatar action.
+    var avatarError: String?
 
     private let api: APIClient
 
@@ -79,6 +84,49 @@ final class SettingsViewModel {
             return error.message
         } catch {
             return "Can't reach Sticks. Check your connection and try again."
+        }
+    }
+
+    /// POSTs raw JPEG bytes to /me/avatar and re-fetches on success.
+    /// Failures land in `avatarError` (server messages verbatim).
+    func uploadAvatar(_ jpegData: Data, session: SessionStore) async {
+        guard let token = session.token else {
+            session.signOut()
+            return
+        }
+        isUploadingAvatar = true
+        avatarError = nil
+        defer { isUploadingAvatar = false }
+        do {
+            _ = try await api.uploadAvatar(jpegData: jpegData, token: token)
+            await load(session: session)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+        } catch let error as APIError {
+            avatarError = error.message
+        } catch {
+            avatarError = "Can't reach Sticks. Check your connection and try again."
+        }
+    }
+
+    /// DELETEs /me/avatar — the profile falls back to the initials bubble.
+    func removeAvatar(session: SessionStore) async {
+        guard let token = session.token else {
+            session.signOut()
+            return
+        }
+        isUploadingAvatar = true
+        avatarError = nil
+        defer { isUploadingAvatar = false }
+        do {
+            try await api.deleteAvatar(token: token)
+            await load(session: session)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+        } catch let error as APIError {
+            avatarError = error.message
+        } catch {
+            avatarError = "Can't reach Sticks. Check your connection and try again."
         }
     }
 

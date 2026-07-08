@@ -101,6 +101,12 @@ nonisolated struct UpdateProfileRequest: Encodable {
     }
 }
 
+/// Response for POST/DELETE /me/avatar — the new avatar URL (nil after
+/// a delete).
+nonisolated struct AvatarResponse: Decodable {
+    let avatarUrl: String?
+}
+
 /// Body for POST /groups.
 nonisolated struct CreateGroupRequest: Encodable {
     let name: String
@@ -253,6 +259,23 @@ nonisolated struct APIClient {
             UpdateProfileRequest(displayName: displayName, ghinNumber: ghinNumber)
         )
         return try await perform(request)
+    }
+
+    /// POST /me/avatar — uploads raw JPEG bytes (max 4 MB, downscaled
+    /// client-side). 400/503 carry server messages shown verbatim.
+    func uploadAvatar(jpegData: Data, token: String) async throws -> AvatarResponse {
+        var request = makeRequest(path: "me/avatar", method: "POST", token: token)
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jpegData
+        request.timeoutInterval = 60
+        return try await perform(request)
+    }
+
+    /// DELETE /me/avatar — removes the photo; the profile falls back to
+    /// the initials bubble.
+    func deleteAvatar(token: String) async throws {
+        let request = makeRequest(path: "me/avatar", method: "DELETE", token: token)
+        let _: AvatarResponse = try await perform(request)
     }
 
     /// POST /me/target-index — sets (or clears, with nil) the player's
