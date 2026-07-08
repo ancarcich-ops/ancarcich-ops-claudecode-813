@@ -6,17 +6,28 @@
 //  scorecard grid (caller's row first), On-course GPS CTA, and a
 //  30-second foreground poll of GET /matches/:id.
 //
+//  Slice 27: the ⋯ actions menu (top-right) — Edit details (creator,
+//  UPCOMING, no scores), Mark final (in progress), Delete round
+//  (creator, any status).
+//
 
 import SwiftUI
+import UIKit
 
 struct MatchDetailView: View {
     let match: MatchSummary
     let session: SessionStore
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
     @State private var viewModel: MatchDetailViewModel
     @State private var selectedCell: ScoreCellSelection?
     @State private var showsGPS = false
+    @State private var showsEdit = false
+    @State private var showsDeleteConfirm = false
+    @State private var showsFinalConfirm = false
+    @State private var isDeleting = false
+    @State private var actionError: String?
 
     init(match: MatchSummary, session: SessionStore) {
         self.match = match
@@ -77,11 +88,60 @@ struct MatchDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.sticksBg, for: .navigationBar)
         .tint(Color.sticksGreen)
+        .toolbar {
+            if hasMenuActions {
+                ToolbarItem(placement: .topBarTrailing) {
+                    actionsMenu
+                }
+            }
+        }
         .navigationDestination(isPresented: $showsGPS) {
             OnCourseGPSView(viewModel: viewModel, session: session)
         }
         .sheet(item: $selectedCell) { cell in
             ScoreEntryView(cell: cell, viewModel: viewModel, session: session)
+        }
+        .fullScreenCover(isPresented: $showsEdit) {
+            if let detail = viewModel.detail, let user = session.user {
+                CreateMatchView(
+                    user: user,
+                    session: session,
+                    editing: MatchEditContext(
+                        detail: detail,
+                        sideGameKinds: viewModel.response?.sideGames.map(\.kind) ?? [],
+                        groupId: match.groupId
+                    )
+                ) { _ in
+                    showsEdit = false
+                    NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+                    Task { await viewModel.load(session: session, quiet: true) }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Delete this round for everyone? This can't be undone.",
+            isPresented: $showsDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete round", role: .destructive) { deleteRound() }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Mark this round final?", isPresented: $showsFinalConfirm) {
+            Button("Mark final") { markFinal() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Scores lock in and the round moves to Recent.")
+        }
+        .alert(
+            "Couldn't do that",
+            isPresented: Binding(
+                get: { actionError != nil },
+                set: { if !$0 { actionError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
         }
         .task {
             await viewModel.load(session: session)
@@ -92,6 +152,100 @@ struct MatchDetailView: View {
                 if scenePhase == .active {
                     await viewModel.load(session: session, quiet: true)
                 }
+            }
+        }
+    }
+
+    // MARK: - Actions menu (slice 27)
+
+    /// Edit only while the round is untouched — creator, UPCOMING, and
+    /// not a single score logged (the server 400s otherwise).
+    private var canEditDetails: Bool {
+        guard let detail = viewModel.detail else { return false }
+        return detail.isCreator
+            && detail.status == .upcoming
+            && detail.players.allSatisfy { $0.scoresByHole.isEmpty }
+    }
+
+    private var canMarkFinal: Bool {
+        viewModel.detail?.status == .inProgress
+    }
+
+    private var canDelete: Bool {
+        viewModel.detail?.isCreator == true
+    }
+
+    private var hasMenuActions: Bool {
+        canEditDetails || canMarkFinal || canDelete
+    }
+
+    private var actionsMenu: some View {
+        Menu {
+            if canEditDetails {
+                Button {
+                    showsEdit = true
+                } label: {
+                    Label("Edit details", systemImage: "pencil")
+                }
+            }
+            if canMarkFinal {
+                Button {
+                    showsFinalConfirm = true
+                } label: {
+                    Label("Mark final", systemImage: "flag.checkered")
+                }
+            }
+            if canDelete {
+                Button(role: .destructive) {
+                    showsDeleteConfirm = true
+                } label: {
+                    Label("Delete round", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.sticksInk)
+                .frame(width: 32, height: 32)
+                .background(Color.sticksPanel2)
+                .clipShape(.circle)
+                .contentShape(.circle)
+        }
+        .disabled(isDeleting)
+        .accessibilityLabel("Round actions")
+    }
+
+    /// DELETE /matches/:id → pop back to the feed and refresh it.
+    /// A 403's server message shows verbatim.
+    private func deleteRound() {
+        guard !isDeleting else { return }
+        isDeleting = true
+        Task {
+            defer { isDeleting = false }
+            do {
+                try await viewModel.deleteMatch(session: session)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+                dismiss()
+            } catch let error as APIError {
+                actionError = error.message
+            } catch {
+                actionError = "Can't reach Sticks. Check your connection and try again."
+            }
+        }
+    }
+
+    /// POST /matches/:id/complete → refetch (renders COMPLETED).
+    private func markFinal() {
+        Task {
+            do {
+                try await viewModel.completeMatch(session: session)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+            } catch let error as APIError {
+                actionError = error.message
+            } catch {
+                actionError = "Can't reach Sticks. Check your connection and try again."
             }
         }
     }

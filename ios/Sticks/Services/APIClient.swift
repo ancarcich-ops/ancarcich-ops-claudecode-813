@@ -363,6 +363,15 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// PATCH /matches/:id — creator-only edit of an UPCOMING round with
+    /// no scores logged; same body shape as POST /matches. 400 (edit
+    /// window closed) and 403 carry server messages shown verbatim.
+    func updateMatch(id: String, _ body: CreateMatchRequest, token: String) async throws -> CreateMatchResponse {
+        var request = makeRequest(path: "matches/\(id)", method: "PATCH", token: token)
+        request.httpBody = try encoder.encode(body)
+        return try await perform(request)
+    }
+
     // MARK: - Plumbing
 
     private func makeRequest(

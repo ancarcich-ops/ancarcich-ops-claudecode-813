@@ -58,6 +58,9 @@ struct MatchListView: View {
         .task {
             await viewModel.load(session: session)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .sticksMatchesDidChange)) { _ in
+            Task { await viewModel.load(session: session) }
+        }
     }
 
     /// After a successful POST /matches: refresh the list and push the

@@ -8,6 +8,13 @@
 import Foundation
 import Observation
 
+extension Notification.Name {
+    /// Posted after a round is edited, deleted, or marked final on the
+    /// detail screen so the home feed refreshes without waiting for a
+    /// manual pull.
+    static let sticksMatchesDidChange = Notification.Name("sticksMatchesDidChange")
+}
+
 @Observable
 final class MatchListViewModel {
     enum Phase: Equatable {

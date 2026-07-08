@@ -11,6 +11,15 @@ import CoreLocation
 import Foundation
 import Observation
 
+/// Everything the create form needs to reopen as slice 27's EDIT MODE —
+/// the loaded match, its side-game kinds, and the group it was posted to
+/// (carried on the summary, not the detail).
+struct MatchEditContext {
+    let detail: MatchDetail
+    let sideGameKinds: [String]
+    let groupId: String?
+}
+
 @Observable
 final class CreateMatchViewModel {
     /// One seat in the players list. `userId` present = linked Sticks
@@ -89,14 +98,54 @@ final class CreateMatchViewModel {
     private(set) var isCreating = false
     private(set) var createError: String?
 
+    /// Set = the form is editing an existing round (PATCH on submit)
+    /// instead of creating one (POST).
+    private(set) var editingMatchId: String?
+
     private let api: APIClient
     private let locationProvider = OneShotLocationProvider()
     private var courseSearchTask: Task<Void, Never>?
     private var playerSearchTask: Task<Void, Never>?
 
-    init(api: APIClient = .shared) {
+    init(api: APIClient = .shared, editing: MatchEditContext? = nil, user: User? = nil) {
         self.api = api
+        guard let editing, let user else { return }
+        // Property observers don't fire during init, so these seeds never
+        // trip the course-change/holes-change resets.
+        let detail = editing.detail
+        editingMatchId = detail.id
+        selectedCourse = CourseResult(
+            id: detail.courseName,
+            name: detail.courseName,
+            city: nil,
+            holes: detail.holes,
+            access: nil,
+            distanceMi: nil
+        )
+        holes = detail.holes
+        startsOnBack = detail.holes == 9 && detail.startingHole == 10
+        scoringMode = detail.scoringMode
+        sideGames = Set(editing.sideGameKinds)
+        selectedGroupId = editing.groupId
+        seats = detail.players
+            .sorted { ($0.seat ?? Int.max, $0.id) < ($1.seat ?? Int.max, $1.id) }
+            .map { player in
+                Seat(
+                    id: UUID(),
+                    name: player.displayName,
+                    handicapText: Self.formatHandicap(player.handicap ?? 0),
+                    userId: player.userId,
+                    username: nil,
+                    avatarUrl: nil,
+                    isMe: player.userId == user.id,
+                    // Tees re-default from the course's tee list once it
+                    // loads (pre-filling the exact prior tee is optional).
+                    teeId: nil
+                )
+            }
     }
+
+    var isEditing: Bool { editingMatchId != nil }
 
     /// Location permission hard-denied — hide the "Near me" button entirely.
     var isLocationDenied: Bool { locationProvider.isDenied }
@@ -117,6 +166,8 @@ final class CreateMatchViewModel {
 
     /// Seeds seat 1 with the signed-in user, then loads recent partners
     /// (for myLastHandicap prefill) and the caller's groups in parallel.
+    /// In edit mode the seats arrive pre-filled and the course's tees
+    /// are fetched straight away.
     func bootstrap(user: User, session: SessionStore) async {
         if seats.isEmpty {
             seats = [Seat(
@@ -130,6 +181,9 @@ final class CreateMatchViewModel {
                 teeId: nil
             )]
         }
+        if isEditing, let course = selectedCourse, tees.isEmpty {
+            loadTees(for: course.name, session: session)
+        }
         guard let token = session.token else { return }
 
         async let suggest = try? api.suggestPlayers(query: nil, token: token)
@@ -138,7 +192,9 @@ final class CreateMatchViewModel {
         if let response = await suggest {
             recentPartners = response.players
             myLastHandicap = response.myLastHandicap
-            if let handicap = response.myLastHandicap,
+            // Never overwrite a real prefilled handicap in edit mode.
+            if !isEditing,
+               let handicap = response.myLastHandicap,
                let index = seats.firstIndex(where: { $0.isMe }),
                seats[index].handicapText == "0" {
                 seats[index].handicapText = Self.formatHandicap(handicap)
@@ -363,8 +419,9 @@ final class CreateMatchViewModel {
         createError = nil
     }
 
-    /// POST /matches. Returns the created match id on success; on
-    /// 400/403 surfaces the server's message verbatim and re-enables.
+    /// POST /matches — or PATCH /matches/:id in edit mode. Returns the
+    /// match id on success; on 400/403 surfaces the server's message
+    /// verbatim and re-enables.
     func create(session: SessionStore) async -> String? {
         guard canCreate, let course = selectedCourse else { return nil }
         guard let token = session.token else {
@@ -401,7 +458,12 @@ final class CreateMatchViewModel {
             groupId: selectedGroupId
         )
         do {
-            let response = try await api.createMatch(request, token: token)
+            let response: CreateMatchResponse
+            if let editingMatchId {
+                response = try await api.updateMatch(id: editingMatchId, request, token: token)
+            } else {
+                response = try await api.createMatch(request, token: token)
+            }
             return response.match.id
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()

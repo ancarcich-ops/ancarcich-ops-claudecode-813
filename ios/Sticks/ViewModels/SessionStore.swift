@@ -32,6 +32,12 @@ final class SessionStore {
 
     var token: String? { KeychainService.loadToken() }
 
+    /// The signed-in user, when any.
+    var user: User? {
+        if case .signedIn(let user) = phase { return user }
+        return nil
+    }
+
     /// Called on launch: validate any stored token with GET /me.
     func bootstrap() async {
         guard let token = KeychainService.loadToken() else {

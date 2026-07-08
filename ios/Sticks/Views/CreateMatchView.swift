@@ -8,6 +8,10 @@
 //  a group picker — ending in a pinned ledge CREATE button that posts
 //  the match and hands the new id back to the caller.
 //
+//  Slice 27: the same form reopens in EDIT MODE (pass a
+//  MatchEditContext) — pre-filled from the match, "Save changes"
+//  PATCHes /matches/:id instead of POSTing.
+//
 
 import SwiftUI
 import UIKit
@@ -15,13 +19,26 @@ import UIKit
 struct CreateMatchView: View {
     let user: User
     let session: SessionStore
-    /// Called with the new match id after a successful POST.
+    /// Called with the match id after a successful POST (or PATCH in
+    /// edit mode).
     let onCreated: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var viewModel = CreateMatchViewModel()
+    @State private var viewModel: CreateMatchViewModel
     @FocusState private var focusedSeat: UUID?
     @FocusState private var isCourseFieldFocused: Bool
+
+    init(
+        user: User,
+        session: SessionStore,
+        editing: MatchEditContext? = nil,
+        onCreated: @escaping (String) -> Void
+    ) {
+        self.user = user
+        self.session = session
+        self.onCreated = onCreated
+        _viewModel = State(initialValue: CreateMatchViewModel(editing: editing, user: user))
+    }
 
     var body: some View {
         ZStack {
@@ -54,7 +71,7 @@ struct CreateMatchView: View {
 
     private var header: some View {
         HStack {
-            Text("NEW ROUND")
+            Text(viewModel.isEditing ? "EDIT ROUND" : "NEW ROUND")
                 .font(SticksFont.mono(11))
                 .kerning(1.54)
                 .foregroundStyle(Color.sticksGreen)
@@ -81,14 +98,18 @@ struct CreateMatchView: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Start a round")
+            Text(viewModel.isEditing ? "Edit round" : "Start a round")
                 .font(SticksFont.display(34, weight: .bold))
                 .kerning(-0.7)
                 .foregroundStyle(Color.sticksInk)
 
-            Text("Pick the course, seat your group, tee off.")
-                .font(SticksFont.sans(14))
-                .foregroundStyle(Color.sticksMuted)
+            Text(
+                viewModel.isEditing
+                    ? "Adjust the details — nothing changes until you save."
+                    : "Pick the course, seat your group, tee off."
+            )
+            .font(SticksFont.sans(14))
+            .foregroundStyle(Color.sticksMuted)
         }
     }
 
@@ -637,7 +658,7 @@ struct CreateMatchView: View {
                     if viewModel.isCreating {
                         ProgressView().tint(Color.sticksCream)
                     } else {
-                        Text("CREATE ROUND")
+                        Text(viewModel.isEditing ? "SAVE CHANGES" : "CREATE ROUND")
                             .font(SticksFont.sans(15, weight: .bold))
                             .kerning(0.6)
                             .foregroundStyle(Color.sticksCream)

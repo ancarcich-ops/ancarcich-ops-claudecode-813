@@ -134,6 +134,22 @@ final class MatchDetailViewModel {
         await load(session: session, quiet: true)
     }
 
+    /// DELETEs the round (creator-only). The caller pops back to the
+    /// feed and refreshes it on success. Throws APIError — a 403's
+    /// server message is shown verbatim; a 401 signs the user out.
+    func deleteMatch(session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            try await api.deleteMatch(id: matchId, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+    }
+
     /// POSTs a FIX TEE crowdfix. Returns the server verdict — `ok: false`
     /// carries a `reason` the UI shows verbatim. On success a quiet re-fetch
     /// picks up the corrected tee geometry. Throws APIError on transport or
