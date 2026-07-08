@@ -134,6 +134,24 @@ final class MatchDetailViewModel {
         await load(session: session, quiet: true)
     }
 
+    /// POSTs the reopen (creator-only), then re-fetches the match so the
+    /// reverted state (IN_PROGRESS, or UPCOMING if scoreless) renders
+    /// immediately. Throws APIError — a 403's server message is shown
+    /// verbatim; a 401 signs the user out.
+    func reopenMatch(session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            try await api.postReopen(matchId: matchId, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        await load(session: session, quiet: true)
+    }
+
     /// DELETEs the round (creator-only). The caller pops back to the
     /// feed and refreshes it on success. Throws APIError — a 403's
     /// server message is shown verbatim; a 401 signs the user out.

@@ -7,8 +7,8 @@
 //  30-second foreground poll of GET /matches/:id.
 //
 //  Slice 27: the ⋯ actions menu (top-right) — Edit details (creator,
-//  UPCOMING, no scores), Mark final (in progress), Delete round
-//  (creator, any status).
+//  UPCOMING, no scores), Mark final (in progress), Reopen (creator,
+//  completed), Delete round (creator, any status).
 //
 
 import SwiftUI
@@ -26,6 +26,7 @@ struct MatchDetailView: View {
     @State private var showsEdit = false
     @State private var showsDeleteConfirm = false
     @State private var showsFinalConfirm = false
+    @State private var showsReopenConfirm = false
     @State private var isDeleting = false
     @State private var actionError: String?
 
@@ -132,6 +133,12 @@ struct MatchDetailView: View {
         } message: {
             Text("Scores lock in and the round moves to Recent.")
         }
+        .alert("Reopen this round?", isPresented: $showsReopenConfirm) {
+            Button("Reopen") { reopenRound() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It won't count as final until you finish it again.")
+        }
         .alert(
             "Couldn't do that",
             isPresented: Binding(
@@ -171,12 +178,19 @@ struct MatchDetailView: View {
         viewModel.detail?.status == .inProgress
     }
 
+    /// Reopen a finished round — creator-only, COMPLETED only. The server
+    /// reverts it to IN_PROGRESS (or UPCOMING if it had no scores).
+    private var canReopen: Bool {
+        guard let detail = viewModel.detail else { return false }
+        return detail.isCreator && detail.status == .completed
+    }
+
     private var canDelete: Bool {
         viewModel.detail?.isCreator == true
     }
 
     private var hasMenuActions: Bool {
-        canEditDetails || canMarkFinal || canDelete
+        canEditDetails || canMarkFinal || canReopen || canDelete
     }
 
     private var actionsMenu: some View {
@@ -193,6 +207,13 @@ struct MatchDetailView: View {
                     showsFinalConfirm = true
                 } label: {
                     Label("Mark final", systemImage: "flag.checkered")
+                }
+            }
+            if canReopen {
+                Button {
+                    showsReopenConfirm = true
+                } label: {
+                    Label("Reopen", systemImage: "arrow.uturn.backward")
                 }
             }
             if canDelete {
@@ -227,6 +248,22 @@ struct MatchDetailView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
                 dismiss()
+            } catch let error as APIError {
+                actionError = error.message
+            } catch {
+                actionError = "Can't reach Sticks. Check your connection and try again."
+            }
+        }
+    }
+
+    /// POST /matches/:id/reopen → refetch (renders IN_PROGRESS, or
+    /// UPCOMING if it had no scores). A 403's server message shows verbatim.
+    private func reopenRound() {
+        Task {
+            do {
+                try await viewModel.reopenMatch(session: session)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
             } catch let error as APIError {
                 actionError = error.message
             } catch {

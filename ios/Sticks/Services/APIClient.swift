@@ -210,6 +210,14 @@ nonisolated struct APIClient {
         let _: OkResponse = try await perform(request)
     }
 
+    /// POST /matches/:id/reopen — reverts a COMPLETED round so scoring
+    /// can resume (IN_PROGRESS, or UPCOMING if no scores). Creator-only;
+    /// a 403 carries a server message shown verbatim.
+    func postReopen(matchId: String, token: String) async throws {
+        let request = makeRequest(path: "matches/\(matchId)/reopen", method: "POST", token: token)
+        let _: OkResponse = try await perform(request)
+    }
+
     /// POST /matches/:id/tee — crowdfix the tee position from live GPS.
     func postTee(matchId: String, hole: Int, lat: Double, lng: Double, accuracyYd: Int, token: String) async throws -> TeeResponse {
         var request = makeRequest(path: "matches/\(matchId)/tee", method: "POST", token: token)
