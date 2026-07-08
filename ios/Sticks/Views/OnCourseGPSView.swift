@@ -19,12 +19,23 @@
 import SwiftUI
 import MapKit
 
+/// Slice 28: camera framing modes for the segmented control. Only the
+/// MapKit camera changes between modes — readouts, markers, wind, FIX
+/// TEE, and ENTER SCORE are identical in all four.
+private enum GPSCameraMode: String, CaseIterable {
+    case tee = "TEE"
+    case green = "GREEN"
+    case hole = "HOLE"
+    case threeD = "3D"
+}
+
 struct OnCourseGPSView: View {
     let viewModel: MatchDetailViewModel
     let session: SessionStore
 
     @Environment(\.dismiss) private var dismiss
     @State private var camera: MapCameraPosition = .automatic
+    @State private var cameraMode: GPSCameraMode = .hole
     @State private var holeIndex = 0
     @State private var aim: CLLocationCoordinate2D?
     @State private var scoreCell: ScoreCellSelection?
@@ -122,7 +133,9 @@ struct OnCourseGPSView: View {
             Map(position: $camera) {
                 mapContent(geo: geo, hazards: hazards, anchor: anchor)
             }
-            .mapStyle(.imagery(elevation: .flat))
+            // 3D fly-over needs realistic elevation so the satellite
+            // imagery renders in perspective; the flat modes stay flat.
+            .mapStyle(.imagery(elevation: cameraMode == .threeD ? .realistic : .flat))
             .onTapGesture { screenPoint in
                 guard let coordinate = proxy.convert(screenPoint, from: .local) else { return }
                 aim = coordinate
@@ -153,7 +166,18 @@ struct OnCourseGPSView: View {
         .onChange(of: holeIndex) { _, newIndex in
             aim = nil
             RoundSessionService.shared.setHole(index: newIndex, matchId: detail.id)
-            frameCurrentHole(detail, animated: true)
+            // The new hole may lack the geo the current mode needs
+            // (e.g. TEE mode onto a hole with no tee) — fall back to
+            // HOLE, whose onChange performs the snap instead.
+            let geo = viewModel.response?.holeGeo[detail.holeNumber(at: newIndex)]
+            if !isModeAvailable(cameraMode, geo: geo) {
+                cameraMode = .hole
+            } else {
+                snapCamera(detail, animated: true)
+            }
+        }
+        .onChange(of: cameraMode) { _, _ in
+            snapCamera(detail, animated: true)
         }
     }
 
@@ -235,6 +259,8 @@ struct OnCourseGPSView: View {
         let distances = anchor.flatMap { geo?.distances(from: $0.coordinate) }
 
         return VStack(spacing: 12) {
+            cameraModeControl(geo)
+
             if geo?.greenCoordinate == nil {
                 greenNeededBanner
             } else if let anchor, let distances {
@@ -289,6 +315,51 @@ struct OnCourseGPSView: View {
                 .stroke(.white.opacity(0.14), lineWidth: 1)
         )
         .environment(\.colorScheme, .dark)
+    }
+
+    // MARK: - Camera mode control
+
+    /// TEE · GREEN · HOLE · 3D segments. Modes whose geo is missing are
+    /// grayed out: TEE and 3D need a tee coordinate, GREEN needs a green.
+    private func cameraModeControl(_ geo: HoleGeo?) -> some View {
+        HStack(spacing: 3) {
+            ForEach(GPSCameraMode.allCases, id: \.self) { mode in
+                let available = isModeAvailable(mode, geo: geo)
+                Button {
+                    guard cameraMode != mode else { return }
+                    cameraMode = mode
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Text(mode.rawValue)
+                        .font(SticksFont.label(11, weight: .bold))
+                        .kerning(1.4)
+                        .foregroundStyle(segmentColor(mode, available: available))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background(cameraMode == mode ? Color.sticksGreen : .clear)
+                        .clipShape(.rect(cornerRadius: 8))
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(!available)
+                .accessibilityLabel("\(mode.rawValue) view")
+            }
+        }
+        .padding(3)
+        .background(.white.opacity(0.1))
+        .clipShape(.rect(cornerRadius: 11))
+    }
+
+    private func segmentColor(_ mode: GPSCameraMode, available: Bool) -> Color {
+        if !available { return .white.opacity(0.25) }
+        return cameraMode == mode ? Color.sticksCream : .white.opacity(0.65)
+    }
+
+    private func isModeAvailable(_ mode: GPSCameraMode, geo: HoleGeo?) -> Bool {
+        switch mode {
+        case .tee, .threeD: geo?.teeCoordinate != nil
+        case .green: geo?.greenCoordinate != nil
+        case .hole: geo?.teeCoordinate != nil || geo?.greenCoordinate != nil
+        }
     }
 
     private func readout(anchor: DistanceAnchor, distances: GreenDistances) -> some View {
@@ -525,7 +596,7 @@ struct OnCourseGPSView: View {
         } else {
             holeIndex = initialHoleIndex(detail)
         }
-        frameCurrentHole(detail, animated: false)
+        snapCamera(detail, animated: false)
     }
 
     /// First hole the caller hasn't scored yet, else the starting hole.
@@ -546,15 +617,33 @@ struct OnCourseGPSView: View {
     /// satellite camera at pitch 0).
     private static let groundSpanPerDistance = 0.75
 
-    /// Fits tee + green + hazards into the visible band between the top
-    /// rail row and the bottom panel, rotated so tee→green points
-    /// up-screen. The top/bottom fractions pad the camera so hazard chips
-    /// never render underneath the hole rail.
-    private func frameCurrentHole(_ detail: MatchDetail, animated: Bool) {
+    /// Snaps the camera to the current mode's framing for the current
+    /// hole (~0.5s animated). Runs on mode change and hole change.
+    private func snapCamera(_ detail: MatchDetail, animated: Bool) {
         let hole = detail.holeNumber(at: holeIndex)
         guard let geo = viewModel.response?.holeGeo[hole] else { return }
 
-        let target: MapCameraPosition
+        let target: MapCameraPosition?
+        switch cameraMode {
+        case .hole: target = holeCamera(geo, hole: hole)
+        case .tee: target = teeCamera(geo)
+        case .green: target = greenCamera(geo)
+        case .threeD: target = flyoverCamera(geo)
+        }
+        guard let target else { return }
+
+        if animated {
+            withAnimation(.easeInOut(duration: 0.5)) { camera = target }
+        } else {
+            camera = target
+        }
+    }
+
+    /// HOLE: fits tee + green + hazards into the visible band between the
+    /// top rail row and the bottom panel, rotated so tee→green points
+    /// up-screen. The top/bottom fractions pad the camera so hazard chips
+    /// never render underneath the hole rail.
+    private func holeCamera(_ geo: HoleGeo, hole: Int) -> MapCameraPosition? {
         if let tee = geo.teeCoordinate, let green = geo.greenCoordinate {
             let heading = GolfGeo.bearing(from: tee, to: green)
             let midpoint = GolfGeo.midpoint(tee, green)
@@ -584,24 +673,76 @@ struct OnCourseGPSView: View {
             // MapKit throws (hard crash) on non-finite camera values — bad
             // geo degrades to the un-reframed map instead.
             guard GolfGeo.isUsable(lat: center.latitude, lng: center.longitude),
-                  distance.isFinite, distance > 0, heading.isFinite else { return }
-            target = .camera(MapCamera(
+                  distance.isFinite, distance > 0, heading.isFinite else { return nil }
+            return .camera(MapCamera(
                 centerCoordinate: center,
                 distance: distance,
                 heading: heading,
                 pitch: 0
             ))
-        } else if let single = geo.teeCoordinate ?? geo.greenCoordinate {
-            target = .camera(MapCamera(centerCoordinate: single, distance: 700, heading: 0, pitch: 0))
-        } else {
-            return
         }
+        if let single = geo.teeCoordinate ?? geo.greenCoordinate {
+            return .camera(MapCamera(centerCoordinate: single, distance: 700, heading: 0, pitch: 0))
+        }
+        return nil
+    }
 
-        if animated {
-            withAnimation(.easeInOut(duration: 0.7)) { camera = target }
-        } else {
-            camera = target
+    /// TEE: tight top-down on the tee box, heading tee→green so you look
+    /// up the hole from the tee.
+    private func teeCamera(_ geo: HoleGeo) -> MapCameraPosition? {
+        guard let tee = geo.teeCoordinate else { return nil }
+        let heading = geo.greenCoordinate.map { GolfGeo.bearing(from: tee, to: $0) } ?? 0
+        guard heading.isFinite else { return nil }
+        return .camera(MapCamera(centerCoordinate: tee, distance: 200, heading: heading, pitch: 0))
+    }
+
+    /// GREEN: centered on the green (a fixed target — no re-follow),
+    /// zoomed so the green polygon plus greenside bunkers are readable.
+    /// Falls back to ~120m when there's no polygon.
+    private func greenCamera(_ geo: HoleGeo) -> MapCameraPosition? {
+        guard let green = geo.greenCoordinate else { return nil }
+        let heading = geo.teeCoordinate.map { GolfGeo.bearing(from: $0, to: green) } ?? 0
+        guard heading.isFinite else { return nil }
+
+        var distance: Double = 120
+        let vertices = geo.greenPolygonCoordinates
+        if vertices.count >= 3 {
+            let radiusMeters = vertices
+                .map { GolfGeo.yards(from: green, to: $0) / GolfGeo.yardsPerMeter }
+                .max() ?? 0
+            // Green diameter at ~40% of the visible ground span keeps
+            // front/center/back and the surrounding bunkers in frame.
+            let span = (radiusMeters * 2) / 0.4
+            distance = max(span / Self.groundSpanPerDistance, 120)
         }
+        guard distance.isFinite, distance > 0 else { return nil }
+        return .camera(MapCamera(centerCoordinate: green, distance: distance, heading: heading, pitch: 0))
+    }
+
+    /// 3D: a tilted fly-over — camera behind the tee along the tee→green
+    /// axis, pitched ~60° so the satellite imagery renders in perspective
+    /// looking down the fairway to the green.
+    private func flyoverCamera(_ geo: HoleGeo) -> MapCameraPosition? {
+        guard let tee = geo.teeCoordinate else { return nil }
+
+        let heading: Double
+        let lengthMeters: Double
+        let center: CLLocationCoordinate2D
+        if let green = geo.greenCoordinate {
+            heading = GolfGeo.bearing(from: tee, to: green)
+            lengthMeters = GolfGeo.yards(from: tee, to: green) / GolfGeo.yardsPerMeter
+            // Looking at the midpoint keeps the whole hole in frame; with
+            // pitch the camera itself ends up behind the tee.
+            center = GolfGeo.midpoint(tee, green)
+        } else {
+            heading = 0
+            lengthMeters = 350
+            center = tee
+        }
+        let distance = max(lengthMeters * 1.15, 320)
+        guard GolfGeo.isUsable(lat: center.latitude, lng: center.longitude),
+              heading.isFinite, distance.isFinite else { return nil }
+        return .camera(MapCamera(centerCoordinate: center, distance: distance, heading: heading, pitch: 60))
     }
 
     /// Advances to the next hole after the score sheet completes a hole —
