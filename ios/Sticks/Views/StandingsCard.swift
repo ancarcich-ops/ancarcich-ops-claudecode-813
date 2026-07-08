@@ -288,17 +288,37 @@ struct StandingsCard: View {
 
 // MARK: - Pieces
 
-/// 18pt initials bubble on the player's seat color.
+/// 18pt avatar — profile photo when avatarUrl is set, else an initials
+/// bubble on the player's seat color.
 private struct StandingsAvatar: View {
     let player: MatchDetailPlayer
 
     var body: some View {
+        Group {
+            if let urlString = player.avatarUrl, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        initialsBubble
+                    }
+                }
+            } else {
+                initialsBubble
+            }
+        }
+        .frame(width: 18, height: 18)
+        .clipShape(.circle)
+    }
+
+    private var initialsBubble: some View {
         Text(initials)
             .font(SticksFont.label(7, weight: .bold))
             .foregroundStyle(Color.sticksCream)
             .frame(width: 18, height: 18)
             .background(MatchCardMath.seatColor(player.seat))
-            .clipShape(.circle)
     }
 
     private var initials: String {

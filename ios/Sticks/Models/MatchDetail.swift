@@ -72,6 +72,8 @@ nonisolated struct MatchDetailPlayer: Identifiable, Hashable {
     let handicap: Double?
     let seat: Int?
     let team: String?
+    /// Profile photo URL — nil renders the initials bubble.
+    let avatarUrl: String?
     /// Hole number → strokes (converted from the server's string keys).
     /// Mutable so score posts can update the scorecard optimistically.
     var scoresByHole: [Int: Int]
@@ -79,7 +81,7 @@ nonisolated struct MatchDetailPlayer: Identifiable, Hashable {
 
 extension MatchDetailPlayer: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case id, userId, displayName, handicap, seat, team, scoresByHole
+        case id, userId, displayName, handicap, seat, team, avatarUrl, scoresByHole
     }
 
     init(from decoder: Decoder) throws {
@@ -89,6 +91,7 @@ extension MatchDetailPlayer: Decodable {
         displayName = try container.decode(String.self, forKey: .displayName)
         handicap = try container.decodeIfPresent(Double.self, forKey: .handicap)
         seat = try container.decodeIfPresent(Int.self, forKey: .seat)
+        avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
 
         // team may be a string, a number, or null.
         if let teamString = try? container.decode(String.self, forKey: .team) {
