@@ -82,9 +82,9 @@ struct LoginView: View {
             SticksClubsMark()
                 .frame(width: 76, height: 76)
 
-            Text("Sticks")
+            (Text("Sticks").foregroundStyle(Color.sticksInk)
+                + Text(".").foregroundStyle(Color.sticksGreen))
                 .font(SticksFont.display(56))
-                .foregroundStyle(Color.sticksInk)
 
             Text("GOLF SCORING · ON-COURSE GPS")
                 .font(SticksFont.label(12))
