@@ -17,7 +17,6 @@ import UIKit
 struct SettingsView: View {
     let user: User
     let session: SessionStore
-    var tabSelection: Binding<SticksTab>? = nil
 
     @State private var viewModel = SettingsViewModel()
 
@@ -64,11 +63,6 @@ struct SettingsView: View {
                 }
                 .refreshable {
                     await viewModel.load(session: session)
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let tabSelection {
-                    SticksTabBar(selection: tabSelection)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)

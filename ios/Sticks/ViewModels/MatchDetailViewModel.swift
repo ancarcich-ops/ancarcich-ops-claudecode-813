@@ -21,6 +21,8 @@ final class MatchDetailViewModel {
 
     private(set) var phase: Phase = .loading
     private(set) var response: MatchDetailResponse?
+    /// The caller's live share links for this round (slice 29).
+    private(set) var shares: [RoundShare] = []
 
     private let api: APIClient
     private let matchId: String
@@ -166,6 +168,89 @@ final class MatchDetailViewModel {
             session.signOut()
             throw error
         }
+    }
+
+    /// POSTs the full pars array (creator-only, any status), then
+    /// re-fetches so the scorecard re-renders with the new pars.
+    /// Throws APIError — 400/403 server messages are shown verbatim.
+    func setPars(_ pars: [Int], session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            _ = try await api.setPars(matchId: matchId, pars: pars, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        await load(session: session, quiet: true)
+    }
+
+    /// POSTs the full desired set of side-game kinds (creator-only),
+    /// then re-fetches so the standings/side-game sections update.
+    func setSideGames(kinds: [String], session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            _ = try await api.setSideGames(matchId: matchId, kinds: kinds, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        await load(session: session, quiet: true)
+    }
+
+    /// Fetches the caller's live share links. Quiet on failure — an
+    /// unreachable list keeps whatever was already displayed.
+    func loadShares(session: SessionStore) async {
+        guard let token = session.token else { return }
+        do {
+            shares = try await api.listShares(matchId: matchId, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+        } catch {
+            // Keep the previous list — the card's actions surface errors.
+        }
+    }
+
+    /// Creates a live share link, then refreshes the list so the new
+    /// row (with its public URL) appears immediately.
+    func createShare(includeScores: Bool, destAddress: String?, bufferMin: Int, session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            _ = try await api.createShare(
+                matchId: matchId,
+                includeScores: includeScores,
+                destAddress: destAddress,
+                bufferMin: bufferMin,
+                token: token
+            )
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        await loadShares(session: session)
+    }
+
+    /// Stops (revokes) a share link, then refreshes the list.
+    func deleteShare(id: String, session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            try await api.deleteShare(shareId: id, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        await loadShares(session: session)
     }
 
     /// POSTs a FIX TEE crowdfix. Returns the server verdict — `ok: false`

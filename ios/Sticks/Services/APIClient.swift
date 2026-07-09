@@ -107,6 +107,43 @@ nonisolated struct AvatarResponse: Decodable {
     let avatarUrl: String?
 }
 
+/// Body for POST /matches/:id/pars — one par per hole, 3–6 each.
+nonisolated struct ParsRequest: Encodable {
+    let pars: [Int]
+}
+
+nonisolated struct ParsResponse: Decodable {
+    let ok: Bool
+    let pars: [Int]
+}
+
+/// Body for POST /matches/:id/side-games — the FULL desired set of
+/// side-game kinds (the server reconciles adds and removes).
+nonisolated struct SideGamesRequest: Encodable {
+    let kinds: [String]
+}
+
+nonisolated struct SideGamesResponse: Decodable {
+    let ok: Bool
+    let kinds: [String]
+}
+
+nonisolated struct SharesResponse: Decodable {
+    let shares: [RoundShare]
+}
+
+nonisolated struct ShareResponse: Decodable {
+    let share: RoundShare
+}
+
+/// Body for POST /matches/:id/shares. A nil destAddress is omitted
+/// entirely (synthesized Encodable drops nil keys — intended here).
+nonisolated struct CreateShareRequest: Encodable {
+    let includeScores: Bool
+    let destAddress: String?
+    let bufferMin: Int
+}
+
 /// Body for POST /groups.
 nonisolated struct CreateGroupRequest: Encodable {
     let name: String
@@ -215,6 +252,54 @@ nonisolated struct APIClient {
     /// a 403 carries a server message shown verbatim.
     func postReopen(matchId: String, token: String) async throws {
         let request = makeRequest(path: "matches/\(matchId)/reopen", method: "POST", token: token)
+        let _: OkResponse = try await perform(request)
+    }
+
+    /// POST /matches/:id/pars — creator-only par overrides (3–6 per
+    /// hole, any status). 400/403 carry server messages shown verbatim.
+    func setPars(matchId: String, pars: [Int], token: String) async throws -> [Int] {
+        var request = makeRequest(path: "matches/\(matchId)/pars", method: "POST", token: token)
+        request.httpBody = try encoder.encode(ParsRequest(pars: pars))
+        let response: ParsResponse = try await perform(request)
+        return response.pars
+    }
+
+    /// POST /matches/:id/side-games — replaces the match's side games
+    /// with the full desired set of kinds. Creator-only; 400/403 carry
+    /// server messages shown verbatim.
+    func setSideGames(matchId: String, kinds: [String], token: String) async throws -> [String] {
+        var request = makeRequest(path: "matches/\(matchId)/side-games", method: "POST", token: token)
+        request.httpBody = try encoder.encode(SideGamesRequest(kinds: kinds))
+        let response: SideGamesResponse = try await perform(request)
+        return response.kinds
+    }
+
+    /// GET /matches/:id/shares — the caller's live share links for a round.
+    func listShares(matchId: String, token: String) async throws -> [RoundShare] {
+        let request = makeRequest(path: "matches/\(matchId)/shares", method: "GET", token: token)
+        let response: SharesResponse = try await perform(request)
+        return response.shares
+    }
+
+    /// POST /matches/:id/shares — creates a live share link.
+    func createShare(
+        matchId: String,
+        includeScores: Bool,
+        destAddress: String?,
+        bufferMin: Int,
+        token: String
+    ) async throws -> RoundShare {
+        var request = makeRequest(path: "matches/\(matchId)/shares", method: "POST", token: token)
+        request.httpBody = try encoder.encode(
+            CreateShareRequest(includeScores: includeScores, destAddress: destAddress, bufferMin: bufferMin)
+        )
+        let response: ShareResponse = try await perform(request)
+        return response.share
+    }
+
+    /// DELETE /shares/:id — stops (revokes) a live share link.
+    func deleteShare(shareId: String, token: String) async throws {
+        let request = makeRequest(path: "shares/\(shareId)", method: "DELETE", token: token)
         let _: OkResponse = try await perform(request)
     }
 

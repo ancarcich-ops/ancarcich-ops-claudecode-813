@@ -21,7 +21,6 @@ import SwiftUI
 struct StatsView: View {
     let user: User
     let session: SessionStore
-    var tabSelection: Binding<SticksTab>? = nil
 
     @State private var viewModel = StatsViewModel()
     @State private var baselineSelection: BaselineSelection = .hcp(10)
@@ -42,11 +41,6 @@ struct StatsView: View {
                     if let stats = viewModel.stats {
                         content(stats)
                     }
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let tabSelection {
-                    SticksTabBar(selection: tabSelection)
                 }
             }
             .navigationDestination(for: MatchSummary.self) { match in

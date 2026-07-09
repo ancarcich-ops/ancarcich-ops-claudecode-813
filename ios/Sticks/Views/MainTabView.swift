@@ -4,9 +4,13 @@
 //
 //  Slice 12/15: the signed-in root — a 4-tab structure (Home / Groups /
 //  Stats / Settings) with a custom cream tab bar. Each tab keeps its
-//  own NavigationStack alive across switches; the bar lives on each
-//  tab's ROOT screen only, so pushed screens (match detail, GPS) stay
-//  full-bleed exactly as before.
+//  own NavigationStack alive across switches.
+//
+//  Slice 29: the bar is owned HERE as a bottom safe-area inset over all
+//  four stacks, so it persists on pushed screens (match detail, group
+//  leaderboard). It hides only while the immersive on-course GPS screen
+//  is up (via TabChrome). The inset also keeps scroll content from
+//  hiding behind the bar on every screen automatically.
 //
 
 import SwiftUI
@@ -25,27 +29,36 @@ struct MainTabView: View {
 
     @State private var selection: SticksTab = .home
 
+    private var chrome: TabChrome { .shared }
+
     var body: some View {
         ZStack {
-            MatchListView(user: user, session: session, tabSelection: $selection)
+            MatchListView(user: user, session: session)
                 .opacity(selection == .home ? 1 : 0)
                 .allowsHitTesting(selection == .home)
                 .accessibilityHidden(selection != .home)
 
-            GroupsView(session: session, tabSelection: $selection)
+            GroupsView(session: session)
                 .opacity(selection == .groups ? 1 : 0)
                 .allowsHitTesting(selection == .groups)
                 .accessibilityHidden(selection != .groups)
 
-            StatsView(user: user, session: session, tabSelection: $selection)
+            StatsView(user: user, session: session)
                 .opacity(selection == .stats ? 1 : 0)
                 .allowsHitTesting(selection == .stats)
                 .accessibilityHidden(selection != .stats)
 
-            SettingsView(user: user, session: session, tabSelection: $selection)
+            SettingsView(user: user, session: session)
                 .opacity(selection == .settings ? 1 : 0)
                 .allowsHitTesting(selection == .settings)
                 .accessibilityHidden(selection != .settings)
+        }
+        // The persistent bar — a safe-area inset so every screen's
+        // scroll content (roots AND pushed screens) is inset above it.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !chrome.hidesTabBar {
+                SticksTabBar(selection: $selection)
+            }
         }
         // Slice 13: hidden tabs stay mounted, so an open GPS screen on a
         // match with NO active round would keep foreground location

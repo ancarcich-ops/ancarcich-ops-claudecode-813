@@ -59,20 +59,37 @@ struct GroupLeaderboardView: View {
 
     // MARK: - Back chip
 
-    /// "← #GROUPNAME" — replaces the system back button.
+    /// "← #GROUPNAME" — replaces the system back button. The ← glyph
+    /// always stays fully visible; the name tail-truncates at a sane
+    /// max width, and very long names fall back to "← BACK" instead of
+    /// a mangled hashtag.
     private var backChip: some View {
         Button {
             dismiss()
         } label: {
-            Text("← #\(hashtagName)")
-                .font(SticksFont.mono(11.5))
-                .kerning(1.15)
-                .foregroundStyle(Color.sticksGreen)
-                .lineLimit(1)
-                .contentShape(.rect)
+            HStack(spacing: 6) {
+                Text("←")
+                    .layoutPriority(1)
+
+                Text(backLabel)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .font(SticksFont.mono(11.5))
+            .kerning(1.15)
+            .foregroundStyle(Color.sticksGreen)
+            .frame(maxWidth: 180, alignment: .leading)
+            .padding(.leading, 4)
+            .padding(.vertical, 6)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Back to \(group.name)")
+    }
+
+    /// Long hashtags truncate badly in the nav bar — prefer BACK.
+    private var backLabel: String {
+        hashtagName.count > 14 ? "BACK" : "#\(hashtagName)"
     }
 
     private var hashtagName: String {

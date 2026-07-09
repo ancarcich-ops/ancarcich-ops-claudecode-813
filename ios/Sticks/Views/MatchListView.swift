@@ -12,9 +12,6 @@ import SwiftUI
 struct MatchListView: View {
     let user: User
     let session: SessionStore
-    /// Present when hosted inside the tab root — renders the tab bar on
-    /// this screen only (pushed screens stay full-bleed).
-    var tabSelection: Binding<SticksTab>? = nil
 
     @State private var viewModel = MatchListViewModel()
     @State private var path = NavigationPath()
@@ -39,11 +36,6 @@ struct MatchListView: View {
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) { header }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let tabSelection {
-                    SticksTabBar(selection: tabSelection)
-                }
-            }
             .navigationDestination(for: MatchSummary.self) { match in
                 MatchDetailView(match: match, session: session)
             }

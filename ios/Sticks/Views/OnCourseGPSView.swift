@@ -72,11 +72,15 @@ struct OnCourseGPSView: View {
         // on the hole rail row, reclaiming a full row of map space.
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
+            // Slice 29: this screen is intentionally immersive — hide
+            // the persistent tab bar while it's up.
+            TabChrome.shared.hidesTabBar = true
             RoundSessionService.shared.gpsScreenAppeared()
             initializeIfNeeded()
             RoundSessionService.shared.beginRound(viewModel: viewModel, holeIndex: holeIndex, session: session)
         }
         .onDisappear {
+            TabChrome.shared.hidesTabBar = false
             // Round-scoped: the Live Activity, watch snapshot, and
             // background location persist past this screen. The session
             // stops foreground location only when no round is active.

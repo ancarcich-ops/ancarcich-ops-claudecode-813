@@ -12,7 +12,6 @@ import UIKit
 
 struct GroupsView: View {
     let session: SessionStore
-    var tabSelection: Binding<SticksTab>? = nil
 
     @State private var viewModel = GroupsViewModel()
 
@@ -28,11 +27,6 @@ struct GroupsView: View {
                     failedView(message)
                 case .loaded:
                     content
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let tabSelection {
-                    SticksTabBar(selection: tabSelection)
                 }
             }
             .navigationDestination(for: SticksGroup.self) { group in
