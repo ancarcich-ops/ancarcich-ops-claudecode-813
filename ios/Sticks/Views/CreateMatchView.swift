@@ -2,21 +2,35 @@
 //  CreateMatchView.swift
 //  Sticks
 //
-//  Slice 20: the "start a round" flow. Single-scroll form — course
-//  search (name + one-shot "near me"), 9/18 + front/back, NET/GROSS,
-//  the seat list with recent-partner suggestions, side-game chips and
-//  a group picker — ending in a pinned ledge CREATE button that posts
-//  the match and hands the new id back to the caller.
+//  Slice 20: the "start a round" flow — course search (name + one-shot
+//  "near me"), 9/18 + front/back, NET/GROSS, the seat list with
+//  recent-partner suggestions, side-game chips and a group picker,
+//  ending in a pinned ledge CREATE button that posts the match and
+//  hands the new id back to the caller.
 //
 //  Slice 27: the same form reopens in EDIT MODE (pass a
 //  MatchEditContext) — pre-filled from the match, "Save changes"
 //  PATCHes /matches/:id instead of POSTing.
+//
+//  Slice 32: reorganized into a step-by-step wizard — Course → Round →
+//  Players → Side games (solo rounds skip Side games), with a labeled
+//  step indicator up top and a pinned Back/Next footer. Same sections,
+//  same view model, same API calls — one step on screen at a time.
 //
 
 import SwiftUI
 import UIKit
 
 struct CreateMatchView: View {
+    /// One wizard step — each shows one slice of the old single-scroll
+    /// form. Solo rounds (just the "me" seat) skip `.sideGames`.
+    enum Step: Int, CaseIterable {
+        case course
+        case round
+        case players
+        case sideGames
+    }
+
     let user: User
     let session: SessionStore
     /// Called with the match id after a successful POST (or PATCH in
@@ -25,6 +39,9 @@ struct CreateMatchView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: CreateMatchViewModel
+    @State private var step: Step
+    /// True while moving forward — drives the slide direction.
+    @State private var isAdvancing = true
     @FocusState private var focusedSeat: UUID?
     @FocusState private var isCourseFieldFocused: Bool
 
@@ -32,11 +49,13 @@ struct CreateMatchView: View {
         user: User,
         session: SessionStore,
         editing: MatchEditContext? = nil,
+        initialStep: Step = .course,
         onCreated: @escaping (String) -> Void
     ) {
         self.user = user
         self.session = session
         self.onCreated = onCreated
+        _step = State(initialValue: initialStep)
         _viewModel = State(initialValue: CreateMatchViewModel(editing: editing, user: user))
     }
 
@@ -46,70 +65,202 @@ struct CreateMatchView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
-                    titleBlock
-                    courseSection
-                    holesSection
-                    scoringSection
-                    playersSection
-                    sideGamesSection
-                    groupSection
+                    stepTitleBlock
+                    stepSections
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 6)
                 .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .id(step)
+                .transition(stepTransition)
             }
             .scrollDismissesKeyboard(.interactively)
         }
         .safeAreaInset(edge: .top, spacing: 0) { header }
-        .safeAreaInset(edge: .bottom, spacing: 0) { createBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) { footerBar }
         .task {
             await viewModel.bootstrap(user: user, session: session)
+        }
+    }
+
+    // MARK: - Wizard plumbing
+
+    /// The steps this round actually shows — solo rounds have no
+    /// side-games step (mirrors the web, where solo ends at Players).
+    private var visibleSteps: [Step] {
+        var steps: [Step] = [.course, .round, .players]
+        if viewModel.seats.count > 1 {
+            steps.append(.sideGames)
+        }
+        return steps
+    }
+
+    private var isLastStep: Bool { step == visibleSteps.last }
+
+    /// Per-step gate on Next. The final step defers to `canCreate`.
+    private func canLeave(_ step: Step) -> Bool {
+        switch step {
+        case .course: return viewModel.selectedCourse != nil
+        case .round: return true
+        case .players: return viewModel.seatsAreValid
+        case .sideGames: return true
+        }
+    }
+
+    private var isPrimaryEnabled: Bool {
+        isLastStep ? viewModel.canCreate : canLeave(step)
+    }
+
+    private var stepTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: isAdvancing ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: isAdvancing ? .leading : .trailing).combined(with: .opacity)
+        )
+    }
+
+    private func goNext() {
+        guard let index = visibleSteps.firstIndex(of: step),
+              index + 1 < visibleSteps.count else { return }
+        focusedSeat = nil
+        isCourseFieldFocused = false
+        isAdvancing = true
+        withAnimation(.easeOut(duration: 0.22)) {
+            step = visibleSteps[index + 1]
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func goBack() {
+        guard let index = visibleSteps.firstIndex(of: step), index > 0 else { return }
+        focusedSeat = nil
+        isCourseFieldFocused = false
+        isAdvancing = false
+        withAnimation(.easeOut(duration: 0.22)) {
+            step = visibleSteps[index - 1]
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// The current step's sections — one step's content on screen at a
+    /// time, each a plain VStack of cards on the cream background.
+    @ViewBuilder private var stepSections: some View {
+        switch step {
+        case .course:
+            courseSection
+        case .round:
+            holesSection
+            scoringSection
+            groupSection
+        case .players:
+            playersSection
+        case .sideGames:
+            sideGamesSection
         }
     }
 
     // MARK: - Chrome
 
     private var header: some View {
-        HStack {
-            Text(viewModel.isEditing ? "EDIT ROUND" : "NEW ROUND")
-                .font(SticksFont.mono(11))
-                .kerning(1.54)
-                .foregroundStyle(Color.sticksGreen)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(viewModel.isEditing ? "EDIT ROUND" : "NEW ROUND")
+                    .font(SticksFont.mono(11))
+                    .kerning(1.54)
+                    .foregroundStyle(Color.sticksGreen)
 
-            Spacer()
+                Spacer()
 
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.sticksMuted)
-                    .frame(width: 32, height: 32)
-                    .background(Color.sticksPanel2)
-                    .clipShape(.circle)
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.sticksMuted)
+                        .frame(width: 32, height: 32)
+                        .background(Color.sticksPanel2)
+                        .clipShape(.circle)
+                }
+                .accessibilityLabel("Close")
             }
-            .accessibilityLabel("Close")
+
+            stepIndicator
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.bottom, 10)
         .background(Color.sticksBg.opacity(0.97))
     }
 
-    private var titleBlock: some View {
+    /// Labeled dots — Course · Round · Players · Side games — with the
+    /// current one in accent green. The side-games dot disappears for
+    /// solo rounds so the count stays honest.
+    private var stepIndicator: some View {
+        HStack(spacing: 14) {
+            ForEach(visibleSteps, id: \.self) { item in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(item == step ? Color.sticksGreen : Color.sticksHairline)
+                        .frame(width: 6, height: 6)
+
+                    Text(stepLabel(item))
+                        .font(SticksFont.mono(9))
+                        .kerning(1.1)
+                        .foregroundStyle(item == step ? Color.sticksGreen : Color.sticksFaint)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .animation(.easeOut(duration: 0.18), value: step)
+        .animation(.easeOut(duration: 0.18), value: visibleSteps)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \((visibleSteps.firstIndex(of: step) ?? 0) + 1) of \(visibleSteps.count): \(stepLabel(step).capitalized)")
+    }
+
+    private func stepLabel(_ step: Step) -> String {
+        switch step {
+        case .course: return "COURSE"
+        case .round: return "ROUND"
+        case .players: return "PLAYERS"
+        case .sideGames: return "SIDE GAMES"
+        }
+    }
+
+    private var stepTitleBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(viewModel.isEditing ? "Edit round" : "Start a round")
+            Text(stepTitle)
                 .font(SticksFont.display(34, weight: .bold))
                 .kerning(-0.7)
                 .foregroundStyle(Color.sticksInk)
 
-            Text(
-                viewModel.isEditing
-                    ? "Adjust the details — nothing changes until you save."
-                    : "Pick the course, seat your group, tee off."
-            )
-            .font(SticksFont.sans(14))
-            .foregroundStyle(Color.sticksMuted)
+            Text(stepSubtitle)
+                .font(SticksFont.sans(14))
+                .foregroundStyle(Color.sticksMuted)
+        }
+    }
+
+    private var stepTitle: String {
+        switch step {
+        case .course: return viewModel.isEditing ? "Edit round" : "Start a round"
+        case .round: return "Round setup"
+        case .players: return "Players"
+        case .sideGames: return "Side games"
+        }
+    }
+
+    private var stepSubtitle: String {
+        switch step {
+        case .course:
+            return viewModel.isEditing
+                ? "Adjust the details — nothing changes until you save."
+                : "Where are you playing?"
+        case .round:
+            return "Holes, scoring, and where to post."
+        case .players:
+            return "Seat your group and set handicaps."
+        case .sideGames:
+            return "Optional — pick what's in play."
         }
     }
 
@@ -640,9 +791,9 @@ struct CreateMatchView: View {
         }
     }
 
-    // MARK: - Create bar
+    // MARK: - Footer (Back / Next / Create)
 
-    private var createBar: some View {
+    private var footerBar: some View {
         VStack(spacing: 10) {
             if let error = viewModel.createError {
                 Text(error)
@@ -651,30 +802,78 @@ struct CreateMatchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Button {
-                create()
-            } label: {
-                Group {
-                    if viewModel.isCreating {
-                        ProgressView().tint(Color.sticksCream)
-                    } else {
-                        Text(viewModel.isEditing ? "SAVE CHANGES" : "CREATE ROUND")
-                            .font(SticksFont.sans(15, weight: .bold))
-                            .kerning(0.6)
-                            .foregroundStyle(Color.sticksCream)
-                    }
+            HStack(spacing: 10) {
+                if step != visibleSteps.first {
+                    backButton
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
+
+                Button {
+                    if isLastStep {
+                        create()
+                    } else {
+                        goNext()
+                    }
+                } label: {
+                    Group {
+                        if viewModel.isCreating {
+                            ProgressView().tint(Color.sticksCream)
+                        } else {
+                            HStack(spacing: 7) {
+                                Text(primaryLabel)
+                                    .font(SticksFont.sans(15, weight: .bold))
+                                    .kerning(0.6)
+
+                                if !isLastStep {
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 13, weight: .bold))
+                                }
+                            }
+                            .foregroundStyle(Color.sticksCream)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                }
+                .buttonStyle(CreateLedgeButtonStyle(showsLedge: isPrimaryEnabled))
+                .disabled(!isPrimaryEnabled)
+                .opacity(isPrimaryEnabled ? 1 : 0.5)
             }
-            .buttonStyle(CreateLedgeButtonStyle(showsLedge: viewModel.canCreate))
-            .disabled(!viewModel.canCreate)
-            .opacity(viewModel.canCreate ? 1 : 0.5)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 8)
         .background(Color.sticksBg.opacity(0.97))
+        .animation(.easeOut(duration: 0.18), value: step)
+    }
+
+    private var primaryLabel: String {
+        guard isLastStep else { return "NEXT" }
+        return viewModel.isEditing ? "SAVE CHANGES" : "CREATE ROUND"
+    }
+
+    private var backButton: some View {
+        Button {
+            goBack()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 12, weight: .bold))
+                Text("BACK")
+                    .font(SticksFont.mono(11))
+                    .kerning(1)
+            }
+            .foregroundStyle(Color.sticksMuted)
+            .frame(width: 92, height: 52)
+            .background(Color.sticksPanel2)
+            .clipShape(.rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(viewModel.isCreating)
+        .accessibilityLabel("Back")
     }
 
     private func create() {

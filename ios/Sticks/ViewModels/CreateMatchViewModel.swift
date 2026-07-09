@@ -152,14 +152,19 @@ final class CreateMatchViewModel {
 
     var canAddSeat: Bool { seats.count < 8 }
 
-    /// Course chosen + every seat has a name and a parseable handicap.
-    var canCreate: Bool {
-        guard selectedCourse != nil, !isCreating else { return false }
+    /// 1–8 seats and every seat has a name plus a parseable handicap —
+    /// the Players step's gate (slice 32).
+    var seatsAreValid: Bool {
         guard (1 ... 8).contains(seats.count) else { return false }
         return seats.allSatisfy { seat in
             !seat.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && Self.parseHandicap(seat.handicapText) != nil
         }
+    }
+
+    /// Course chosen + every seat has a name and a parseable handicap.
+    var canCreate: Bool {
+        selectedCourse != nil && !isCreating && seatsAreValid
     }
 
     // MARK: - Bootstrap
