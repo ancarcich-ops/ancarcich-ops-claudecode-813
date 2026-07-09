@@ -285,15 +285,21 @@ private struct LivePlayerBlock: View {
     }
 
     private func progressRow(holesPlayed: Int) -> some View {
-        HStack(spacing: 8) {
-            Text("THRU \(holesPlayed) OF \(match.holes)")
-                .font(SticksFont.mono(10))
-                .kerning(0.8)
-                .foregroundStyle(Color.sticksMuted)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Color.sticksPanel2)
-                .clipShape(.capsule)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("THRU \(holesPlayed) OF \(match.holes)")
+                    .font(SticksFont.mono(10))
+                    .kerning(0.8)
+                    .foregroundStyle(Color.sticksMuted)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.sticksPanel2)
+                    .clipShape(.capsule)
+
+                NineSummaryPill(match: match, player: player, holesPlayed: holesPlayed)
+
+                Spacer(minLength: 0)
+            }
 
             if let chip = MatchCardMath.momentumChip(for: player, in: match) {
                 Text("\(chip.emoji) \(chip.label)")
@@ -308,9 +314,69 @@ private struct LivePlayerBlock: View {
                         Capsule().stroke(chip.color.opacity(0.3), lineWidth: 1)
                     )
             }
-
-            Spacer(minLength: 0)
         }
+    }
+}
+
+// MARK: - Nine summary pill
+
+/// "FRONT 9 39 · BACK 9 — · TOTAL 39 (9h)" — mirrors the web's live-card
+/// summary. 9-hole rounds collapse to just "TOTAL n (mh)". ViewThatFits
+/// falls back to an abbreviated form on narrow widths.
+private struct NineSummaryPill: View {
+    let match: MatchSummary
+    let player: MatchPlayerSummary
+    let holesPlayed: Int
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            pill(text(compact: false))
+            pill(text(compact: true))
+        }
+    }
+
+    private func pill(_ content: Text) -> some View {
+        content
+            .font(SticksFont.mono(10))
+            .kerning(0.6)
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(Color.sticksPanel2)
+            .clipShape(.capsule)
+    }
+
+    private var frontTotal: Int? { MatchCardMath.strokes(for: player, holes: 1 ... 9) }
+    private var backTotal: Int? { MatchCardMath.strokes(for: player, holes: 10 ... 18) }
+
+    private var roundTotal: Int? {
+        switch (frontTotal, backTotal) {
+        case (nil, nil): nil
+        case (let front, let back): (front ?? 0) + (back ?? 0)
+        }
+    }
+
+    private func text(compact: Bool) -> Text {
+        var parts: [Text] = []
+        // 18-hole rounds get the nine splits; 9-hole rounds just the total.
+        if match.holes > 9 {
+            parts.append(segment(label: compact ? "F9" : "FRONT 9", value: frontTotal))
+            parts.append(segment(label: compact ? "B9" : "BACK 9", value: backTotal))
+        }
+        parts.append(
+            segment(label: compact ? "TOT" : "TOTAL", value: roundTotal)
+                + Text(" (\(holesPlayed)h)").foregroundStyle(Color.sticksMuted)
+        )
+
+        let separator = Text(" · ").foregroundStyle(Color.sticksMuted.opacity(0.6))
+        return parts.dropFirst().reduce(parts[0]) { $0 + separator + $1 }
+    }
+
+    private func segment(label: String, value: Int?) -> Text {
+        Text("\(label) ").foregroundStyle(Color.sticksMuted)
+            + Text(value.map(String.init) ?? "—")
+                .fontWeight(value == nil ? .regular : .semibold)
+                .foregroundStyle(value == nil ? Color.sticksMuted : Color.sticksInk)
     }
 }
 
@@ -545,6 +611,13 @@ nonisolated enum MatchCardMath {
             played += 1
         }
         return played > 0 ? diff : nil
+    }
+
+    /// Sum of the player's strokes on the given ABSOLUTE hole numbers —
+    /// nil when none of those holes are scored yet.
+    static func strokes(for player: MatchPlayerSummary, holes: ClosedRange<Int>) -> Int? {
+        let scored = holes.compactMap { player.scoresByHole[$0] }
+        return scored.isEmpty ? nil : scored.reduce(0, +)
     }
 
     /// "-2" / "+3" / "E" / "—".
