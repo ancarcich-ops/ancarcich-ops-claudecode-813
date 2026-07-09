@@ -10,6 +10,12 @@
 import Foundation
 import Observation
 
+extension Notification.Name {
+    /// Posted after the user creates or joins a group so the header's
+    /// group switcher refreshes without visiting the Groups tab again.
+    static let sticksGroupsDidChange = Notification.Name("sticksGroupsDidChange")
+}
+
 @Observable
 final class GroupsViewModel {
     enum Phase: Equatable {
@@ -120,5 +126,6 @@ final class GroupsViewModel {
         groups.removeAll { $0.id == group.id }
         groups.insert(group, at: 0)
         phase = .loaded
+        NotificationCenter.default.post(name: .sticksGroupsDidChange, object: nil)
     }
 }

@@ -11,9 +11,12 @@ import SwiftUI
 import UIKit
 
 struct GroupsView: View {
+    let user: User
     let session: SessionStore
+    @Binding var tabSelection: SticksTab
 
     @State private var viewModel = GroupsViewModel()
+    @State private var showsCreate = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +32,14 @@ struct GroupsView: View {
                     content
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                TabHeaderBar(
+                    title: "Groups",
+                    user: user,
+                    session: session,
+                    showsCreate: $showsCreate
+                )
+            }
             .navigationDestination(for: SticksGroup.self) { group in
                 GroupFeedView(group: group, session: session)
             }
@@ -40,9 +51,27 @@ struct GroupsView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
         }
+        .fullScreenCover(isPresented: $showsCreate) {
+            CreateMatchView(user: user, session: session) { matchId in
+                handleCreated(matchId)
+            }
+        }
         .task {
             await viewModel.load(session: session)
         }
+    }
+
+    /// A round created away from Home: refresh feeds, hop to the Home
+    /// tab, and let it push the new match's detail (its create flow).
+    private func handleCreated(_ matchId: String) {
+        showsCreate = false
+        NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+        tabSelection = .home
+        NotificationCenter.default.post(
+            name: .sticksOpenMatch,
+            object: nil,
+            userInfo: ["matchId": matchId]
+        )
     }
 
     // MARK: - Content
@@ -50,11 +79,6 @@ struct GroupsView: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Groups")
-                    .font(SticksFont.display(40, weight: .bold))
-                    .kerning(-0.8)
-                    .foregroundStyle(Color.sticksInk)
-
                 Text("A group is a private feed. Matches you post are seen only by members. Share an invite code to add friends.")
                     .font(SticksFont.sans(14.5))
                     .foregroundStyle(Color.sticksMuted)
@@ -76,7 +100,7 @@ struct GroupsView: View {
                 JoinGroupCard(viewModel: viewModel, session: session)
             }
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 8)
             .padding(.bottom, 32)
         }
         .refreshable {
@@ -683,5 +707,9 @@ private struct JoinGroupCard: View {
 }
 
 #Preview {
-    GroupsView(session: SessionStore())
+    GroupsView(
+        user: User(id: "1", username: "tj", displayName: "Tj"),
+        session: SessionStore(),
+        tabSelection: .constant(.groups)
+    )
 }

@@ -21,9 +21,11 @@ import SwiftUI
 struct StatsView: View {
     let user: User
     let session: SessionStore
+    @Binding var tabSelection: SticksTab
 
     @State private var viewModel = StatsViewModel()
     @State private var baselineSelection: BaselineSelection = .hcp(10)
+    @State private var showsCreate = false
 
     var body: some View {
         NavigationStack {
@@ -43,14 +45,40 @@ struct StatsView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                TabHeaderBar(
+                    title: "Stats",
+                    user: user,
+                    session: session,
+                    showsCreate: $showsCreate
+                )
+            }
             .navigationDestination(for: MatchSummary.self) { match in
                 MatchDetailView(match: match, session: session)
             }
             .toolbar(.hidden, for: .navigationBar)
         }
+        .fullScreenCover(isPresented: $showsCreate) {
+            CreateMatchView(user: user, session: session) { matchId in
+                handleCreated(matchId)
+            }
+        }
         .task {
             await viewModel.load(session: session)
         }
+    }
+
+    /// A round created away from Home: refresh feeds, hop to the Home
+    /// tab, and let it push the new match's detail (its create flow).
+    private func handleCreated(_ matchId: String) {
+        showsCreate = false
+        NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+        tabSelection = .home
+        NotificationCenter.default.post(
+            name: .sticksOpenMatch,
+            object: nil,
+            userInfo: ["matchId": matchId]
+        )
     }
 
     // MARK: - Content
@@ -102,7 +130,7 @@ struct StatsView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 8)
             .padding(.bottom, 32)
         }
         .refreshable {

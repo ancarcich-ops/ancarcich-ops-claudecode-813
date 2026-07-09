@@ -17,8 +17,10 @@ import UIKit
 struct SettingsView: View {
     let user: User
     let session: SessionStore
+    @Binding var tabSelection: SticksTab
 
     @State private var viewModel = SettingsViewModel()
+    @State private var showsCreate = false
 
     // Display name editing
     @State private var showsNameAlert = false
@@ -58,14 +60,27 @@ struct SettingsView: View {
                         accountCard
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 16)
+                    .padding(.top, 8)
                     .padding(.bottom, 32)
                 }
                 .refreshable {
                     await viewModel.load(session: session)
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                TabHeaderBar(
+                    title: "Settings",
+                    user: user,
+                    session: session,
+                    showsCreate: $showsCreate
+                )
+            }
             .toolbar(.hidden, for: .navigationBar)
+        }
+        .fullScreenCover(isPresented: $showsCreate) {
+            CreateMatchView(user: user, session: session) { matchId in
+                handleCreated(matchId)
+            }
         }
         .task {
             await viewModel.load(session: session)
@@ -138,23 +153,31 @@ struct SettingsView: View {
 
     // MARK: - Header
 
+    /// The "Settings" title now lives in the shared tab header — this
+    /// keeps just the identity line at the top of the scroll.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Settings")
-                .font(SticksFont.display(40, weight: .bold))
-                .kerning(-0.8)
-                .foregroundStyle(Color.sticksInk)
+        (
+            Text("@\(username)")
+                .font(SticksFont.mono(12))
+                .foregroundStyle(Color.sticksGreen)
+            + Text(" · \(displayName)")
+                .font(SticksFont.sans(13))
+                .foregroundStyle(Color.sticksMuted)
+        )
+        .lineLimit(1)
+    }
 
-            (
-                Text("@\(username)")
-                    .font(SticksFont.mono(12))
-                    .foregroundStyle(Color.sticksGreen)
-                + Text(" · \(displayName)")
-                    .font(SticksFont.sans(13))
-                    .foregroundStyle(Color.sticksMuted)
-            )
-            .lineLimit(1)
-        }
+    /// A round created away from Home: refresh feeds, hop to the Home
+    /// tab, and let it push the new match's detail (its create flow).
+    private func handleCreated(_ matchId: String) {
+        showsCreate = false
+        NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+        tabSelection = .home
+        NotificationCenter.default.post(
+            name: .sticksOpenMatch,
+            object: nil,
+            userInfo: ["matchId": matchId]
+        )
     }
 
     // MARK: - Profile photo card
@@ -628,6 +651,7 @@ private struct SettingsAvatar: View {
 #Preview {
     SettingsView(
         user: User(id: "1", username: "tj", displayName: "Tj"),
-        session: SessionStore()
+        session: SessionStore(),
+        tabSelection: .constant(.settings)
     )
 }

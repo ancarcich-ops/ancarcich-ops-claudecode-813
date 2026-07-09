@@ -13,6 +13,10 @@ extension Notification.Name {
     /// detail screen so the home feed refreshes without waiting for a
     /// manual pull.
     static let sticksMatchesDidChange = Notification.Name("sticksMatchesDidChange")
+
+    /// Posted with userInfo ["matchId": String] after a round is created
+    /// from a non-Home tab — Home reloads and pushes that match's detail.
+    static let sticksOpenMatch = Notification.Name("sticksOpenMatch")
 }
 
 @Observable

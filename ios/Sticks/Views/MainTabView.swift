@@ -38,17 +38,17 @@ struct MainTabView: View {
                 .allowsHitTesting(selection == .home)
                 .accessibilityHidden(selection != .home)
 
-            GroupsView(session: session)
+            GroupsView(user: user, session: session, tabSelection: $selection)
                 .opacity(selection == .groups ? 1 : 0)
                 .allowsHitTesting(selection == .groups)
                 .accessibilityHidden(selection != .groups)
 
-            StatsView(user: user, session: session)
+            StatsView(user: user, session: session, tabSelection: $selection)
                 .opacity(selection == .stats ? 1 : 0)
                 .allowsHitTesting(selection == .stats)
                 .accessibilityHidden(selection != .stats)
 
-            SettingsView(user: user, session: session)
+            SettingsView(user: user, session: session, tabSelection: $selection)
                 .opacity(selection == .settings ? 1 : 0)
                 .allowsHitTesting(selection == .settings)
                 .accessibilityHidden(selection != .settings)
@@ -70,6 +70,18 @@ struct MainTabView: View {
             } else if newValue == .home {
                 RoundSessionService.shared.homeTabShown()
             }
+        }
+        // Slice 31: the header's group switcher must be populated on
+        // every tab without visiting Groups first — load here, refresh
+        // on matches/groups-changed signals.
+        .task {
+            await GroupFilterStore.shared.load(session: session)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sticksMatchesDidChange)) { _ in
+            Task { await GroupFilterStore.shared.load(session: session) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sticksGroupsDidChange)) { _ in
+            Task { await GroupFilterStore.shared.load(session: session) }
         }
     }
 }

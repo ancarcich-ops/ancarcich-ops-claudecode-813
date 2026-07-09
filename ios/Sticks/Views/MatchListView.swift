@@ -17,6 +17,8 @@ struct MatchListView: View {
     @State private var path = NavigationPath()
     @State private var showsCreate = false
 
+    private var groupFilter: GroupFilterStore { .shared }
+
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
@@ -28,8 +30,12 @@ struct MatchListView: View {
                 case .failed(let message):
                     failedView(message)
                 case .loaded:
-                    if viewModel.matches.isEmpty {
-                        emptyView
+                    if visibleMatches.isEmpty {
+                        if groupFilter.activeGroupId != nil {
+                            groupEmptyView
+                        } else {
+                            emptyView
+                        }
                     } else {
                         matchList
                     }
@@ -53,7 +59,26 @@ struct MatchListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .sticksMatchesDidChange)) { _ in
             Task { await viewModel.load(session: session) }
         }
+        // A round created from a non-Home tab: reload and push its detail,
+        // exactly like Home's own create flow.
+        .onReceive(NotificationCenter.default.publisher(for: .sticksOpenMatch)) { note in
+            guard let matchId = note.userInfo?["matchId"] as? String else { return }
+            Task { await openCreatedMatch(id: matchId) }
+        }
     }
+
+    // MARK: - Group filter
+
+    /// Slice 31: the header switcher scopes the feed — nil shows all.
+    private func filtered(_ matches: [MatchSummary]) -> [MatchSummary] {
+        guard let groupId = groupFilter.activeGroupId else { return matches }
+        return matches.filter { $0.groupId == groupId }
+    }
+
+    private var visibleMatches: [MatchSummary] { filtered(viewModel.matches) }
+    private var liveMatches: [MatchSummary] { filtered(viewModel.liveMatches) }
+    private var upcomingMatches: [MatchSummary] { filtered(viewModel.upcomingMatches) }
+    private var recentMatches: [MatchSummary] { filtered(viewModel.recentMatches) }
 
     /// After a successful POST /matches: refresh the list and push the
     /// new match's detail so the GPS screen is one tap away.
@@ -68,49 +93,20 @@ struct MatchListView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
-            SticksClubsMark()
-                .frame(width: 34, height: 34)
+            HStack(spacing: 10) {
+                SticksClubsMark()
+                    .frame(width: 34, height: 34)
 
-            Text("Sticks")
-                .font(SticksFont.display(30))
-                .foregroundStyle(Color.sticksInk)
-
-            Spacer()
-
-            Button {
-                showsCreate = true
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("New round")
-                        .font(SticksFont.sans(13.5, weight: .bold))
-                }
-                .foregroundStyle(Color.sticksCream)
-                .padding(.horizontal, 13)
-                .frame(height: 36)
-                .background(Color.sticksGreen)
-                .clipShape(.capsule)
+                Text("Sticks")
+                    .font(SticksFont.display(30))
+                    .foregroundStyle(Color.sticksInk)
+                    .lineLimit(1)
             }
-            .buttonStyle(NewRoundPressStyle())
-            .accessibilityLabel("New round")
+            .layoutPriority(1)
 
-            Menu {
-                Section("@\(user.username)") {
-                    Button(role: .destructive) {
-                        session.signOut()
-                    } label: {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                }
-            } label: {
-                Text(initials(of: user.displayName))
-                    .font(SticksFont.label(13, weight: .bold))
-                    .foregroundStyle(Color.sticksCream)
-                    .frame(width: 36, height: 36)
-                    .background(Color.sticksGreen)
-                    .clipShape(.circle)
-            }
+            Spacer(minLength: 6)
+
+            HeaderControls(user: user, session: session, showsCreate: $showsCreate)
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
@@ -123,18 +119,18 @@ struct MatchListView: View {
     private var matchList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                if !viewModel.liveMatches.isEmpty {
+                if !liveMatches.isEmpty {
                     matchSection(
                         title: "Live",
-                        matches: viewModel.liveMatches,
+                        matches: liveMatches,
                         showsLiveDot: true
                     )
                 }
-                if !viewModel.upcomingMatches.isEmpty {
-                    matchSection(title: "Upcoming", matches: viewModel.upcomingMatches)
+                if !upcomingMatches.isEmpty {
+                    matchSection(title: "Upcoming", matches: upcomingMatches)
                 }
-                if !viewModel.recentMatches.isEmpty {
-                    matchSection(title: "Recent", matches: viewModel.recentMatches)
+                if !recentMatches.isEmpty {
+                    matchSection(title: "Recent", matches: recentMatches)
                 }
             }
             .padding(.horizontal, 20)
@@ -201,6 +197,25 @@ struct MatchListView: View {
         .padding(.horizontal, 40)
     }
 
+    /// The active group has no rounds — the switcher stays up top so
+    /// the user can flip back to "All my groups".
+    private var groupEmptyView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "flag.slash")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(Color.sticksMuted)
+            Text("No rounds in this group yet.")
+                .font(SticksFont.display(22))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.sticksInk)
+            Text("Start one with + New round, or switch\nback to All my groups up top.")
+                .font(SticksFont.sans(14))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.sticksMuted)
+        }
+        .padding(.horizontal, 40)
+    }
+
     private func failedView(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "wifi.slash")
@@ -225,11 +240,6 @@ struct MatchListView: View {
         }
     }
 
-    private func initials(of name: String) -> String {
-        let parts = name.split(separator: " ").prefix(2)
-        let letters = parts.compactMap { $0.first.map(String.init) }
-        return letters.isEmpty ? "?" : letters.joined().uppercased()
-    }
 }
 
 // MARK: - Pieces
@@ -244,15 +254,6 @@ private struct PulsingDot: View {
             .opacity(isPulsing ? 0.35 : 1)
             .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
             .onAppear { isPulsing = true }
-    }
-}
-
-private struct NewRoundPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
-            .opacity(configuration.isPressed ? 0.85 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
