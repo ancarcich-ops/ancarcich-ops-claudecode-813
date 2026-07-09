@@ -85,9 +85,7 @@ struct RoundGlanceView: View {
                         .padding(.top, 8)
                 }
 
-                Text(progressText)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.sticksGold)
+                overallScore
                     .padding(.top, 8)
             }
             .frame(maxWidth: .infinity)
@@ -244,14 +242,25 @@ struct RoundGlanceView: View {
         snapshot.centerYds.map(String.init) ?? "—"
     }
 
-    /// "12/18 SCORED · +3" (the to-par suffix only when known).
-    private var progressText: String {
-        var text = "\(snapshot.holesScored)/\(snapshot.totalHoles) SCORED"
-        if let toPar = snapshot.myToPar {
-            let suffix = toPar == 0 ? "E" : (toPar > 0 ? "+\(toPar)" : "\(toPar)")
-            text += " · \(suffix)"
+    /// "OVERALL SCORE" caption over the wearer's running to-par ("+3" /
+    /// "E" / "-1"), or an em dash before any hole is scored.
+    private var overallScore: some View {
+        VStack(spacing: 1) {
+            Text("OVERALL SCORE")
+                .font(.system(size: 9, weight: .semibold))
+                .kerning(1.2)
+                .foregroundStyle(.secondary)
+            Text(overallScoreText)
+                .font(.system(size: 22, weight: .bold, design: .serif))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(Color.sticksGold)
         }
-        return text
+    }
+
+    private var overallScoreText: String {
+        guard let toPar = snapshot.myToPar else { return "—" }
+        return toPar == 0 ? "E" : (toPar > 0 ? "+\(toPar)" : "\(toPar)")
     }
 
     private func flank(label: String, yards: Int?) -> some View {
