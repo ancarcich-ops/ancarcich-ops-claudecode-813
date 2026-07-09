@@ -68,21 +68,21 @@ struct MatchDetailView: View {
                             if detail.status != .completed {
                                 gpsButton(detail)
                             }
+                            if detail.status == .inProgress, detail.myMatchPlayerId != nil {
+                                MatchHeroCard(
+                                    detail: detail,
+                                    holeGeo: viewModel.response?.holeGeo ?? [:],
+                                    currentHoleIndex: currentHoleIndex(detail)
+                                )
+                            }
+                            scorecardCard(detail)
                             if detail.status == .inProgress {
-                                if detail.myMatchPlayerId != nil {
-                                    MatchHeroCard(
-                                        detail: detail,
-                                        holeGeo: viewModel.response?.holeGeo ?? [:],
-                                        currentHoleIndex: currentHoleIndex(detail)
-                                    )
-                                }
                                 StandingsCard(
                                     detail: detail,
                                     probabilities: viewModel.response?.odds?.probabilities ?? [:],
                                     sideGames: viewModel.response?.sideGames ?? []
                                 )
                             }
-                            scorecardCard(detail)
                             if showsFinishCTA {
                                 finishRoundButton
                             }
