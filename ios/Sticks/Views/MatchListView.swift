@@ -97,9 +97,9 @@ struct MatchListView: View {
                 SticksClubsMark()
                     .frame(width: 34, height: 34)
 
-                Text("Sticks")
+                (Text("Sticks").foregroundStyle(Color.sticksInk)
+                    + Text(".").foregroundStyle(Color.sticksGreen))
                     .font(SticksFont.display(30))
-                    .foregroundStyle(Color.sticksInk)
                     .lineLimit(1)
             }
             .layoutPriority(1)
