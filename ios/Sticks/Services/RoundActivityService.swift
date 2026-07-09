@@ -70,9 +70,47 @@ final class RoundActivityService {
         activity = nil
         lastPushedState = nil
         lastPushAt = .distantPast
+        let activities = Activity<RoundActivityAttributes>.activities
         Task {
-            for activity in Activity<RoundActivityAttributes>.activities {
+            for activity in activities {
                 await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+    }
+
+    /// Termination path (`applicationWillTerminate`): the process dies the
+    /// moment this returns, so async ends never land. Blocks the main
+    /// thread briefly while a detached task ends every activity —
+    /// ActivityKit's `end` is nonisolated, so the detached task makes
+    /// progress while we wait. Worst case the timeout expires and the
+    /// launch-time sweep cleans up next open.
+    func endAllBeforeTermination(timeout: TimeInterval = 2) {
+        pendingPush?.cancel()
+        pendingPush = nil
+        activity = nil
+        lastPushedState = nil
+        let activities = Activity<RoundActivityAttributes>.activities
+        guard !activities.isEmpty else { return }
+        let semaphore = DispatchSemaphore(value: 0)
+        Task.detached(priority: .userInitiated) {
+            for activity in activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + timeout)
+    }
+
+    /// Cold-launch sweep: no round session can exist yet, so ANY live
+    /// activity is a straggler from a force-quit or system kill. Ends
+    /// them all so the lock screen never shows a dead round after the
+    /// termination path missed its window.
+    func sweepStragglersAtLaunch() {
+        let stragglers = Activity<RoundActivityAttributes>.activities
+        guard !stragglers.isEmpty else { return }
+        Task {
+            for straggler in stragglers {
+                await straggler.end(nil, dismissalPolicy: .immediate)
             }
         }
     }
