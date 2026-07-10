@@ -397,19 +397,28 @@ struct MatchDetailView: View {
                 Button {
                     showsEditPars = true
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("EDIT PARS")
-                            .font(SticksFont.mono(10.5))
-                            .kerning(1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("EDIT PARS")
+                                .font(SticksFont.mono(10.5))
+                                .kerning(1)
+                        }
+                        .foregroundStyle(Color.sticksGreen)
+
+                        Text("Scorecard par look wrong? Fix any hole's par here.")
+                            .font(SticksFont.sans(12))
+                            .foregroundStyle(Color.sticksMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .foregroundStyle(Color.sticksGreen)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 11)
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Edit pars")
+                .accessibilityHint("Fix incorrect pars on the scorecard")
             }
         }
         .padding(14)
