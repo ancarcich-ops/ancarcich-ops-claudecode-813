@@ -72,7 +72,8 @@ struct SettingsView: View {
                     title: "Settings",
                     user: user,
                     session: session,
-                    showsCreate: $showsCreate
+                    showsCreate: $showsCreate,
+                    tabSelection: $tabSelection
                 )
             }
             .toolbar(.hidden, for: .navigationBar)

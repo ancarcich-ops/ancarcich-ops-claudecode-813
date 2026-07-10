@@ -17,9 +17,10 @@ struct GroupsView: View {
 
     @State private var viewModel = GroupsViewModel()
     @State private var showsCreate = false
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.sticksBg.ignoresSafeArea()
 
@@ -37,7 +38,8 @@ struct GroupsView: View {
                     title: "Groups",
                     user: user,
                     session: session,
-                    showsCreate: $showsCreate
+                    showsCreate: $showsCreate,
+                    tabSelection: $tabSelection
                 )
             }
             .navigationDestination(for: SticksGroup.self) { group in
@@ -58,6 +60,14 @@ struct GroupsView: View {
         }
         .task {
             await viewModel.load(session: session)
+        }
+        // Slice 37: the header switcher's "{group} leaderboard" link —
+        // the menu flips to this tab and we push the leaderboard.
+        .onReceive(NotificationCenter.default.publisher(for: .sticksOpenGroupLeaderboard)) { note in
+            guard let groupId = note.userInfo?["groupId"] as? String else { return }
+            let known = viewModel.groups.isEmpty ? GroupFilterStore.shared.groups : viewModel.groups
+            guard let group = known.first(where: { $0.id == groupId }) else { return }
+            path.append(LeaderboardDestination(group: group))
         }
     }
 

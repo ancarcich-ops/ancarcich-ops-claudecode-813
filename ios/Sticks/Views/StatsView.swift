@@ -50,7 +50,8 @@ struct StatsView: View {
                     title: "Stats",
                     user: user,
                     session: session,
-                    showsCreate: $showsCreate
+                    showsCreate: $showsCreate,
+                    tabSelection: $tabSelection
                 )
             }
             .navigationDestination(for: MatchSummary.self) { match in

@@ -12,6 +12,7 @@ import SwiftUI
 struct MatchListView: View {
     let user: User
     let session: SessionStore
+    @Binding var tabSelection: SticksTab
 
     @State private var viewModel = MatchListViewModel()
     @State private var path = NavigationPath()
@@ -31,10 +32,19 @@ struct MatchListView: View {
                     failedView(message)
                 case .loaded:
                     if visibleMatches.isEmpty {
-                        if groupFilter.activeGroupId != nil {
-                            groupEmptyView
-                        } else {
+                        switch groupFilter.mode {
+                        case .all:
                             emptyView
+                        case .publicOnly:
+                            filterEmptyView(
+                                title: "No public rounds yet.",
+                                subtitle: "Rounds without a group show here. Start\none with + New round, or switch the filter up top."
+                            )
+                        case .group:
+                            filterEmptyView(
+                                title: "No rounds in this group yet.",
+                                subtitle: "Start one with + New round, or switch\nback to All my groups up top."
+                            )
                         }
                     } else {
                         matchList
@@ -69,10 +79,17 @@ struct MatchListView: View {
 
     // MARK: - Group filter
 
-    /// Slice 31: the header switcher scopes the feed — nil shows all.
+    /// Slice 31/37: the header switcher scopes the feed — all rounds,
+    /// public-only (no group), or one group.
     private func filtered(_ matches: [MatchSummary]) -> [MatchSummary] {
-        guard let groupId = groupFilter.activeGroupId else { return matches }
-        return matches.filter { $0.groupId == groupId }
+        switch groupFilter.mode {
+        case .all:
+            return matches
+        case .publicOnly:
+            return matches.filter { $0.groupId == nil }
+        case .group(let id):
+            return matches.filter { $0.groupId == id }
+        }
     }
 
     private var visibleMatches: [MatchSummary] { filtered(viewModel.matches) }
@@ -106,7 +123,12 @@ struct MatchListView: View {
 
             Spacer(minLength: 6)
 
-            HeaderControls(user: user, session: session, showsCreate: $showsCreate)
+            HeaderControls(
+                user: user,
+                session: session,
+                showsCreate: $showsCreate,
+                tabSelection: $tabSelection
+            )
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
@@ -200,18 +222,18 @@ struct MatchListView: View {
         .padding(.horizontal, 40)
     }
 
-    /// The active group has no rounds — the switcher stays up top so
+    /// The active filter has no rounds — the switcher stays up top so
     /// the user can flip back to "All my groups".
-    private var groupEmptyView: some View {
+    private func filterEmptyView(title: String, subtitle: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "flag.slash")
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(Color.sticksMuted)
-            Text("No rounds in this group yet.")
+            Text(title)
                 .font(SticksFont.display(22))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.sticksInk)
-            Text("Start one with + New round, or switch\nback to All my groups up top.")
+            Text(subtitle)
                 .font(SticksFont.sans(14))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.sticksMuted)
@@ -272,6 +294,7 @@ private struct MatchCardButtonStyle: ButtonStyle {
 #Preview {
     MatchListView(
         user: User(id: "1", username: "tj", displayName: "Tj"),
-        session: SessionStore()
+        session: SessionStore(),
+        tabSelection: .constant(.home)
     )
 }

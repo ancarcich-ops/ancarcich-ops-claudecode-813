@@ -33,7 +33,7 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack {
-            MatchListView(user: user, session: session)
+            MatchListView(user: user, session: session, tabSelection: $selection)
                 .opacity(selection == .home ? 1 : 0)
                 .allowsHitTesting(selection == .home)
                 .accessibilityHidden(selection != .home)
