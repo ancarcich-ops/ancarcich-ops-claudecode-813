@@ -33,6 +33,10 @@ final class MatchListViewModel {
     private(set) var phase: Phase = .loading
     private(set) var matches: [MatchSummary] = []
 
+    /// Monotonic load counter — quick filter switches can race, and a
+    /// stale response must never overwrite a newer filter's results.
+    private var loadGeneration = 0
+
     private let api: APIClient
 
     init(api: APIClient = .shared) {
@@ -54,23 +58,32 @@ final class MatchListViewModel {
         matches.filter { $0.status == .completed }
     }
 
-    /// Fetches matches. A 401 signs the user out; other failures only
-    /// surface as a full-screen error when there's nothing to show yet.
-    func load(session: SessionStore) async {
+    /// Fetches matches, scoped server-side by `group` (nil → default
+    /// feed, "public" → ungrouped only, a group id → that group's
+    /// cross-group set). While a refetch is in flight the previous list
+    /// keeps showing — no empty-state flash on filter switches. A 401
+    /// signs the user out; other failures only surface as a full-screen
+    /// error when there's nothing to show yet.
+    func load(session: SessionStore, group: String? = nil) async {
         guard let token = session.token else {
             session.signOut()
             return
         }
+        loadGeneration += 1
+        let generation = loadGeneration
         if matches.isEmpty { phase = .loading }
         do {
-            let response = try await api.matches(token: token)
+            let response = try await api.matches(group: group, token: token)
+            guard generation == loadGeneration else { return }
             matches = response.matches
             phase = .loaded
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
         } catch let error as APIError {
+            guard generation == loadGeneration else { return }
             if matches.isEmpty { phase = .failed(error.message) }
         } catch {
+            guard generation == loadGeneration else { return }
             if matches.isEmpty {
                 phase = .failed("Can't reach Sticks. Check your connection and try again.")
             }

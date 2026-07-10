@@ -56,6 +56,20 @@ final class GroupFilterStore {
 
     var isPublicOnly: Bool { mode == .publicOnly }
 
+    /// Slice 38: the GET /matches?group= value for the active mode —
+    /// nil (default feed), "public" (ungrouped only), or a group id
+    /// (that group's cross-group set). The server owns the filtering.
+    var groupQueryValue: String? {
+        switch mode {
+        case .all:
+            return nil
+        case .publicOnly:
+            return "public"
+        case .group(let id):
+            return id
+        }
+    }
+
     /// The active group's name for the switcher label, when known.
     var activeGroupName: String? {
         activeGroup?.name

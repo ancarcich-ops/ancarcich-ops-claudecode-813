@@ -64,10 +64,17 @@ struct MatchListView: View {
             }
         }
         .task {
-            await viewModel.load(session: session)
+            await viewModel.load(session: session, group: groupFilter.groupQueryValue)
+        }
+        // Slice 38: the switcher drives the fetch — the server computes
+        // cross-group visibility (a group's feed includes rounds its
+        // members played elsewhere), which the client can't replicate.
+        // The previous list keeps showing while the refetch is in flight.
+        .onChange(of: groupFilter.mode) { _, _ in
+            Task { await viewModel.load(session: session, group: groupFilter.groupQueryValue) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sticksMatchesDidChange)) { _ in
-            Task { await viewModel.load(session: session) }
+            Task { await viewModel.load(session: session, group: groupFilter.groupQueryValue) }
         }
         // A round created from a non-Home tab: reload and push its detail,
         // exactly like Home's own create flow.
@@ -77,31 +84,27 @@ struct MatchListView: View {
         }
     }
 
-    // MARK: - Group filter
+    // MARK: - Feed scope
 
-    /// Slice 31/37: the header switcher scopes the feed — all rounds,
-    /// public-only (no group), or one group.
-    private func filtered(_ matches: [MatchSummary]) -> [MatchSummary] {
-        switch groupFilter.mode {
-        case .all:
-            return matches
-        case .publicOnly:
-            return matches.filter { $0.groupId == nil }
-        case .group(let id):
-            return matches.filter { $0.groupId == id }
-        }
-    }
-
-    private var visibleMatches: [MatchSummary] { filtered(viewModel.matches) }
-    private var liveMatches: [MatchSummary] { filtered(viewModel.liveMatches) }
-    private var upcomingMatches: [MatchSummary] { filtered(viewModel.upcomingMatches) }
-    private var recentMatches: [MatchSummary] { filtered(viewModel.recentMatches) }
+    // Slice 38: no client-side group filtering — GET /matches?group=
+    // already returns the exact set the website shows for the active
+    // scope, so the view model's lists render as-is.
+    private var visibleMatches: [MatchSummary] { viewModel.matches }
+    private var liveMatches: [MatchSummary] { viewModel.liveMatches }
+    private var upcomingMatches: [MatchSummary] { viewModel.upcomingMatches }
+    private var recentMatches: [MatchSummary] { viewModel.recentMatches }
 
     /// After a successful POST /matches: refresh the list and push the
-    /// new match's detail so the GPS screen is one tap away.
+    /// new match's detail so the GPS screen is one tap away. If the
+    /// active scope excludes the new round (e.g. Public only + a group
+    /// round), a one-off unscoped fetch still finds it to open.
     private func openCreatedMatch(id: String) async {
-        await viewModel.load(session: session)
+        await viewModel.load(session: session, group: groupFilter.groupQueryValue)
         if let match = viewModel.matches.first(where: { $0.id == id }) {
+            path.append(match)
+        } else if let token = session.token,
+                  let match = (try? await APIClient.shared.matches(token: token))?
+                      .matches.first(where: { $0.id == id }) {
             path.append(match)
         }
     }
@@ -163,7 +166,7 @@ struct MatchListView: View {
             .padding(.bottom, 32)
         }
         .refreshable {
-            await viewModel.load(session: session)
+            await viewModel.load(session: session, group: groupFilter.groupQueryValue)
         }
     }
 
@@ -252,7 +255,7 @@ struct MatchListView: View {
                 .foregroundStyle(Color.sticksInk)
                 .padding(.horizontal, 40)
             Button {
-                Task { await viewModel.load(session: session) }
+                Task { await viewModel.load(session: session, group: groupFilter.groupQueryValue) }
             } label: {
                 Text("Try Again")
                     .font(SticksFont.sans(15, weight: .semibold))

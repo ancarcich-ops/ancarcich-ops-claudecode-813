@@ -220,8 +220,14 @@ nonisolated struct APIClient {
     }
 
     /// GET /matches — the caller's matches, most recent first (max 50).
-    func matches(token: String) async throws -> MatchesResponse {
-        let request = makeRequest(path: "matches", method: "GET", token: token)
+    /// `group` scopes the feed server-side (cross-group visibility):
+    /// nil/absent → the default feed (public + your groups + rounds
+    /// involving your groups' members), "public" → ungrouped rounds
+    /// only, a group id → rounds posted to that group OR involving any
+    /// of its members. The client can't replicate this filter locally.
+    func matches(group: String? = nil, token: String) async throws -> MatchesResponse {
+        let items = group.map { [URLQueryItem(name: "group", value: $0)] } ?? []
+        let request = makeRequest(path: "matches", method: "GET", queryItems: items, token: token)
         return try await perform(request)
     }
 
