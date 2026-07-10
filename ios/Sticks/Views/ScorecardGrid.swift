@@ -21,12 +21,36 @@ struct ScoreCellSelection: Identifiable {
     var id: String { "\(player.id)-\(hole)" }
 }
 
+/// Slice 35: which lens the scorecard shows scores through.
+enum ScoreView {
+    case gross
+    case net
+}
+
 struct ScorecardGrid: View {
     let detail: MatchDetail
     let players: [MatchDetailPlayer]
     /// Round index of the current hole — nil when the match isn't live.
     let currentHoleIndex: Int?
     let onSelect: (ScoreCellSelection) -> Void
+
+    /// Slice 35: gross/net lens — defaults to the round's scoring mode.
+    @State private var scoreView: ScoreView
+
+    init(
+        detail: MatchDetail,
+        players: [MatchDetailPlayer],
+        currentHoleIndex: Int?,
+        onSelect: @escaping (ScoreCellSelection) -> Void
+    ) {
+        self.detail = detail
+        self.players = players
+        self.currentHoleIndex = currentHoleIndex
+        self.onSelect = onSelect
+        _scoreView = State(
+            initialValue: detail.scoringMode.uppercased() == "NET" ? .net : .gross
+        )
+    }
 
     private let nameWidth: CGFloat = 88
     private let holeWidth: CGFloat = 44
@@ -45,13 +69,71 @@ struct ScorecardGrid: View {
     // MARK: - Header row
 
     private var headerRow: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(spacing: 8) {
             Text("Scorecard")
                 .font(SticksFont.display(13, weight: .bold))
                 .foregroundStyle(Color.sticksInk)
-            Spacer()
+            Spacer(minLength: 4)
             meta
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if showsToggle {
+                modeToggle
+            }
         }
+    }
+
+    // MARK: - Gross/Net toggle (slice 35)
+
+    /// Net view is meaningless on a GROSS round — hide the toggle there.
+    private var showsToggle: Bool {
+        detail.scoringMode.uppercased() != "GROSS"
+    }
+
+    private var showsNet: Bool {
+        showsToggle && scoreView == .net
+    }
+
+    private var modeToggle: some View {
+        HStack(spacing: 2) {
+            toggleChip("GROSS", mode: .gross)
+            toggleChip("NET", mode: .net)
+        }
+        .padding(2)
+        .background(Color.sticksPanel2, in: Capsule())
+        .overlay(Capsule().stroke(Color.sticksHairline, lineWidth: 1))
+    }
+
+    private func toggleChip(_ label: String, mode: ScoreView) -> some View {
+        let isActive = scoreView == mode
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                scoreView = mode
+            }
+        } label: {
+            Text(label)
+                .font(SticksFont.mono(8.5, weight: isActive ? .bold : .regular))
+                .kerning(0.5)
+                .foregroundStyle(isActive ? Color.sticksCream : Color.sticksMuted)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(isActive ? Color.sticksGreen : Color.clear, in: Capsule())
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label == "NET" ? "Net" : "Gross") scores")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    /// Strokes the player receives on the hole at 0-based round position
+    /// `index` — the exact engine formula: extra strokes fall on the
+    /// opening holes of the round (no stroke-index lookup).
+    private func strokesReceived(for player: MatchDetailPlayer, at index: Int) -> Int {
+        let handicap = player.handicap ?? 0
+        guard handicap > 0, detail.holes > 0 else { return 0 }
+        let base = (handicap / Double(detail.holes)).rounded(.down)
+        let extra = handicap - base * Double(detail.holes)
+        return Int(base) + (Double(index) < extra ? 1 : 0)
     }
 
     /// "FRONT · +2 THRU 4" — the to-par part in accent, bold.
@@ -210,12 +292,14 @@ struct ScorecardGrid: View {
     private func scoreCell(for player: MatchDetailPlayer, index: Int, isCurrent: Bool) -> some View {
         let hole = detail.holeNumber(at: index)
         let par = detail.par(at: index)
-        let score = player.scoresByHole[hole]
+        let gross = player.scoresByHole[hole]
+        let strokes = showsNet ? strokesReceived(for: player, at: index) : 0
+        let display = showsNet ? gross.map { $0 - strokes } : gross
 
         return Button {
             onSelect(ScoreCellSelection(player: player, hole: hole, par: par))
         } label: {
-            cellBody(score: score, par: par, isCurrent: isCurrent)
+            cellBody(score: display, par: par, isCurrent: isCurrent, hasStroke: strokes > 0)
                 .frame(width: holeWidth, height: rowHeight)
                 .contentShape(.rect)
         }
@@ -224,7 +308,7 @@ struct ScorecardGrid: View {
     }
 
     @ViewBuilder
-    private func cellBody(score: Int?, par: Int, isCurrent: Bool) -> some View {
+    private func cellBody(score: Int?, par: Int, isCurrent: Bool, hasStroke: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 8)
 
         if isCurrent, let score {
@@ -233,6 +317,7 @@ struct ScorecardGrid: View {
                 .frame(width: cellSize.width, height: cellSize.height)
                 .background(Color.sticksBg, in: shape)
                 .overlay(shape.stroke(Color.sticksGreen, lineWidth: 1.5))
+                .overlay(alignment: .topTrailing) { strokeDot(hasStroke) }
         } else if isCurrent {
             // Current hole, unscored: "+" prompt, 1.5px dashed accent.
             Text("+")
@@ -259,6 +344,7 @@ struct ScorecardGrid: View {
                 .frame(width: cellSize.width, height: cellSize.height)
                 .background(fill, in: shape)
                 .overlay(shape.stroke(border, lineWidth: 1))
+                .overlay(alignment: .topTrailing) { strokeDot(hasStroke) }
         } else {
             // Unplayed (past or future): dashed outline, faint em-dash.
             Text("–")
@@ -271,6 +357,19 @@ struct ScorecardGrid: View {
                         style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
                     )
                 )
+                .overlay(alignment: .topTrailing) { strokeDot(hasStroke) }
+        }
+    }
+
+    /// Net-mode marker: a single subtle dot on holes where the player
+    /// receives at least one stroke (capped at one dot).
+    @ViewBuilder
+    private func strokeDot(_ show: Bool) -> some View {
+        if show {
+            Circle()
+                .fill(Color.sticksGreen.opacity(0.7))
+                .frame(width: 3.5, height: 3.5)
+                .padding(3)
         }
     }
 
@@ -302,14 +401,23 @@ struct ScorecardGrid: View {
     }
 
     private func totCell(for player: MatchDetailPlayer) -> some View {
-        let total = (0 ..< detail.holes)
+        let gross = (0 ..< detail.holes)
             .compactMap { player.scoresByHole[detail.holeNumber(at: $0)] }
             .reduce(0, +)
+        // Net total = gross − full handicap, matching the web's Net column.
+        let net = Double(gross) - (player.handicap ?? 0)
         return Group {
-            if total > 0 {
-                Text("\(total)")
-                    .font(SticksFont.display(14, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Color.sticksInk)
+            if gross > 0 {
+                VStack(spacing: 1) {
+                    Text(showsNet ? formatNetTotal(net) : "\(gross)")
+                        .font(SticksFont.display(14, weight: .bold).monospacedDigit())
+                        .foregroundStyle(Color.sticksInk)
+                    if showsToggle {
+                        Text(showsNet ? "G \(gross)" : "N \(formatNetTotal(net))")
+                            .font(SticksFont.mono(8))
+                            .foregroundStyle(Color.sticksMuted.opacity(0.75))
+                    }
+                }
             } else {
                 Text("–")
                     .font(SticksFont.mono(10))
@@ -317,6 +425,14 @@ struct ScorecardGrid: View {
             }
         }
         .frame(width: totWidth, height: rowHeight)
+    }
+
+    /// "73" for whole nets, "72.6" for fractional handicaps.
+    private func formatNetTotal(_ value: Double) -> String {
+        if value == value.rounded() {
+            return "\(Int(value))"
+        }
+        return String(format: "%.1f", value)
     }
 
     // MARK: - Helpers
