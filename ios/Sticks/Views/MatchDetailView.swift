@@ -20,6 +20,10 @@
 //  (creator, not completed), and the Share my round card (any seated
 //  player).
 //
+//  Slice 36: the standard app header (back chevron + Sticks wordmark +
+//  HeaderControls) replaces the floating back/⋯ circles; the ⋯ actions
+//  menu moves inline next to the course title, like the web.
+//
 
 import SwiftUI
 import UIKit
@@ -34,6 +38,7 @@ struct MatchDetailView: View {
     @State private var selectedCell: ScoreCellSelection?
     @State private var showsGPS = false
     @State private var showsEdit = false
+    @State private var showsCreate = false
     @State private var showsEditPars = false
     @State private var showsEditSideGames = false
     @State private var showsDeleteConfirm = false
@@ -121,16 +126,11 @@ struct MatchDetailView: View {
                 await viewModel.load(session: session, quiet: true)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color.sticksBg, for: .navigationBar)
+        // Slice 36: the shared app header replaces the system nav bar
+        // and its floating back/⋯ circles.
+        .safeAreaInset(edge: .top, spacing: 0) { appHeaderBar }
+        .toolbar(.hidden, for: .navigationBar)
         .tint(Color.sticksGreen)
-        .toolbar {
-            if hasMenuActions {
-                ToolbarItem(placement: .topBarTrailing) {
-                    actionsMenu
-                }
-            }
-        }
         .navigationDestination(isPresented: $showsGPS) {
             OnCourseGPSView(viewModel: viewModel, session: session)
         }
@@ -150,6 +150,19 @@ struct MatchDetailView: View {
                     viewModel: viewModel,
                     session: session
                 )
+            }
+        }
+        .fullScreenCover(isPresented: $showsCreate) {
+            if let user = session.user {
+                CreateMatchView(user: user, session: session) { matchId in
+                    showsCreate = false
+                    NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+                    NotificationCenter.default.post(
+                        name: .sticksOpenMatch,
+                        object: nil,
+                        userInfo: ["matchId": matchId]
+                    )
+                }
             }
         }
         .fullScreenCover(isPresented: $showsEdit) {
@@ -344,6 +357,48 @@ struct MatchDetailView: View {
 
     // MARK: - Header
 
+    /// Slice 36: the same cream header bar the tabs use — back chevron
+    /// leading, Sticks wordmark, then the shared [+ New round] +
+    /// [All my groups ▾] cluster — so match detail reads like the rest
+    /// of the app instead of a bare pushed view.
+    private var appHeaderBar: some View {
+        HStack(alignment: .center, spacing: 10) {
+            HStack(spacing: 6) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                        .frame(width: 32, height: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+
+                (Text("Sticks").foregroundStyle(Color.sticksInk)
+                    + Text(".").foregroundStyle(Color.sticksGreen))
+                    .font(SticksFont.display(26))
+                    .lineLimit(1)
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 6)
+
+            if let user = session.user {
+                HeaderControls(user: user, session: session, showsCreate: $showsCreate)
+            }
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .background(Color.sticksBg)
+        .overlay(alignment: .bottom) {
+            Color.sticksHairline.frame(height: 1)
+        }
+    }
+
     private var header: some View {
         let detail = viewModel.detail
         return VStack(alignment: .leading, spacing: 10) {
@@ -356,10 +411,20 @@ struct MatchDetailView: View {
                     .foregroundStyle(Color.sticksMuted)
             }
 
-            Text(match.courseName)
-                .font(SticksFont.display(30))
-                .foregroundStyle(Color.sticksInk)
-                .multilineTextAlignment(.leading)
+            // Slice 36: the ⋯ actions menu sits inline next to the
+            // title (web parity), not floating in a nav bar.
+            HStack(alignment: .top, spacing: 10) {
+                Text(match.courseName)
+                    .font(SticksFont.display(30))
+                    .foregroundStyle(Color.sticksInk)
+                    .multilineTextAlignment(.leading)
+
+                Spacer(minLength: 8)
+
+                if hasMenuActions {
+                    actionsMenu
+                }
+            }
 
             Text(summaryLine(detail))
                 .font(SticksFont.label(11, weight: .semibold))

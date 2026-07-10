@@ -7,6 +7,10 @@
 //  right, and the current-hole footer line. Rendered only when the
 //  caller is seated in an IN_PROGRESS match.
 //
+//  Slice 36: web parity — the big number renders unclipped (no fixed
+//  height), and the hairline + hole line live INSIDE the right pane
+//  (indented under NET), matching the web's InRoundLive.
+//
 
 import SwiftUI
 
@@ -22,27 +26,23 @@ struct MatchHeroCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 0) {
-                grossColumn
-                    .padding(.trailing, 16)
-                    .overlay(alignment: .trailing) {
-                        Rectangle()
-                            .fill(Color.sticksHairline)
-                            .frame(width: 1)
-                    }
-
-                statColumns
-                    .padding(.leading, 16)
-
-                Spacer(minLength: 0)
-            }
+        HStack(alignment: .top, spacing: 16) {
+            grossColumn
 
             Rectangle()
                 .fill(Color.sticksHairline)
-                .frame(height: 1)
+                .frame(width: 1)
 
-            holeLine
+            VStack(alignment: .leading, spacing: 10) {
+                statColumns
+
+                Rectangle()
+                    .fill(Color.sticksHairline)
+                    .frame(height: 1)
+
+                holeLine
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -61,6 +61,7 @@ struct MatchHeroCard: View {
         let thru = me.map { MatchDetailMath.holesPlayed(for: $0, in: detail) } ?? 0
 
         return VStack(alignment: .leading, spacing: 2) {
+            // Slice 36: no height clamp — the glyph renders in full.
             Text(MatchDetailMath.toParLabel(gross))
                 .font(SticksFont.display(56, weight: .bold))
                 .monospacedDigit()
@@ -68,7 +69,6 @@ struct MatchHeroCard: View {
                 .lineLimit(1)
                 .fixedSize()
                 .foregroundStyle(grossColor(gross))
-                .frame(height: 52)
 
             Text("GROSS · THRU \(thru)")
                 .font(SticksFont.mono(9.5))
