@@ -213,13 +213,14 @@ struct SplashView: View {
 
     /// Fades up starting at 1.02s.
     private var tagline: some View {
-        HStack(spacing: 5) {
-            Text("All your games.")
+        VStack(spacing: 2) {
+            Text("All your games")
                 .foregroundStyle(Color.sticksInk)
-            Text("One app.")
+            Text("One app")
                 .foregroundStyle(Color.sticksGreen)
         }
         .font(SticksFont.sans(15, weight: .medium))
+        .multilineTextAlignment(.center)
         .opacity(taglineVisible ? 1 : 0)
         .offset(y: taglineVisible ? 0 : 8)
         .animation(
