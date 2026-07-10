@@ -35,6 +35,9 @@ final class CreateMatchViewModel {
         /// The chosen tee's id (CourseTee.id) — nil until tees load or
         /// when the course has no rated tees.
         var teeId: String?
+        /// Team assignment for SCRAMBLE/BOTH — 0 = Team A, 1 = Team B.
+        /// Ignored for INDIVIDUAL rounds.
+        var team: Int = 0
     }
 
     // MARK: Course
@@ -70,6 +73,9 @@ final class CreateMatchViewModel {
     }
     var startsOnBack = false
     var scoringMode = "NET"
+    /// Game format — INDIVIDUAL (all-vs-all), SCRAMBLE (one ball per
+    /// team), or BOTH (individual + a team match on top). Slice 39.
+    var format = "INDIVIDUAL"
 
     // MARK: Tees
 
@@ -125,6 +131,9 @@ final class CreateMatchViewModel {
         holes = detail.holes
         startsOnBack = detail.holes == 9 && detail.startingHole == 10
         scoringMode = detail.scoringMode
+        let knownFormats = ["INDIVIDUAL", "SCRAMBLE", "BOTH"]
+        let detailFormat = detail.format.uppercased()
+        format = knownFormats.contains(detailFormat) ? detailFormat : "INDIVIDUAL"
         sideGames = Set(editing.sideGameKinds)
         selectedGroupId = editing.groupId
         seats = detail.players
@@ -140,7 +149,8 @@ final class CreateMatchViewModel {
                     isMe: player.userId == user.id,
                     // Tees re-default from the course's tee list once it
                     // loads (pre-filling the exact prior tee is optional).
-                    teeId: nil
+                    teeId: nil,
+                    team: Self.teamIndex(player.team)
                 )
             }
     }
@@ -152,6 +162,24 @@ final class CreateMatchViewModel {
 
     var canAddSeat: Bool { seats.count < 8 }
 
+    // MARK: Teams (slice 39)
+
+    /// SCRAMBLE and BOTH seat players onto Team A / Team B.
+    var usesTeams: Bool { format != "INDIVIDUAL" }
+
+    var teamACount: Int { seats.filter { $0.team != 1 }.count }
+    var teamBCount: Int { seats.filter { $0.team == 1 }.count }
+
+    /// Team formats need both teams non-empty; INDIVIDUAL always passes.
+    var teamsAreValid: Bool {
+        !usesTeams || (teamACount > 0 && teamBCount > 0)
+    }
+
+    func setTeam(seatId: UUID, team: Int) {
+        guard let index = seats.firstIndex(where: { $0.id == seatId }) else { return }
+        seats[index].team = team == 1 ? 1 : 0
+    }
+
     /// 1–8 seats and every seat has a name plus a parseable handicap —
     /// the Players step's gate (slice 32).
     var seatsAreValid: Bool {
@@ -162,9 +190,10 @@ final class CreateMatchViewModel {
         }
     }
 
-    /// Course chosen + every seat has a name and a parseable handicap.
+    /// Course chosen + every seat has a name and a parseable handicap
+    /// (+ both teams filled when the format uses teams).
     var canCreate: Bool {
-        selectedCourse != nil && !isCreating && seatsAreValid
+        selectedCourse != nil && !isCreating && seatsAreValid && teamsAreValid
     }
 
     // MARK: - Bootstrap
@@ -375,6 +404,11 @@ final class CreateMatchViewModel {
 
     func removeSeat(id: UUID) {
         seats.removeAll { $0.id == id && !$0.isMe }
+        // Solo rounds are always Individual — dropping below 2 players
+        // reverts a team format (mirrors the web).
+        if seats.count < 2, format != "INDIVIDUAL" {
+            format = "INDIVIDUAL"
+        }
     }
 
     /// Links a seat to a suggestion — carries the userId and prefills
@@ -437,6 +471,10 @@ final class CreateMatchViewModel {
         createError = nil
         defer { isCreating = false }
 
+        // Belt & braces: a solo round is always Individual, and team
+        // assignments only travel on team formats.
+        let effectiveFormat = seats.count > 1 ? format : "INDIVIDUAL"
+        let sendsTeams = effectiveFormat != "INDIVIDUAL"
         let players = seats.map { seat in
             // Seats on the default still send their tee explicitly; when
             // the course has no rated tees the keys are omitted entirely.
@@ -446,7 +484,8 @@ final class CreateMatchViewModel {
                 handicap: Self.parseHandicap(seat.handicapText) ?? 0,
                 userId: seat.userId,
                 teeName: tee?.name,
-                teeGender: tee?.gender
+                teeGender: tee?.gender,
+                team: sendsTeams ? seat.team : nil
             )
         }
         // Belt & braces on the server's rules: 18-hole rounds always
@@ -458,6 +497,7 @@ final class CreateMatchViewModel {
             holes: holes,
             startingHole: holes == 18 ? 1 : (startsOnBack ? 10 : 1),
             scoringMode: scoringMode,
+            format: effectiveFormat,
             players: players,
             sideGames: games.isEmpty ? nil : games.sorted(),
             groupId: selectedGroupId
@@ -492,6 +532,15 @@ final class CreateMatchViewModel {
             .replacingOccurrences(of: ",", with: ".")
         guard !normalized.isEmpty else { return nil }
         return Double(normalized)
+    }
+
+    /// Maps a detail player's `team` ("0"/"1", "A"/"B", or null) to the
+    /// wizard's 0/1 seat assignment — anything unrecognized lands on A.
+    static func teamIndex(_ team: String?) -> Int {
+        switch team?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "1", "B": return 1
+        default: return 0
+        }
     }
 
     /// "11.6" or "8" — one decimal max, no trailing .0.

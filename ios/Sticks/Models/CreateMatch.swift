@@ -144,23 +144,28 @@ nonisolated struct PlayerSuggestResponse: Decodable {
 /// round's differential to the tee played — omitted when the course has
 /// no rated tees (the server falls back to the course default).
 /// Synthesized encoding drops nil keys (encodeIfPresent), which is
-/// exactly what the server expects.
+/// exactly what the server expects. `team` (0 or 1) is sent only for
+/// SCRAMBLE/BOTH rounds — omitted for INDIVIDUAL.
 nonisolated struct CreateMatchPlayer: Encodable {
     let displayName: String
     let handicap: Double
     let userId: String?
     let teeName: String?
     let teeGender: String?
+    let team: Int?
 }
 
 /// Body for POST /matches. `scheduledAt` is intentionally omitted —
 /// the server defaults it to now. Optional keys (sideGames, groupId)
-/// are dropped when nil.
+/// are dropped when nil. `format` is INDIVIDUAL / SCRAMBLE / BOTH —
+/// BOTH makes the server spin up the team match itself (never send
+/// TEAM_VS_TEAM as a side game).
 nonisolated struct CreateMatchRequest: Encodable {
     let courseName: String
     let holes: Int
     let startingHole: Int
     let scoringMode: String
+    let format: String
     let players: [CreateMatchPlayer]
     let sideGames: [String]?
     let groupId: String?

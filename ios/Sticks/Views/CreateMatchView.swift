@@ -103,7 +103,7 @@ struct CreateMatchView: View {
         switch step {
         case .course: return viewModel.selectedCourse != nil
         case .round: return true
-        case .players: return viewModel.seatsAreValid
+        case .players: return viewModel.seatsAreValid && viewModel.teamsAreValid
         case .sideGames: return true
         }
     }
@@ -150,6 +150,7 @@ struct CreateMatchView: View {
             courseSection
         case .round:
             holesSection
+            formatSection
             scoringSection
             groupSection
         case .players:
@@ -514,6 +515,42 @@ struct CreateMatchView: View {
         }
     }
 
+    // MARK: - Format (slice 39)
+
+    /// Individual / Scramble / Both, matching the web. Teams are seated
+    /// on the Players step — a round that ends up solo is forced back to
+    /// Individual there (and again at submit, belt & braces).
+    private var formatSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("FORMAT")
+
+            SegmentPicker(
+                options: [
+                    ("INDIVIDUAL", "INDIVIDUAL"),
+                    ("SCRAMBLE", "SCRAMBLE"),
+                    ("BOTH", "BOTH"),
+                ],
+                selection: Bindable(viewModel).format
+            )
+
+            Text(formatHint)
+                .font(SticksFont.mono(10.5, weight: .regular))
+                .foregroundStyle(Color.sticksFaint)
+        }
+        .animation(.easeOut(duration: 0.18), value: viewModel.format)
+    }
+
+    private var formatHint: String {
+        switch viewModel.format {
+        case "SCRAMBLE":
+            return "One ball per team — you'll split into Team A and Team B next."
+        case "BOTH":
+            return "Everyone plays their own ball, plus a team match on top."
+        default:
+            return "All-vs-all. Scramble: one ball per team. Both: individual + a team match."
+        }
+    }
+
     // MARK: - Players
 
     private var playersSection: some View {
@@ -534,13 +571,22 @@ struct CreateMatchView: View {
                     .foregroundStyle(Color.sticksFaint)
             }
 
+            if viewModel.usesTeams {
+                teamSummary
+            }
+
             VStack(spacing: 10) {
                 ForEach($viewModel.seats) { $seat in
                     VStack(spacing: 8) {
                         SeatRow(
                             seat: $seat,
                             tees: viewModel.tees,
+                            showsTeam: viewModel.usesTeams,
                             focusedSeat: $focusedSeat,
+                            onSelectTeam: { team in
+                                viewModel.setTeam(seatId: seat.id, team: team)
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            },
                             onSelectTee: { tee in
                                 viewModel.setTee(seatId: seat.id, teeId: tee.id)
                                 UISelectionFeedbackGenerator().selectionChanged()
@@ -595,6 +641,40 @@ struct CreateMatchView: View {
                 .buttonStyle(PressableButtonStyle())
             }
         }
+        .animation(.easeOut(duration: 0.18), value: viewModel.usesTeams)
+    }
+
+    /// Live Team A / Team B tally for SCRAMBLE/BOTH — with the "both
+    /// teams need a player" nudge while one side is empty.
+    private var teamSummary: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("TEAM A \(viewModel.teamACount)")
+                    .font(SticksFont.mono(10.5))
+                    .kerning(0.8)
+                    .foregroundStyle(viewModel.teamACount > 0 ? Color.sticksGreen : Color.sticksError)
+
+                Text("·")
+                    .font(SticksFont.mono(10.5))
+                    .foregroundStyle(Color.sticksFaint)
+
+                Text("TEAM B \(viewModel.teamBCount)")
+                    .font(SticksFont.mono(10.5))
+                    .kerning(0.8)
+                    .foregroundStyle(viewModel.teamBCount > 0 ? Color.sticksGreen : Color.sticksError)
+            }
+
+            if !viewModel.teamsAreValid {
+                Text(
+                    viewModel.seats.count < 2
+                        ? "\(viewModel.format == "BOTH" ? "Both" : "Scramble") needs at least 2 players — add one below."
+                        : "Both teams need at least one player."
+                )
+                .font(SticksFont.mono(10.5, weight: .regular))
+                .foregroundStyle(Color.sticksError)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: viewModel.teamsAreValid)
     }
 
     @ViewBuilder private func suggestionsCard(for seat: CreateMatchViewModel.Seat) -> some View {
@@ -895,7 +975,10 @@ struct CreateMatchView: View {
 private struct SeatRow: View {
     @Binding var seat: CreateMatchViewModel.Seat
     let tees: [CourseTee]
+    /// True for SCRAMBLE/BOTH — shows the Team A / Team B toggle.
+    let showsTeam: Bool
     var focusedSeat: FocusState<UUID?>.Binding
+    let onSelectTeam: (Int) -> Void
     let onSelectTee: (CourseTee) -> Void
     let onNameEdited: (String) -> Void
     let onStep: (Double) -> Void
@@ -913,6 +996,15 @@ private struct SeatRow: View {
 
                 teeRow
             }
+
+            if showsTeam {
+                Rectangle()
+                    .fill(Color.sticksHairline)
+                    .frame(height: 1)
+                    .padding(.horizontal, 12)
+
+                teamRow
+            }
         }
         .background(Color.sticksCard)
         .clipShape(.rect(cornerRadius: 14))
@@ -921,6 +1013,51 @@ private struct SeatRow: View {
                 .stroke(Color.sticksHairline, lineWidth: 1)
         )
         .animation(.easeOut(duration: 0.18), value: tees.isEmpty)
+        .animation(.easeOut(duration: 0.18), value: showsTeam)
+    }
+
+    // MARK: Team picker (slice 39)
+
+    /// Team A / Team B toggle for SCRAMBLE and BOTH rounds.
+    private var teamRow: some View {
+        HStack(spacing: 8) {
+            Text("TEAM")
+                .font(SticksFont.mono(9))
+                .kerning(1.1)
+                .foregroundStyle(Color.sticksFaint)
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 4) {
+                teamButton(0, label: "A")
+                teamButton(1, label: "B")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 38)
+    }
+
+    private func teamButton(_ team: Int, label: String) -> some View {
+        let isActive = seat.team == team
+        return Button {
+            guard !isActive else { return }
+            onSelectTeam(team)
+        } label: {
+            Text(label)
+                .font(SticksFont.mono(10.5))
+                .kerning(0.6)
+                .foregroundStyle(isActive ? Color.sticksCream : Color.sticksMuted)
+                .frame(width: 44, height: 26)
+                .background(isActive ? Color.sticksGreen : Color.sticksPanel2)
+                .clipShape(.capsule)
+                .overlay(
+                    Capsule()
+                        .stroke(isActive ? Color.clear : Color.sticksHairline, lineWidth: 1)
+                )
+        }
+        .animation(.easeOut(duration: 0.12), value: isActive)
+        .accessibilityLabel("Team \(label) for \(seat.name.isEmpty ? "player" : seat.name)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private var mainRow: some View {
@@ -1193,24 +1330,27 @@ private struct SegmentPicker<Value: Hashable>: View {
 }
 
 /// Accent-filled button on a 2pt darker-green ledge that compresses on
-/// press; no ledge while disabled.
+/// press; no ledge while disabled. The ledge lives in a `.background`
+/// so it can never size past the label — the old free-floating ZStack
+/// shape was flexible and could balloon into a full-screen green block
+/// (slice 39's Course-step takeover).
 private struct CreateLedgeButtonStyle: ButtonStyle {
     let showsLedge: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed && showsLedge
-        return ZStack {
-            if showsLedge {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.sticksGreenDark)
-                    .offset(y: 2)
+        return configuration.label
+            .background(Color.sticksGreen)
+            .clipShape(.rect(cornerRadius: 12))
+            .offset(y: pressed ? 2 : 0)
+            .background {
+                if showsLedge {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.sticksGreenDark)
+                        .offset(y: 2)
+                }
             }
-            configuration.label
-                .background(Color.sticksGreen)
-                .clipShape(.rect(cornerRadius: 12))
-                .offset(y: pressed ? 2 : 0)
-        }
-        .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
