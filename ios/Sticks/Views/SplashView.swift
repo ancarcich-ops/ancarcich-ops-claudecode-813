@@ -6,7 +6,7 @@
 //  while the token check runs on cold launch. Cream background with a
 //  faint accent grid under a radial fade, the three vector clubs popping
 //  in staggered (each dropping onto its own baseline with an overshoot
-//  spring), the lowercase "sticks" wordmark with a forever-pulsing
+//  spring), the "Sticks" wordmark with a forever-pulsing
 //  accent dot fading up next, and the tagline last. ContentView owns
 //  the hold (≥2.5s or until data is ready) and the 240ms fade-out.
 //  Respects Reduce Motion: entrances are skipped and the finished
@@ -137,7 +137,7 @@ struct SplashView: View {
     /// with it.
     private var wordmark: some View {
         HStack(alignment: .bottom, spacing: 7) {
-            Text("sticks")
+            Text("Sticks")
                 .font(SticksFont.display(56, weight: .bold))
                 .tracking(-1.5)
                 .foregroundStyle(Color.sticksInk)
