@@ -83,6 +83,15 @@ struct MatchDetailView: View {
                                     sideGames: viewModel.response?.sideGames ?? []
                                 )
                             }
+                            // Slice 34: win-odds history graph — shown for
+                            // in-progress AND completed rounds whenever the
+                            // server has ≥ 2 series points and the round has
+                            // more than one player.
+                            if let series = viewModel.response?.odds?.series,
+                               series.count >= 2,
+                               detail.players.count > 1 {
+                                OddsGraphCard(detail: detail, series: series)
+                            }
                             if showsFinishCTA {
                                 finishRoundButton
                             }

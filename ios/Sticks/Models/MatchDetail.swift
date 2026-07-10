@@ -144,16 +144,57 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     }
 }
 
+/// One hole-bucket of odds history: every player's win probability
+/// after `hole` holes have been scored. The server sends each row as
+/// `{ "hole": Int, "<matchPlayerId>": Double, … }` — `hole` is decoded
+/// explicitly and every remaining numeric key becomes a player entry.
+nonisolated struct OddsSeriesPoint: Decodable, Hashable {
+    let hole: Int
+    /// matchPlayerId → win probability (0..1).
+    let probabilities: [String: Double]
+
+    private struct DynamicKey: CodingKey {
+        let stringValue: String
+        let intValue: Int? = nil
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicKey.self)
+        var hole = 0
+        var probabilities: [String: Double] = [:]
+        for key in container.allKeys {
+            if key.stringValue == "hole" {
+                if let intValue = try? container.decode(Int.self, forKey: key) {
+                    hole = intValue
+                } else if let doubleValue = try? container.decode(Double.self, forKey: key) {
+                    hole = Int(doubleValue)
+                }
+            } else if let probability = try? container.decode(Double.self, forKey: key) {
+                probabilities[key.stringValue] = probability
+            }
+        }
+        self.hole = hole
+        self.probabilities = probabilities
+    }
+}
+
 /// Win probabilities keyed by matchPlayerId (0..1). Absent or empty
 /// when the server has no live odds for the match.
 nonisolated struct MatchOdds: Decodable, Hashable {
     let probabilities: [String: Double]
+    /// Hole-bucketed win-probability history — nil pre-round / when the
+    /// server sends none. Decoding is lenient: a malformed series never
+    /// fails the match payload.
+    let series: [OddsSeriesPoint]?
 
-    private enum CodingKeys: String, CodingKey { case probabilities }
+    private enum CodingKeys: String, CodingKey { case probabilities, series }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         probabilities = (try? container.decode([String: Double].self, forKey: .probabilities)) ?? [:]
+        series = try? container.decode([OddsSeriesPoint].self, forKey: .series)
     }
 }
 
