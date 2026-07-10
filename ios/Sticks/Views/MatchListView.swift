@@ -111,7 +111,10 @@ struct MatchListView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 12)
-        .background(Color.sticksBg.opacity(0.97))
+        .background(Color.sticksBg)
+        .overlay(alignment: .bottom) {
+            Color.sticksHairline.frame(height: 1)
+        }
     }
 
     // MARK: - List

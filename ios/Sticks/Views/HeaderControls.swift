@@ -2,11 +2,12 @@
 //  HeaderControls.swift
 //  Sticks
 //
-//  Slice 31: the shared trailing header cluster — the group switcher
-//  chip, the + New round capsule, and the avatar menu — used by all
-//  four tabs so the controls sit in the same place everywhere.
-//  TabHeaderBar wraps the cluster with a leading title for the
-//  non-Home tabs.
+//  Slice 31: the shared trailing header cluster used by all four tabs
+//  so the controls sit in the same place everywhere. TabHeaderBar wraps
+//  the cluster with a leading title for the non-Home tabs.
+//  Slice 33: web-parity — [+ New round] first, then the group switcher,
+//  which now doubles as the account menu (groups + "Signed in as
+//  @username" + Sign out); the standalone avatar circle is gone.
 //
 
 import SwiftUI
@@ -19,21 +20,21 @@ struct HeaderControls: View {
     private var filter: GroupFilterStore { .shared }
 
     var body: some View {
-        HStack(spacing: 8) {
-            groupSwitcher
-
+        HStack(spacing: 9) {
             newRoundButton
                 .layoutPriority(1)
 
-            avatarMenu
+            groupSwitcher
                 .layoutPriority(1)
         }
     }
 
-    // MARK: - Group switcher
+    // MARK: - Group switcher (+ account menu)
 
     /// "All my groups ▾" (or the active group's name) — a light capsule
     /// chip opening the group menu. The active row carries a checkmark.
+    /// Slice 33: like the web's GroupSwitcher, the menu also holds the
+    /// account — "Signed in as @username" and Sign out.
     private var groupSwitcher: some View {
         Menu {
             Button {
@@ -57,12 +58,19 @@ struct HeaderControls: View {
                     }
                 }
             }
+
+            Divider()
+
+            Section("Signed in as @\(user.username)") {
+                Button(role: .destructive) {
+                    session.signOut()
+                } label: {
+                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            }
         } label: {
             HStack(spacing: 4) {
-                Text(filter.activeGroupName ?? "All my groups")
-                    .font(SticksFont.sans(11.5, weight: .semibold))
-                    .foregroundStyle(Color.sticksInk)
-                    .lineLimit(1)
+                switcherLabel
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
@@ -75,7 +83,27 @@ struct HeaderControls: View {
             .overlay(Capsule().stroke(Color.sticksHairline, lineWidth: 1))
             .contentShape(.capsule)
         }
-        .accessibilityLabel("Group filter")
+        .accessibilityLabel("Group filter and account menu")
+    }
+
+    /// The default "All my groups" never truncates (fixedSize); an
+    /// active group's name may tail-truncate past ~140pt.
+    @ViewBuilder private var switcherLabel: some View {
+        if let name = filter.activeGroupName {
+            Text(name)
+                .font(SticksFont.sans(11.5, weight: .semibold))
+                .foregroundStyle(Color.sticksInk)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 140)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("All my groups")
+                .font(SticksFont.sans(11.5, weight: .semibold))
+                .foregroundStyle(Color.sticksInk)
+                .lineLimit(1)
+                .fixedSize()
+        }
     }
 
     // MARK: - New round
@@ -100,33 +128,6 @@ struct HeaderControls: View {
         .accessibilityLabel("New round")
     }
 
-    // MARK: - Avatar menu
-
-    private var avatarMenu: some View {
-        Menu {
-            Section("@\(user.username)") {
-                Button(role: .destructive) {
-                    session.signOut()
-                } label: {
-                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                }
-            }
-        } label: {
-            Text(initials(of: user.displayName))
-                .font(SticksFont.label(13, weight: .bold))
-                .foregroundStyle(Color.sticksCream)
-                .frame(width: 36, height: 36)
-                .background(Color.sticksGreen)
-                .clipShape(.circle)
-        }
-        .accessibilityLabel("Account menu")
-    }
-
-    private func initials(of name: String) -> String {
-        let parts = name.split(separator: " ").prefix(2)
-        let letters = parts.compactMap { $0.first.map(String.init) }
-        return letters.isEmpty ? "?" : letters.joined().uppercased()
-    }
 }
 
 // MARK: - Tab header bar
@@ -157,7 +158,10 @@ struct TabHeaderBar: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 12)
-        .background(Color.sticksBg.opacity(0.97))
+        .background(Color.sticksBg)
+        .overlay(alignment: .bottom) {
+            Color.sticksHairline.frame(height: 1)
+        }
     }
 }
 
