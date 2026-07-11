@@ -89,6 +89,12 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .sticksOpenMatch)) { _ in
             selection = .home
         }
+        // Slice 40: the header's Home pill on screens without a tab
+        // binding (pushed match detail) pops itself, then asks us to
+        // land on the Home tab.
+        .onReceive(NotificationCenter.default.publisher(for: .sticksGoHome)) { _ in
+            selection = .home
+        }
     }
 }
 

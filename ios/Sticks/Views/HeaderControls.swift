@@ -12,6 +12,10 @@
 //  groups / Public only) and My groups sections with headers, nav
 //  links (leaderboard / Personal stats / Manage groups / Settings)
 //  when a tab binding is available, then the account section.
+//  Slice 40: web-parity Home ghost pill leads the cluster —
+//  [Home] [+ New round] [All my groups ▾]. On tab roots it selects
+//  the Home tab; on pushed screens without a tab binding (match
+//  detail) it pops back and asks MainTabView to switch to Home.
 //
 
 import SwiftUI
@@ -20,6 +24,10 @@ extension Notification.Name {
     /// Posted by the switcher's "{group} leaderboard" link; the Groups
     /// tab listens and pushes that group's leaderboard.
     static let sticksOpenGroupLeaderboard = Notification.Name("sticksOpenGroupLeaderboard")
+
+    /// Posted by the header's Home button on screens without a tab
+    /// binding (pushed match detail); MainTabView selects the Home tab.
+    static let sticksGoHome = Notification.Name("sticksGoHome")
 }
 
 struct HeaderControls: View {
@@ -31,16 +39,52 @@ struct HeaderControls: View {
     /// binding (match detail) — those links are omitted there.
     var tabSelection: Binding<SticksTab>? = nil
 
+    @Environment(\.dismiss) private var dismiss
+
     private var filter: GroupFilterStore { .shared }
 
     var body: some View {
         HStack(spacing: 9) {
+            homeButton
+                .layoutPriority(1)
+
             newRoundButton
                 .layoutPriority(1)
 
             groupSwitcher
                 .layoutPriority(1)
         }
+    }
+
+    // MARK: - Home
+
+    /// Web-parity ghost pill: card fill, hairline border, ink text —
+    /// deliberately NOT the green CTA fill. On tab roots it flips the
+    /// tab selection to Home (no-op if already there); on pushed
+    /// screens with no binding it pops, then MainTabView switches tabs.
+    private var homeButton: some View {
+        Button {
+            if let tabSelection {
+                tabSelection.wrappedValue = .home
+            } else {
+                dismiss()
+                NotificationCenter.default.post(name: .sticksGoHome, object: nil)
+            }
+        } label: {
+            Text("Home")
+                .font(SticksFont.sans(13.5, weight: .semibold))
+                .foregroundStyle(Color.sticksInk)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 13)
+                .frame(height: 36)
+                .background(Color.sticksCard)
+                .clipShape(.capsule)
+                .overlay(Capsule().stroke(Color.sticksHairline, lineWidth: 1))
+                .contentShape(.capsule)
+        }
+        .buttonStyle(NewRoundPressStyle())
+        .accessibilityLabel("Home")
     }
 
     // MARK: - Group switcher (+ account menu)
