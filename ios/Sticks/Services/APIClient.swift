@@ -180,15 +180,20 @@ nonisolated struct CallRequest: Encodable {
 }
 
 /// Response for POST /matches/:id/call — applied straight to the local
-/// odds (myCall / wagerCounts / totalCalls), no full refetch needed.
+/// odds (myCall / wagerCounts / totalCalls, plus re-blended
+/// probabilities when the server includes them). A quiet refetch
+/// follows so the chart/weights catch up too.
 nonisolated struct CallResult: Decodable {
     let ok: Bool
     let myCall: String?
     let wagerCounts: [String: Int]
     let totalCalls: Int
+    /// Re-blended win probabilities after the call — optional, older
+    /// servers may omit it.
+    let probabilities: [String: Double]?
 
     private enum CodingKeys: String, CodingKey {
-        case ok, myCall, wagerCounts, totalCalls
+        case ok, myCall, wagerCounts, totalCalls, probabilities
     }
 
     init(from decoder: Decoder) throws {
@@ -197,6 +202,7 @@ nonisolated struct CallResult: Decodable {
         myCall = try? container.decode(String.self, forKey: .myCall)
         wagerCounts = (try? container.decode([String: Int].self, forKey: .wagerCounts)) ?? [:]
         totalCalls = (try? container.decode(Int.self, forKey: .totalCalls)) ?? 0
+        probabilities = try? container.decode([String: Double].self, forKey: .probabilities)
     }
 }
 

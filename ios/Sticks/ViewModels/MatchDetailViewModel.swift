@@ -254,9 +254,12 @@ final class MatchDetailViewModel {
     }
 
     /// POSTs a crowd call (nil withdraws the current one). The response's
-    /// myCall / wagerCounts / totalCalls apply to the local odds
-    /// immediately — no full refetch. Throws APIError — a 400 (market
-    /// closed) shows the server message verbatim; a 401 signs the user out.
+    /// myCall / wagerCounts / totalCalls — and re-blended probabilities,
+    /// when the server returns them — apply to the local odds immediately,
+    /// then a quiet re-fetch pulls the fully re-blended market (chart,
+    /// weights) so the odds shift live instead of waiting for the 30s
+    /// poll. Throws APIError — a 400 (market closed) shows the server
+    /// message verbatim; a 401 signs the user out.
     func placeCall(pickedPlayerId: String?, session: SessionStore) async throws {
         guard let token = session.token else {
             session.signOut()
@@ -268,12 +271,17 @@ final class MatchDetailViewModel {
                 pickedPlayerId: pickedPlayerId,
                 token: token
             )
-            guard var updated = response, var odds = updated.odds else { return }
-            odds.myCall = result.myCall
-            odds.wagerCounts = result.wagerCounts
-            odds.totalCalls = result.totalCalls
-            updated.odds = odds
-            response = updated
+            if var updated = response, var odds = updated.odds {
+                odds.myCall = result.myCall
+                odds.wagerCounts = result.wagerCounts
+                odds.totalCalls = result.totalCalls
+                if let probabilities = result.probabilities, !probabilities.isEmpty {
+                    odds.probabilities = probabilities
+                }
+                updated.odds = odds
+                response = updated
+            }
+            Task { await load(session: session, quiet: true) }
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
             throw error

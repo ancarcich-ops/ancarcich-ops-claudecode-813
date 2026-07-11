@@ -187,7 +187,9 @@ nonisolated struct OddsSeriesPoint: Decodable, Hashable {
 /// projected nets, the caller's own call and the open/closed flag. All
 /// decode leniently: older payloads simply omit them.
 nonisolated struct MatchOdds: Decodable, Hashable {
-    let probabilities: [String: Double]
+    /// Mutable so POST /call responses that carry re-blended
+    /// probabilities apply without a full refetch.
+    var probabilities: [String: Double]
     /// Hole-bucketed win-probability history — nil pre-round / when the
     /// server sends none. Decoding is lenient: a malformed series never
     /// fails the match payload.
