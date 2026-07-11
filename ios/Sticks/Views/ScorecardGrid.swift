@@ -73,13 +73,13 @@ struct ScorecardGrid: View {
             Text("Scorecard")
                 .font(SticksFont.display(13, weight: .bold))
                 .foregroundStyle(Color.sticksInk)
+            if showsToggle {
+                modeToggle
+            }
             Spacer(minLength: 4)
             meta
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-            if showsToggle {
-                modeToggle
-            }
         }
     }
 
