@@ -17,6 +17,10 @@ extension Notification.Name {
     /// Posted with userInfo ["matchId": String] after a round is created
     /// from a non-Home tab — Home reloads and pushes that match's detail.
     static let sticksOpenMatch = Notification.Name("sticksOpenMatch")
+
+    /// Posted by the welcome flow's "New round" CTA — Home opens the
+    /// create wizard as if + New round were tapped.
+    static let sticksStartNewRound = Notification.Name("sticksStartNewRound")
 }
 
 @Observable

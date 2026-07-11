@@ -28,6 +28,15 @@ nonisolated struct LoginResponse: Codable {
     let user: User
 }
 
+/// Body for POST /auth/signup. A nil displayName is omitted entirely
+/// (synthesized Encodable drops nil keys — intended here).
+nonisolated struct SignupRequest: Encodable {
+    let username: String
+    let email: String
+    let password: String
+    let displayName: String?
+}
+
 nonisolated struct MeResponse: Codable {
     let user: User
 }
@@ -247,6 +256,23 @@ nonisolated struct APIClient {
     func login(identifier: String, password: String) async throws -> LoginResponse {
         var request = makeRequest(path: "auth/login", method: "POST")
         request.httpBody = try encoder.encode(LoginRequest(identifier: identifier, password: password))
+        return try await perform(request)
+    }
+
+    /// POST /auth/signup — creates an account and returns the same
+    /// { token, user } shape as /auth/login, so success flows straight
+    /// into the signed-in state. 400s carry server messages (taken
+    /// username, existing email, weak password) shown verbatim.
+    func signup(
+        username: String,
+        email: String,
+        password: String,
+        displayName: String?
+    ) async throws -> LoginResponse {
+        var request = makeRequest(path: "auth/signup", method: "POST")
+        request.httpBody = try encoder.encode(
+            SignupRequest(username: username, email: email, password: password, displayName: displayName)
+        )
         return try await perform(request)
     }
 

@@ -29,9 +29,35 @@ struct MainTabView: View {
 
     @State private var selection: SticksTab = .home
 
+    // Slice 42: first-launch welcome — shown once after sign-in, gated
+    // by this persisted flag. Settings can reset it to replay the flow.
+    @AppStorage("sticks.welcomed.v1") private var welcomed: Bool = false
+
     private var chrome: TabChrome { .shared }
 
     var body: some View {
+        ZStack {
+            tabsWithBar
+
+            // A plain overlay (not a fullScreenCover) so the cold-launch
+            // splash in ContentView still fades out ON TOP of it.
+            if !welcomed {
+                WelcomeView { outcome in
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        welcomed = true
+                    }
+                    if outcome == .newRound {
+                        selection = .home
+                        NotificationCenter.default.post(name: .sticksStartNewRound, object: nil)
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(1)
+            }
+        }
+    }
+
+    private var tabsWithBar: some View {
         ZStack {
             MatchListView(user: user, session: session, tabSelection: $selection)
                 .opacity(selection == .home ? 1 : 0)

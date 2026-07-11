@@ -38,6 +38,9 @@ struct SettingsView: View {
     @State private var showsSignOutConfirm = false
     @State private var saveError: String?
 
+    // Slice 42: resetting this flag replays the first-launch welcome.
+    @AppStorage("sticks.welcomed.v1") private var welcomed: Bool = true
+
     // Profile photo picking
     @State private var photoItem: PhotosPickerItem?
 
@@ -358,6 +361,29 @@ struct SettingsView: View {
         sectionBlock("ACCOUNT") {
             panelCard {
                 readOnlyRow(label: "VERSION", value: Self.versionText)
+                hairline
+
+                Button {
+                    welcomed = false
+                } label: {
+                    HStack {
+                        Text("REPLAY WELCOME")
+                            .font(SticksFont.mono(12))
+                            .kerning(1.2)
+                            .foregroundStyle(Color.sticksGreen)
+
+                        Spacer()
+
+                        Image(systemName: "play.circle")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.sticksGreen)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 52)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(PressableButtonStyle())
+
                 hairline
 
                 Button {

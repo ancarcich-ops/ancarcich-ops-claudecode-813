@@ -66,6 +66,20 @@ final class SessionStore {
         phase = .signedIn(response.user)
     }
 
+    /// Creates an account and signs in — same token-storage path as
+    /// `signIn`, so the new user lands on Home immediately.
+    /// Throws `APIError` with the server's message on failure.
+    func signUp(username: String, email: String, password: String, displayName: String?) async throws {
+        let response = try await api.signup(
+            username: username,
+            email: email,
+            password: password,
+            displayName: displayName
+        )
+        KeychainService.saveToken(response.token)
+        phase = .signedIn(response.user)
+    }
+
     /// Clears the token and returns to login. Also the handler for any 401.
     /// Ends any active round session — the Live Activity, watch snapshot,
     /// and background location must never outlive the signed-in user.

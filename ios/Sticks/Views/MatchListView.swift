@@ -82,6 +82,11 @@ struct MatchListView: View {
             guard let matchId = note.userInfo?["matchId"] as? String else { return }
             Task { await openCreatedMatch(id: matchId) }
         }
+        // Slice 42: the welcome flow's "New round" CTA opens the create
+        // wizard, exactly like + New round in the header.
+        .onReceive(NotificationCenter.default.publisher(for: .sticksStartNewRound)) { _ in
+            showsCreate = true
+        }
     }
 
     // MARK: - Feed scope
