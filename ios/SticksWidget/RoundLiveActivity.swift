@@ -219,9 +219,9 @@ private struct CaddieCardView: View {
     // MARK: Left column — context
 
     private var leftColumn: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     courseLine
                     holeLine
                 }
@@ -234,8 +234,8 @@ private struct CaddieCardView: View {
                     toParScore
                 }
             }
+            Spacer().frame(height: 20)
             progressStrip
-            thruLine
         }
     }
 
@@ -255,12 +255,12 @@ private struct CaddieCardView: View {
 
     /// "Hole 5  PAR 4" — this line never wraps.
     private var holeLine: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
             Text("Hole \(context.state.hole)")
-                .font(WidgetFont.display(23))
+                .font(WidgetFont.display(30))
                 .foregroundStyle(Color.caddieInk)
             Text("PAR \(context.state.par)")
-                .font(WidgetFont.display(13))
+                .font(WidgetFont.display(16))
                 .foregroundStyle(Color.caddieSub)
         }
         .lineLimit(1)
@@ -317,13 +317,4 @@ private struct CaddieCardView: View {
         return .caddieLabel
     }
 
-    /// "THRU 4 OF 18" — the count slightly darker than the frame text.
-    private var thruLine: some View {
-        (Text("THRU ").foregroundStyle(Color.caddieLabel)
-            + Text("\(context.state.holesScored)").foregroundStyle(Color.caddieSub)
-            + Text(" OF \(context.state.totalHoles)").foregroundStyle(Color.caddieLabel))
-            .font(WidgetFont.mono(10, weight: .regular))
-            .kerning(1)
-            .lineLimit(1)
-    }
 }
