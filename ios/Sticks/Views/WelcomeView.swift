@@ -8,6 +8,10 @@
 //  once after first sign-in, gated by sticks.welcomed.v1; Settings can
 //  replay it.
 //
+//  Slice 49: a "Reading the card" decoder page between the overview and
+//  the send-off — six legend rows explaining the chips, dots, and
+//  numbers on the home-feed match cards, mirroring the website's page.
+//
 
 import SwiftUI
 import UIKit
@@ -24,7 +28,7 @@ struct WelcomeView: View {
 
     @State private var page: Int = 0
 
-    private let pageCount = 2
+    private let pageCount = 3
 
     var body: some View {
         ZStack {
@@ -34,8 +38,11 @@ struct WelcomeView: View {
                 welcomePage
                     .tag(0)
 
-                readyPage
+                decoderPage
                     .tag(1)
+
+                readyPage
+                    .tag(2)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut(duration: 0.3), value: page)
@@ -78,10 +85,10 @@ struct WelcomeView: View {
         VStack(spacing: 18) {
             progressDots
 
-            if page == 0 {
+            if page < pageCount - 1 {
                 primaryButton("Continue") {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.easeInOut(duration: 0.3)) { page = 1 }
+                    withAnimation(.easeInOut(duration: 0.3)) { page += 1 }
                 }
             } else {
                 VStack(spacing: 10) {
@@ -231,7 +238,195 @@ struct WelcomeView: View {
         )
     }
 
-    // MARK: - Page 2: you're set
+    // MARK: - Page 2: reading the card
+
+    private var decoderPage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("THE DECODER")
+                        .font(SticksFont.mono(11))
+                        .kerning(1.6)
+                        .foregroundStyle(Color.sticksGreen)
+
+                    Text("Reading the card.")
+                        .font(SticksFont.display(34))
+                        .foregroundStyle(Color.sticksInk)
+
+                    Text("A quick decoder for what every chip, dot, and number means on the home page.")
+                        .font(SticksFont.sans(15))
+                        .foregroundStyle(Color.sticksMuted)
+                        .lineSpacing(3)
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 22)
+
+                VStack(spacing: 10) {
+                    legendRow(
+                        title: "Live status pill",
+                        line: "A round is in progress right now. Sky-blue \"In 2h 14m\" = upcoming. Gold \"Final\" = settled."
+                    ) {
+                        legendPill(text: "● LIVE", color: .sticksGreen)
+                    }
+
+                    legendRow(
+                        title: "Hole dot row",
+                        line: "The number in each box is the player's raw strokes. Color encodes par: solid pine = birdie · gold = eagle · soft green = par · muted red = bogey · bright red + halo = double or worse. Dashed = current hole, empty = unplayed."
+                    ) {
+                        legendDotRow
+                    }
+
+                    legendRow(
+                        title: "Win probability",
+                        line: "The live market — a blend of the model, the crowd's calls, and live scores. The arrow shows the last move (▲ rising, ▼ falling, • flat)."
+                    ) {
+                        (
+                            Text("▲ ").foregroundStyle(Color.sticksGreen)
+                                + Text("63%").foregroundStyle(Color.sticksInk)
+                        )
+                        .font(SticksFont.mono(13))
+                    }
+
+                    legendRow(
+                        title: "+ Call button",
+                        line: "Choose who you think will win the match. Two taps to confirm — switches to a ✓ Picked badge after."
+                    ) {
+                        Text("+ Call")
+                            .font(SticksFont.mono(11))
+                            .foregroundStyle(Color.sticksMuted)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.sticksPanel2)
+                            .clipShape(.capsule)
+                            .overlay(
+                                Capsule().stroke(Color.sticksHairline, lineWidth: 1)
+                            )
+                    }
+
+                    legendRow(
+                        title: "Momentum badges",
+                        line: "🔥 hot = ≥3 birdies in a round. ❄️ cold = +4 over par across the last 3. 🦅 = eagle on the most recent hole. 🐥 = birdie on the most recent."
+                    ) {
+                        legendPill(text: "🔥 3 BIRDIES", color: .sticksGreen)
+                    }
+
+                    legendRow(
+                        title: "Header ticker",
+                        line: "Scrolling strip of live odds and recent events. Adapts to whether the round is open, live, or settled."
+                    ) {
+                        Text("… LEADER −2 THRU 12 · 1 WAGER …")
+                            .font(SticksFont.mono(9))
+                            .kerning(0.6)
+                            .foregroundStyle(Color.sticksMuted)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.sticksPanel2)
+                            .clipShape(.rect(cornerRadius: 5))
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    /// One decoder row — sample on the left, bold label + one-line
+    /// explanation on the right; same card shell as the feature rows.
+    private func legendRow<Sample: View>(
+        title: String,
+        line: String,
+        @ViewBuilder sample: () -> Sample
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            sample()
+                .frame(width: 92, alignment: .center)
+                .frame(minHeight: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(SticksFont.sans(14, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
+
+                Text(line)
+                    .font(SticksFont.sans(12))
+                    .foregroundStyle(Color.sticksMuted)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
+    /// The card-style status/momentum pill — colored 10% fill capsule.
+    private func legendPill(text: String, color: Color) -> some View {
+        Text(text)
+            .font(SticksFont.mono(10))
+            .kerning(0.8)
+            .foregroundStyle(color)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.1))
+            .clipShape(.capsule)
+            .overlay(
+                Capsule().stroke(color.opacity(0.3), lineWidth: 1)
+            )
+    }
+
+    /// Six sample score dots — birdie / par / bogey / double /
+    /// current-dashed / empty — using the app's shared score colors.
+    private var legendDotRow: some View {
+        HStack(spacing: 3) {
+            legendScoredDot(score: 3, par: 4)   // birdie
+            legendScoredDot(score: 4, par: 4)   // par
+            legendScoredDot(score: 5, par: 4)   // bogey
+            legendScoredDot(score: 7, par: 4)   // double+
+
+            // Current hole: dashed accent, no number.
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color.sticksGreen.opacity(0.08))
+                .strokeBorder(
+                    Color.sticksGreen,
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                )
+                .frame(width: 13, height: 17)
+
+            // Unplayed: outline only.
+            RoundedRectangle(cornerRadius: 3)
+                .strokeBorder(Color.sticksHairline, lineWidth: 1)
+                .frame(width: 13, height: 17)
+        }
+    }
+
+    private func legendScoredDot(score: Int, par: Int) -> some View {
+        let style = ScoreStyle.forScore(score, par: par)
+        return RoundedRectangle(cornerRadius: 3)
+            .fill(style.fill)
+            .strokeBorder(style.border, lineWidth: 1)
+            .overlay(
+                Text("\(score)")
+                    .font(SticksFont.mono(8.5))
+                    .foregroundStyle(style.text)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke((style.ring ?? .clear).opacity(0.45), lineWidth: 1.5)
+                    .padding(-1.5)
+            )
+            .frame(width: 13, height: 17)
+    }
+
+    // MARK: - Page 3: you're set
 
     private var readyPage: some View {
         VStack(spacing: 0) {
