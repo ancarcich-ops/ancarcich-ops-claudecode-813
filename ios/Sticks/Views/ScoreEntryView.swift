@@ -7,9 +7,10 @@
 //  whose cells self-describe against the hole's par (tap selects, SAVE
 //  posts), plus X (pickup, logs par × 2) and — (skip, dismisses blank).
 //  Saving updates the scorecard optimistically, then cycles to the next
-//  seat-ordered player still missing a score on the hole. When the hole
-//  is complete the sheet dismisses and notifies the caller (the GPS
-//  screen advances to the next hole).
+//  seat-ordered player still missing a score on the hole. The FIRST
+//  saved score notifies the caller via `onScoreSaved` (the GPS screen
+//  advances its map to the next hole immediately); when the hole is
+//  complete the sheet dismisses and fires `onHoleComplete`.
 //
 
 import SwiftUI
@@ -19,6 +20,9 @@ struct ScoreEntryView: View {
     let session: SessionStore
     let hole: Int
     let par: Int
+    /// Fired after every successful (non-clear) save — the GPS screen
+    /// uses it to auto-advance the map as soon as a score goes in.
+    let onScoreSaved: () -> Void
     let onHoleComplete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -31,12 +35,14 @@ struct ScoreEntryView: View {
         cell: ScoreCellSelection,
         viewModel: MatchDetailViewModel,
         session: SessionStore,
+        onScoreSaved: @escaping () -> Void = {},
         onHoleComplete: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.session = session
         self.hole = cell.hole
         self.par = cell.par
+        self.onScoreSaved = onScoreSaved
         self.onHoleComplete = onHoleComplete
         _currentPlayerId = State(initialValue: cell.player.id)
         _pendingScore = State(initialValue: cell.player.scoresByHole[cell.hole])
@@ -401,6 +407,7 @@ struct ScoreEntryView: View {
                     return
                 }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onScoreSaved()
                 if let next = viewModel.nextUnscoredPlayer(onHole: hole, after: playerId) {
                     withAnimation(.easeInOut(duration: 0.2)) { currentPlayerId = next.id }
                     pendingScore = next.scoresByHole[hole]

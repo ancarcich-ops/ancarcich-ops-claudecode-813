@@ -357,6 +357,14 @@ final class RoundSessionService {
         } catch {
             return .failure("Couldn't save the score. Try again.")
         }
+        // Auto-advance: confirming the wearer's score on the CURRENT hole
+        // moves the round straight to the next hole — the reply snapshot
+        // below (and the phone's GPS screen, via its holeIndex observation)
+        // lands on the new hole. Scoring an earlier hole stays put.
+        let index = min(holeIndex, detail.holes - 1)
+        if hole == detail.holeNumber(at: index), index + 1 < detail.holes {
+            setHole(index: index + 1, matchId: detail.id)
+        }
         guard let snapshot = currentWatchSnapshot() else {
             return .failure("Open a round on your iPhone first.")
         }

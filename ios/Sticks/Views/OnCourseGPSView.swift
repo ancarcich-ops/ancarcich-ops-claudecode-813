@@ -108,9 +108,17 @@ struct OnCourseGPSView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
         .sheet(item: $scoreCell) { cell in
-            ScoreEntryView(cell: cell, viewModel: viewModel, session: session) {
-                advanceHole(afterCompleting: cell.hole)
-            }
+            // Auto-advance: the FIRST saved score on the displayed hole
+            // moves the map to the next hole right away (the sheet keeps
+            // cycling remaining players on the hole it opened on); the
+            // hole-complete advance is then a guarded no-op.
+            ScoreEntryView(
+                cell: cell,
+                viewModel: viewModel,
+                session: session,
+                onScoreSaved: { advanceHole(afterCompleting: cell.hole) },
+                onHoleComplete: { advanceHole(afterCompleting: cell.hole) }
+            )
         }
         .sheet(isPresented: $showFixTee) {
             if let detail = viewModel.detail {
@@ -776,10 +784,10 @@ struct OnCourseGPSView: View {
         return .camera(MapCamera(centerCoordinate: green, distance: distance, heading: heading, pitch: 0))
     }
 
-    /// Advances to the next hole after the score sheet completes a hole —
-    /// but only when the completed hole is the one on screen. Completing
-    /// an EARLIER hole (e.g. the unscored hole an auto-advance walked away
-    /// from) stays on the current hole.
+    /// Advances to the next hole as soon as the score sheet saves a score
+    /// on the hole that's on screen (and again, as a guarded no-op, when
+    /// the hole completes). Scoring an EARLIER hole (e.g. the unscored
+    /// hole an auto-advance walked away from) stays on the current hole.
     private func advanceHole(afterCompleting hole: Int) {
         guard let detail = viewModel.detail,
               hole == detail.holeNumber(at: holeIndex),
