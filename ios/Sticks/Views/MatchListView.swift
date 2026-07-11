@@ -118,16 +118,24 @@ struct MatchListView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
-            HStack(spacing: 10) {
+            // The pills are fixed-size, so the brand adapts instead:
+            // full "Sticks." wordmark when it fits, just the clubs mark
+            // when the header cluster needs the room.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    SticksClubsMark()
+                        .frame(width: 34, height: 34)
+
+                    (Text("Sticks").foregroundStyle(Color.sticksInk)
+                        + Text(".").foregroundStyle(Color.sticksGreen))
+                        .font(SticksFont.display(30))
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+
                 SticksClubsMark()
                     .frame(width: 34, height: 34)
-
-                (Text("Sticks").foregroundStyle(Color.sticksInk)
-                    + Text(".").foregroundStyle(Color.sticksGreen))
-                    .font(SticksFont.display(30))
-                    .lineLimit(1)
             }
-            .layoutPriority(1)
 
             Spacer(minLength: 6)
 

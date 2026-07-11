@@ -239,7 +239,9 @@ struct HeaderControls: View {
                     .font(.system(size: 11, weight: .bold))
                 Text("New round")
                     .font(SticksFont.sans(13.5, weight: .bold))
+                    .lineLimit(1)
             }
+            .fixedSize()
             .foregroundStyle(Color.sticksCream)
             .padding(.horizontal, 13)
             .frame(height: 36)
