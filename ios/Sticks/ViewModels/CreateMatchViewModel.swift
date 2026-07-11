@@ -57,6 +57,11 @@ final class CreateMatchViewModel {
     private(set) var isLocating = false
     /// Set when a "Near me" attempt couldn't get a fix — degrade to name search.
     private(set) var nearMeFailed = false
+    /// Last successful nearby fetch — restored whenever the search box
+    /// empties so the step never goes blank after a cleared query.
+    private var nearbyCache: [CourseResult] = []
+    /// The silent open-of-flow nearby load runs at most once.
+    private var didAutoLoadNearby = false
 
     // MARK: Setup
 
@@ -247,7 +252,9 @@ final class CreateMatchViewModel {
         nearMeFailed = false
         let query = courseQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.count >= 2 else {
-            courseResults = []
+            // Cleared/short query → fall back to the nearby list if we
+            // have one, so the step isn't left blank.
+            courseResults = nearbyCache
             isSearchingCourses = false
             return
         }
@@ -287,10 +294,42 @@ final class CreateMatchViewModel {
                 token: token
             )
             courseResults = response.courses
+            nearbyCache = response.courses
             if response.courses.isEmpty { nearMeFailed = true }
         } catch {
             nearMeFailed = true
         }
+    }
+
+    /// Silent "near me" that runs when the flow opens, so the course
+    /// step starts pre-filled instead of blank. Skips edit mode and
+    /// denied permission, and never surfaces an error — any failure
+    /// just leaves the list empty for manual search.
+    func autoLoadNearby(session: SessionStore) async {
+        guard !didAutoLoadNearby,
+              !isEditing,
+              selectedCourse == nil,
+              courseQuery.isEmpty,
+              courseResults.isEmpty,
+              !locationProvider.isDenied,
+              !isLocating
+        else { return }
+        didAutoLoadNearby = true
+        isLocating = true
+        defer { isLocating = false }
+
+        guard let coordinate = await locationProvider.requestFix(),
+              let token = session.token else { return }
+        guard let response = try? await api.nearbyCourses(
+            lat: coordinate.latitude,
+            lng: coordinate.longitude,
+            token: token
+        ), !response.courses.isEmpty else { return }
+
+        nearbyCache = response.courses
+        // Don't clobber anything the user typed or picked while locating.
+        guard selectedCourse == nil, courseQuery.isEmpty else { return }
+        courseResults = response.courses
     }
 
     func selectCourse(_ course: CourseResult, session: SessionStore) {

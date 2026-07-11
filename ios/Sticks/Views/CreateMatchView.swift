@@ -80,7 +80,9 @@ struct CreateMatchView: View {
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) { footerBar }
         .task {
-            await viewModel.bootstrap(user: user, session: session)
+            async let bootstrap: Void = viewModel.bootstrap(user: user, session: session)
+            async let nearby: Void = viewModel.autoLoadNearby(session: session)
+            _ = await (bootstrap, nearby)
         }
     }
 
@@ -291,10 +293,10 @@ struct CreateMatchView: View {
 
                 if !viewModel.courseResults.isEmpty {
                     courseResultsCard
-                } else if viewModel.isSearchingCourses {
+                } else if viewModel.isSearchingCourses || viewModel.isLocating {
                     HStack(spacing: 8) {
                         ProgressView().tint(Color.sticksGreen).controlSize(.small)
-                        Text("Searching…")
+                        Text(viewModel.isLocating ? "Finding courses near you…" : "Searching…")
                             .font(SticksFont.mono(11))
                             .foregroundStyle(Color.sticksFaint)
                     }
