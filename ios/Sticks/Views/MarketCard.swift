@@ -8,6 +8,9 @@
 //  bar, call count, projected net), and "Place your call" — one crowd
 //  call per user via POST /matches/:id/call, applied optimistically.
 //  Replaces the plain "Win odds" card from slice 34.
+//  Slice 47: scrub tooltip (hole + per-player win %) with a vertical
+//  indicator, and a pulsing halo on the latest-hole dots — both drawn
+//  natively over Swift Charts via chartOverlay.
 //
 
 import SwiftUI
@@ -23,6 +26,11 @@ struct MarketCard: View {
     /// matchPlayerId of the in-flight call POST — blocks double taps.
     @State private var pendingCallId: String?
     @State private var callError: String?
+
+    /// Hole bucket under the user's finger while scrubbing the chart.
+    @State private var selectedHole: Int?
+    /// True between touch-down and release — hides the latest-dot pulse.
+    @State private var isScrubbing = false
 
     /// One player's polyline through the series buckets.
     private struct PlayerLine: Identifiable {
@@ -146,7 +154,10 @@ struct MarketCard: View {
     // MARK: - Chart (slice 34, upgraded)
 
     private func chart(_ lines: [PlayerLine]) -> some View {
-        Chart {
+        // Every hole bucket that appears in any line, for scrub snapping.
+        let allHoles: [Int] = Array(Set(lines.flatMap { $0.points.map(\.hole) })).sorted()
+
+        return Chart {
             // Faint dashed gridlines at 25/50/75 — the 50% even-odds
             // line slightly stronger, like the web.
             ForEach([25, 50, 75], id: \.self) { level in
@@ -194,6 +205,24 @@ struct MarketCard: View {
                     .symbolSize(38)
                 }
             }
+
+            // Scrub state: vertical indicator + emphasized points.
+            if let selectedHole {
+                RuleMark(x: .value("Hole", selectedHole))
+                    .foregroundStyle(Color.sticksHairline)
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+
+                ForEach(lines) { line in
+                    if let point = line.points.first(where: { $0.hole == selectedHole }) {
+                        PointMark(
+                            x: .value("Hole", point.hole),
+                            y: .value("Win %", point.pct)
+                        )
+                        .foregroundStyle(line.color)
+                        .symbolSize(54)
+                    }
+                }
+            }
         }
         .chartYScale(domain: 0 ... 100)
         .chartYAxis {
@@ -220,6 +249,96 @@ struct MarketCard: View {
                 }
             }
         }
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                chartOverlayContent(lines: lines, allHoles: allHoles, proxy: proxy, geo: geo)
+            }
+        }
+    }
+
+    /// The native layer over the plot: pulsing halos on the latest
+    /// dots, the scrub gesture surface, and the floating tooltip.
+    @ViewBuilder
+    private func chartOverlayContent(
+        lines: [PlayerLine],
+        allHoles: [Int],
+        proxy: ChartProxy,
+        geo: GeometryProxy
+    ) -> some View {
+        let plotFrame: CGRect = proxy.plotFrame.map { geo[$0] } ?? .zero
+
+        ZStack(alignment: .topLeading) {
+            // Pulsing halo on each line's latest point. Hidden while
+            // scrubbing — the scrub dots take over.
+            if !isScrubbing {
+                ForEach(lines) { line in
+                    if let last = line.points.last,
+                       let x = proxy.position(forX: last.hole),
+                       let y = proxy.position(forY: last.pct) {
+                        MarketPulseHalo(color: line.color)
+                            .position(x: plotFrame.minX + x, y: plotFrame.minY + y)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
+
+            // Scrub surface — fires on touch-down and follows the drag.
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(.rect)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let xInPlot = value.location.x - plotFrame.minX
+                            guard let raw: Double = proxy.value(atX: xInPlot) else { return }
+                            let nearest = allHoles.min {
+                                abs(Double($0) - raw) < abs(Double($1) - raw)
+                            }
+                            if !isScrubbing {
+                                isScrubbing = true
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                            if nearest != selectedHole {
+                                selectedHole = nearest
+                            }
+                        }
+                        .onEnded { _ in
+                            isScrubbing = false
+                            selectedHole = nil
+                        }
+                )
+
+            // Tooltip card near the top of the plot, following the
+            // scrub x, clamped to stay on-screen.
+            if let selectedHole {
+                let tooltipWidth: CGFloat = 150
+                let dotX = plotFrame.minX + (proxy.position(forX: selectedHole) ?? 0)
+                let clampedX = min(
+                    max(dotX - tooltipWidth / 2, plotFrame.minX + 2),
+                    max(plotFrame.minX + 2, plotFrame.maxX - tooltipWidth - 2)
+                )
+
+                MarketScrubTooltip(
+                    hole: selectedHole,
+                    rows: tooltipRows(lines: lines, hole: selectedHole),
+                    width: tooltipWidth
+                )
+                .offset(x: clampedX, y: plotFrame.minY + 2)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: selectedHole)
+    }
+
+    /// Per-player tooltip rows at a hole, sorted by win % descending.
+    private func tooltipRows(lines: [PlayerLine], hole: Int) -> [MarketScrubTooltip.Row] {
+        lines.compactMap { line in
+            line.points.first(where: { $0.hole == hole }).map {
+                MarketScrubTooltip.Row(id: line.id, name: line.name, color: line.color, pct: $0.pct)
+            }
+        }
+        .sorted { $0.pct > $1.pct }
     }
 
     private func legend(_ lines: [PlayerLine]) -> some View {
@@ -476,6 +595,87 @@ private struct MarketAvatar: View {
         let parts = player.displayName.split(separator: " ").prefix(2)
         let letters = parts.compactMap { $0.first.map(String.init) }
         return letters.isEmpty ? "?" : letters.joined().uppercased()
+    }
+}
+
+/// Floating scrub readout: "HOLE n" + a swatch/name/win % row per
+/// player, styled like the app's small cream cards.
+private struct MarketScrubTooltip: View {
+    struct Row: Identifiable {
+        let id: String
+        let name: String
+        let color: Color
+        let pct: Double
+    }
+
+    let hole: Int
+    let rows: [Row]
+    let width: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("HOLE \(hole)")
+                .font(SticksFont.mono(9))
+                .kerning(1)
+                .foregroundStyle(Color.sticksMuted)
+
+            ForEach(rows) { row in
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(row.color)
+                        .frame(width: 10, height: 4)
+
+                    Text(row.name)
+                        .font(SticksFont.sans(11, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 6)
+
+                    Text("\(Int(row.pct.rounded()))%")
+                        .font(SticksFont.mono(10))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sticksInk)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(width: width, alignment: .leading)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 6, y: 2)
+    }
+}
+
+/// Solid dot + repeating halo that scales up and fades out — the
+/// live-odds pulse on the chart's latest bucket.
+private struct MarketPulseHalo: View {
+    let color: Color
+
+    @State private var isPulsing = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color.opacity(0.5))
+                .frame(width: 9, height: 9)
+                .scaleEffect(isPulsing ? 2.2 : 1)
+                .opacity(isPulsing ? 0 : 0.5)
+                .animation(
+                    .easeOut(duration: 1.4).repeatForever(autoreverses: false),
+                    value: isPulsing
+                )
+
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+        }
+        .onAppear { isPulsing = true }
     }
 }
 
