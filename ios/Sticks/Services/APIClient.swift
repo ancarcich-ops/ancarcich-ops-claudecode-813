@@ -137,6 +137,16 @@ nonisolated struct SideGamesResponse: Decodable {
     let kinds: [String]
 }
 
+/// Body for POST /matches/:id/side-game-event. A nil matchPlayerId is
+/// OMITTED entirely (synthesized Encodable drops nil keys — intended:
+/// BBB clears an award by sending no matchPlayerId, and PRESS never
+/// carries one).
+nonisolated struct SideGameEventRequest: Encodable {
+    let kind: String
+    let hole: Int
+    let matchPlayerId: String?
+}
+
 nonisolated struct SharesResponse: Decodable {
     let shares: [RoundShare]
 }
@@ -347,6 +357,20 @@ nonisolated struct APIClient {
         request.httpBody = try encoder.encode(SideGamesRequest(kinds: kinds))
         let response: SideGamesResponse = try await perform(request)
         return response.kinds
+    }
+
+    /// POST /matches/:id/side-game-event — records one event for an
+    /// event-driven side game: THREE_PUTT toggles a Snake 3-putt,
+    /// BINGO/BANGO/BONGO assign (or clear, with nil matchPlayerId) a BBB
+    /// award, PRESS toggles a Match press. Creator + seated players
+    /// only; 400s (game not enabled, round final) carry server messages
+    /// shown verbatim.
+    func recordSideGameEvent(matchId: String, kind: String, hole: Int, matchPlayerId: String?, token: String) async throws {
+        var request = makeRequest(path: "matches/\(matchId)/side-game-event", method: "POST", token: token)
+        request.httpBody = try encoder.encode(
+            SideGameEventRequest(kind: kind, hole: hole, matchPlayerId: matchPlayerId)
+        )
+        let _: OkResponse = try await perform(request)
     }
 
     /// GET /matches/:id/shares — the caller's live share links for a round.

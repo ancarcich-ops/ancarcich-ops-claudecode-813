@@ -41,6 +41,9 @@ struct MatchDetailView: View {
     @State private var showsCreate = false
     @State private var showsEditPars = false
     @State private var showsEditSideGames = false
+    /// Slice 50: the event-driven side game whose per-hole editor sheet
+    /// is open (Snake, BBB, Match press).
+    @State private var eventEditorGame: SideGame?
     @State private var showsDeleteConfirm = false
     @State private var showsFinalConfirm = false
     @State private var showsReopenConfirm = false
@@ -85,7 +88,10 @@ struct MatchDetailView: View {
                                 StandingsCard(
                                     detail: detail,
                                     probabilities: viewModel.response?.odds?.probabilities ?? [:],
-                                    sideGames: viewModel.response?.sideGames ?? []
+                                    sideGames: viewModel.response?.sideGames ?? [],
+                                    onRecordEvents: detail.canEnterScores && detail.status != .completed
+                                        ? { game in eventEditorGame = game }
+                                        : nil
                                 )
                             }
                             // Slice 41: the Market — blend header, area-fill
@@ -147,6 +153,9 @@ struct MatchDetailView: View {
             if let detail = viewModel.detail {
                 EditParsSheet(detail: detail, viewModel: viewModel, session: session)
             }
+        }
+        .sheet(item: $eventEditorGame) { game in
+            SideGameEventEditorView(game: game, viewModel: viewModel, session: session)
         }
         .sheet(isPresented: $showsEditSideGames) {
             if let detail = viewModel.detail {

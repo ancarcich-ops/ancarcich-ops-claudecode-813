@@ -289,6 +289,32 @@ nonisolated struct SideGame: Decodable, Hashable, Identifiable {
     }
 }
 
+/// One recorded event for an event-driven side game — a Snake 3-putt
+/// (THREE_PUTT + matchPlayerId), a BBB award (BINGO/BANGO/BONGO +
+/// matchPlayerId) or a Match press (PRESS, no player). Lenient decode:
+/// malformed fields fall back to empty/zero so one bad event never
+/// drops the whole list.
+nonisolated struct SideGameEvent: Hashable {
+    let gameKind: String
+    let hole: Int
+    let kind: String
+    let matchPlayerId: String?
+}
+
+extension SideGameEvent: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case gameKind, hole, kind, matchPlayerId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        gameKind = (try? container.decode(String.self, forKey: .gameKind)) ?? ""
+        hole = (try? container.decode(Int.self, forKey: .hole)) ?? 0
+        kind = (try? container.decode(String.self, forKey: .kind)) ?? ""
+        matchPlayerId = try? container.decode(String.self, forKey: .matchPlayerId)
+    }
+}
+
 nonisolated struct MatchDetailResponse: Decodable {
     var match: MatchDetail
     /// Keyed by absolute hole number (converted from string keys).
@@ -302,9 +328,16 @@ nonisolated struct MatchDetailResponse: Decodable {
     var odds: MatchOdds?
     /// Side games with pre-computed leaderboards — empty when none.
     let sideGames: [SideGame]
+    /// Slice 50: current events for the event-driven games (Snake, BBB,
+    /// Match press) — empty when none. Mutable so a confirmed POST
+    /// applies optimistically before the quiet refetch lands.
+    var sideGameEvents: [SideGameEvent]
+    /// Raw per-game config JSON strings keyed by game kind (Wolf uses
+    /// this in a later slice) — empty when none.
+    let sideGameConfigs: [String: String]
 
     private enum CodingKeys: String, CodingKey {
-        case match, holeGeo, hazards, wind, odds, sideGames
+        case match, holeGeo, hazards, wind, odds, sideGames, sideGameEvents, sideGameConfigs
     }
 
     init(from decoder: Decoder) throws {
@@ -326,5 +359,7 @@ nonisolated struct MatchDetailResponse: Decodable {
         wind = try container.decodeIfPresent(Wind.self, forKey: .wind)
         odds = try? container.decode(MatchOdds.self, forKey: .odds)
         sideGames = (try? container.decode([SideGame].self, forKey: .sideGames)) ?? []
+        sideGameEvents = (try? container.decode([SideGameEvent].self, forKey: .sideGameEvents)) ?? []
+        sideGameConfigs = (try? container.decode([String: String].self, forKey: .sideGameConfigs)) ?? [:]
     }
 }

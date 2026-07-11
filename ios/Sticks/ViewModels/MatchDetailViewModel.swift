@@ -203,6 +203,57 @@ final class MatchDetailViewModel {
         await load(session: session, quiet: true)
     }
 
+    /// POSTs one side-game event (Snake 3-putt, BBB award, Match press),
+    /// applies it optimistically to the local events, then quiet-refetches
+    /// so the game's leaderboard recomputes server-side. Throws APIError —
+    /// 400s (game not enabled, round final) show verbatim; 401 signs out.
+    func recordSideGameEvent(gameKind: String, kind: String, hole: Int, matchPlayerId: String?, session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            try await api.recordSideGameEvent(
+                matchId: matchId,
+                kind: kind,
+                hole: hole,
+                matchPlayerId: matchPlayerId,
+                token: token
+            )
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        applyEventLocally(gameKind: gameKind, kind: kind, hole: hole, matchPlayerId: matchPlayerId)
+        Task { await load(session: session, quiet: true) }
+    }
+
+    /// Optimistic local mirror of the server's event semantics after a
+    /// confirmed POST: BBB awards are single-holder (replace on assign,
+    /// clear on nil player); THREE_PUTT and PRESS toggle.
+    private func applyEventLocally(gameKind: String, kind: String, hole: Int, matchPlayerId: String?) {
+        guard var updated = response else { return }
+        var events = updated.sideGameEvents
+        switch kind {
+        case "BINGO", "BANGO", "BONGO":
+            events.removeAll { $0.kind == kind && $0.hole == hole }
+            if let matchPlayerId {
+                events.append(SideGameEvent(gameKind: gameKind, hole: hole, kind: kind, matchPlayerId: matchPlayerId))
+            }
+        default:
+            let matches: (SideGameEvent) -> Bool = {
+                $0.kind == kind && $0.hole == hole && $0.matchPlayerId == matchPlayerId
+            }
+            if events.contains(where: matches) {
+                events.removeAll(where: matches)
+            } else {
+                events.append(SideGameEvent(gameKind: gameKind, hole: hole, kind: kind, matchPlayerId: matchPlayerId))
+            }
+        }
+        updated.sideGameEvents = events
+        response = updated
+    }
+
     /// Fetches the caller's live share links. Quiet on failure — an
     /// unreachable list keeps whatever was already displayed.
     func loadShares(session: SessionStore) async {

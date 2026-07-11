@@ -14,6 +14,10 @@ struct StandingsCard: View {
     /// Win probabilities keyed by matchPlayerId — empty hides bars/%/trend.
     let probabilities: [String: Double]
     let sideGames: [SideGame]
+    /// Slice 50: opens the per-hole event editor for event-driven games
+    /// (Snake, BBB, Match press). Nil hides the button — spectators
+    /// and completed rounds.
+    var onRecordEvents: ((SideGame) -> Void)? = nil
 
     /// nil = Overall; otherwise a side-game kind.
     @State private var selectedKind: String?
@@ -229,12 +233,48 @@ struct StandingsCard: View {
 
     private func sideGameBody(_ game: SideGame) -> some View {
         VStack(alignment: .leading, spacing: 14) {
+            if MatchDetailMath.isEventDriven(game.kind), let onRecordEvents {
+                recordEventsButton(game: game, open: onRecordEvents)
+            }
             ForEach(game.leaderboards) { board in
                 leaderboardSection(board)
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
+    }
+
+    /// Event-driven games fill from per-hole taps, not the scorecard —
+    /// this is the way in.
+    private func recordEventsButton(game: SideGame, open: @escaping (SideGame) -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            open(game)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("RECORD EVENTS")
+                    .font(SticksFont.mono(10.5))
+                    .kerning(1)
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color.sticksGreen)
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .background(Color.sticksGreen.opacity(0.08))
+            .clipShape(.rect(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.sticksGreen.opacity(0.35), lineWidth: 1)
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("Record \(MatchDetailMath.kindLabel(game.kind)) events")
     }
 
     private func leaderboardSection(_ board: SideGameLeaderboard) -> some View {

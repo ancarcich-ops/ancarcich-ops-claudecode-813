@@ -106,6 +106,23 @@ nonisolated enum MatchDetailMath {
         }
     }
 
+    /// Canonical key for a side-game kind — the server uses a couple of
+    /// aliases for the same games across endpoints.
+    static func eventGameKey(_ kind: String) -> String {
+        switch kind.uppercased() {
+        case "BINGO_BANGO_BONGO": return "BBB"
+        case "MATCH_PLAY": return "MATCH"
+        default: return kind.uppercased()
+        }
+    }
+
+    /// True for side games whose state comes from recorded per-hole
+    /// events (Snake 3-putts, BBB awards, Match presses) rather than
+    /// the scorecard. Wolf joins in a later slice.
+    static func isEventDriven(_ kind: String) -> Bool {
+        ["SNAKE", "BBB", "MATCH"].contains(eventGameKey(kind))
+    }
+
     /// Segmented-tab label for a side-game kind.
     static func kindLabel(_ kind: String) -> String {
         switch kind {
