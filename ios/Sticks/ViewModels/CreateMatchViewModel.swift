@@ -48,6 +48,8 @@ final class CreateMatchViewModel {
     var selectedCourse: CourseResult? {
         didSet {
             guard oldValue?.name != selectedCourse?.name else { return }
+            // Clearing the course (CHANGE) reopens the search group.
+            if selectedCourse == nil { openRoundGroup = 0 }
             teesTask?.cancel()
             tees = []
             defaultTeeName = nil
@@ -62,6 +64,15 @@ final class CreateMatchViewModel {
     private var nearbyCache: [CourseResult] = []
     /// The silent open-of-flow nearby load runs at most once.
     private var didAutoLoadNearby = false
+
+    // MARK: Guided reveal (slice 45)
+
+    /// Web-parity progressive reveal on the Round step. `roundStage` is
+    /// the furthest answered group (0 course → 1 tee & holes → 2 format
+    /// → 3 all answered); `openRoundGroup` is the group currently
+    /// expanded (nil = everything collapsed to chips).
+    private(set) var roundStage = 0
+    var openRoundGroup: Int? = 0
 
     // MARK: Setup
 
@@ -78,9 +89,47 @@ final class CreateMatchViewModel {
     }
     var startsOnBack = false
     var scoringMode = "NET"
+    /// The round's tee time — maps to the create body's `scheduledAt`.
+    /// Defaults to now, matching the web's starting state (slice 45).
+    var teeTime: Date = .now
     /// Game format — INDIVIDUAL (all-vs-all), SCRAMBLE (one ball per
     /// team), or BOTH (individual + a team match on top). Slice 39.
-    var format = "INDIVIDUAL"
+    /// Picking a team format while solo grows the round to a twosome
+    /// (the inverse of "solo forces Individual").
+    var format = "INDIVIDUAL" {
+        didSet {
+            guard format != oldValue else { return }
+            if format != "INDIVIDUAL", seats.count < 2, canAddSeat {
+                addSeat()
+            }
+        }
+    }
+
+    /// Single web-parity holes control — Full 18 / Front 9 / Back 9
+    /// (Back 9 = 9 holes starting on hole 10).
+    enum HolesChoice: Hashable {
+        case full18, front9, back9
+    }
+
+    var holesChoice: HolesChoice {
+        get {
+            if holes == 18 { return .full18 }
+            return startsOnBack ? .back9 : .front9
+        }
+        set {
+            switch newValue {
+            case .full18:
+                holes = 18
+                startsOnBack = false
+            case .front9:
+                holes = 9
+                startsOnBack = false
+            case .back9:
+                holes = 9
+                startsOnBack = true
+            }
+        }
+    }
 
     // MARK: Tees
 
@@ -141,6 +190,11 @@ final class CreateMatchViewModel {
         format = knownFormats.contains(detailFormat) ? detailFormat : "INDIVIDUAL"
         sideGames = Set(editing.sideGameKinds)
         selectedGroupId = editing.groupId
+        teeTime = detail.scheduledAt
+        // Edit mode opens with everything answered — all chips, like
+        // the web's roundStep = 3.
+        roundStage = 3
+        openRoundGroup = nil
         seats = detail.players
             .sorted { ($0.seat ?? Int.max, $0.id) < ($1.seat ?? Int.max, $1.id) }
             .map { player in
@@ -219,6 +273,8 @@ final class CreateMatchViewModel {
                 isMe: true,
                 teeId: nil
             )]
+            // Web default: Twosome — seat 2 arrives empty, ready to name.
+            if !isEditing { addSeat() }
         }
         if isEditing, let course = selectedCourse, tees.isEmpty {
             loadTees(for: course.name, session: session)
@@ -338,6 +394,24 @@ final class CreateMatchViewModel {
         courseResults = []
         nearMeFailed = false
         loadTees(for: course.name, session: session)
+        // The web's auto-reveal: picking a course immediately collapses
+        // it to a chip and opens Tee & holes.
+        advanceRound(from: 0)
+    }
+
+    // MARK: - Guided reveal (slice 45)
+
+    /// Marks `group` answered and opens the next unanswered one — or
+    /// collapses everything once all three are done. Re-continuing a
+    /// reopened, already-answered group just re-collapses it.
+    func advanceRound(from group: Int) {
+        if roundStage < group + 1 { roundStage = group + 1 }
+        openRoundGroup = roundStage >= 3 ? nil : min(roundStage, 2)
+    }
+
+    /// Tapping a collapsed chip re-opens that group (web's StepChip).
+    func reopenRoundGroup(_ group: Int) {
+        openRoundGroup = group
     }
 
     // MARK: - Tees
@@ -441,6 +515,24 @@ final class CreateMatchViewModel {
         ))
     }
 
+    /// Round-step player-count chips (Solo / Twosome / Threesome /
+    /// Foursome). Grows with empty guest seats, shrinks from the bottom
+    /// (never removes the "me" seat). Solo forces Individual, like the
+    /// web.
+    func setPlayerCount(_ count: Int) {
+        let target = min(max(count, 1), 8)
+        while seats.count < target, canAddSeat {
+            addSeat()
+        }
+        while seats.count > target {
+            guard let index = seats.lastIndex(where: { !$0.isMe }) else { break }
+            seats.remove(at: index)
+        }
+        if seats.count < 2, format != "INDIVIDUAL" {
+            format = "INDIVIDUAL"
+        }
+    }
+
     func removeSeat(id: UUID) {
         seats.removeAll { $0.id == id && !$0.isMe }
         // Solo rounds are always Individual — dropping below 2 players
@@ -535,6 +627,7 @@ final class CreateMatchViewModel {
             courseName: course.name,
             holes: holes,
             startingHole: holes == 18 ? 1 : (startsOnBack ? 10 : 1),
+            scheduledAt: ISO8601DateFormatter().string(from: teeTime),
             scoringMode: scoringMode,
             format: effectiveFormat,
             players: players,

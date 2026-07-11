@@ -17,6 +17,12 @@
 //  step indicator up top and a pinned Back/Next footer. Same sections,
 //  same view model, same API calls — one step on screen at a time.
 //
+//  Slice 45: web parity — Course folded into a single progressive-
+//  reveal "Round" step (Course → Tee & holes → Format), one group open
+//  at a time, answered groups collapsing to tappable chips. Adds the
+//  tee-time picker (→ scheduledAt), Full 18/Front 9/Back 9, and the
+//  Solo/Twosome/Threesome/Foursome player-count chips.
+//
 
 import SwiftUI
 import UIKit
@@ -25,7 +31,6 @@ struct CreateMatchView: View {
     /// One wizard step — each shows one slice of the old single-scroll
     /// form. Solo rounds (just the "me" seat) skip `.sideGames`.
     enum Step: Int, CaseIterable {
-        case course
         case round
         case players
         case sideGames
@@ -49,7 +54,7 @@ struct CreateMatchView: View {
         user: User,
         session: SessionStore,
         editing: MatchEditContext? = nil,
-        initialStep: Step = .course,
+        initialStep: Step = .round,
         onCreated: @escaping (String) -> Void
     ) {
         self.user = user
@@ -91,7 +96,7 @@ struct CreateMatchView: View {
     /// The steps this round actually shows — solo rounds have no
     /// side-games step (mirrors the web, where solo ends at Players).
     private var visibleSteps: [Step] {
-        var steps: [Step] = [.course, .round, .players]
+        var steps: [Step] = [.round, .players]
         if viewModel.seats.count > 1 {
             steps.append(.sideGames)
         }
@@ -103,8 +108,7 @@ struct CreateMatchView: View {
     /// Per-step gate on Next. The final step defers to `canCreate`.
     private func canLeave(_ step: Step) -> Bool {
         switch step {
-        case .course: return viewModel.selectedCourse != nil
-        case .round: return true
+        case .round: return viewModel.selectedCourse != nil && viewModel.roundStage >= 2
         case .players: return viewModel.seatsAreValid && viewModel.teamsAreValid
         case .sideGames: return true
         }
@@ -124,6 +128,11 @@ struct CreateMatchView: View {
     private func goNext() {
         guard let index = visibleSteps.firstIndex(of: step),
               index + 1 < visibleSteps.count else { return }
+        if step == .round {
+            // Leaving the Round step collapses every group to a chip,
+            // so coming Back shows the web's answered state.
+            viewModel.advanceRound(from: 2)
+        }
         focusedSeat = nil
         isCourseFieldFocused = false
         isAdvancing = true
@@ -148,13 +157,8 @@ struct CreateMatchView: View {
     /// time, each a plain VStack of cards on the cream background.
     @ViewBuilder private var stepSections: some View {
         switch step {
-        case .course:
-            courseSection
         case .round:
-            holesSection
-            formatSection
-            scoringSection
-            groupSection
+            roundRevealSections
         case .players:
             playersSection
         case .sideGames:
@@ -223,7 +227,6 @@ struct CreateMatchView: View {
 
     private func stepLabel(_ step: Step) -> String {
         switch step {
-        case .course: return "COURSE"
         case .round: return "ROUND"
         case .players: return "PLAYERS"
         case .sideGames: return "SIDE GAMES"
@@ -245,8 +248,7 @@ struct CreateMatchView: View {
 
     private var stepTitle: String {
         switch step {
-        case .course: return viewModel.isEditing ? "Edit round" : "Start a round"
-        case .round: return "Round setup"
+        case .round: return viewModel.isEditing ? "Edit round" : "Start a round"
         case .players: return "Players"
         case .sideGames: return "Side games"
         }
@@ -254,12 +256,10 @@ struct CreateMatchView: View {
 
     private var stepSubtitle: String {
         switch step {
-        case .course:
+        case .round:
             return viewModel.isEditing
                 ? "Adjust the details — nothing changes until you save."
-                : "Where are you playing?"
-        case .round:
-            return "Holes, scoring, and where to post."
+                : "Course, tee time, and format."
         case .players:
             return "Seat your group and set handicaps."
         case .sideGames:
@@ -272,6 +272,261 @@ struct CreateMatchView: View {
             .font(SticksFont.mono(10.5))
             .kerning(1.47)
             .foregroundStyle(Color.sticksGreen)
+    }
+
+    // MARK: - Round step — guided reveal (slice 45)
+
+    /// The web's progressive-reveal Round step: Course → Tee & holes →
+    /// Format, one group open at a time, answered groups collapsing to
+    /// tappable chips that re-open on tap.
+    private var roundRevealSections: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            courseGroup
+
+            if viewModel.roundStage >= 1 {
+                teeHolesGroup
+            }
+
+            if viewModel.roundStage >= 2 {
+                formatGroup
+                groupSection
+            }
+        }
+        .animation(.easeOut(duration: 0.22), value: viewModel.roundStage)
+        .animation(.easeOut(duration: 0.22), value: viewModel.openRoundGroup)
+    }
+
+    @ViewBuilder private var courseGroup: some View {
+        if viewModel.openRoundGroup == 0 || viewModel.selectedCourse == nil {
+            VStack(alignment: .leading, spacing: 10) {
+                courseSection
+
+                if viewModel.selectedCourse != nil, viewModel.roundStage >= 1 {
+                    roundContinueButton(from: 0, label: "DONE")
+                }
+            }
+        } else if let course = viewModel.selectedCourse {
+            roundChip(label: "COURSE", summary: course.name, group: 0)
+        }
+    }
+
+    @ViewBuilder private var teeHolesGroup: some View {
+        if viewModel.openRoundGroup == 1 {
+            VStack(alignment: .leading, spacing: 10) {
+                sectionLabel("TEE TIME & HOLES")
+
+                teeTimeRow
+
+                SegmentPicker(
+                    options: [
+                        (CreateMatchViewModel.HolesChoice.full18, "FULL 18"),
+                        (.front9, "FRONT 9"),
+                        (.back9, "BACK 9"),
+                    ],
+                    selection: Bindable(viewModel).holesChoice
+                )
+
+                roundContinueButton(from: 1, label: viewModel.roundStage >= 3 ? "DONE" : "CONTINUE")
+            }
+        } else {
+            roundChip(label: "TEE & HOLES", summary: teeHolesSummary, group: 1)
+        }
+    }
+
+    /// Native date/time picker defaulting to now — maps to the create
+    /// body's `scheduledAt`.
+    private var teeTimeRow: some View {
+        HStack(spacing: 10) {
+            Text("TEE TIME")
+                .font(SticksFont.mono(9))
+                .kerning(1.1)
+                .foregroundStyle(Color.sticksFaint)
+
+            Spacer(minLength: 8)
+
+            DatePicker(
+                "",
+                selection: Bindable(viewModel).teeTime,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .labelsHidden()
+            .tint(Color.sticksGreen)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder private var formatGroup: some View {
+        if viewModel.openRoundGroup == 2 {
+            VStack(alignment: .leading, spacing: 18) {
+                formatSection
+                playerCountSection
+                scoringSection
+
+                if viewModel.roundStage >= 3 {
+                    roundContinueButton(from: 2, label: "DONE")
+                }
+            }
+        } else {
+            roundChip(label: "FORMAT", summary: formatSummary, group: 2)
+        }
+    }
+
+    /// Solo / Twosome / Threesome / Foursome — sets how many seats the
+    /// Players step starts with. Solo forces Individual.
+    private var playerCountSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("NUMBER OF PLAYERS")
+
+            SegmentPicker(
+                options: [(1, "SOLO"), (2, "TWOSOME"), (3, "THREESOME"), (4, "FOURSOME")],
+                selection: playerCountBinding
+            )
+
+            Text(
+                viewModel.seats.count == 1
+                    ? "Just you — solo rounds play Individual."
+                    : "You'll name everyone on the Players step."
+            )
+            .font(SticksFont.mono(10.5, weight: .regular))
+            .foregroundStyle(Color.sticksFaint)
+        }
+    }
+
+    private var playerCountBinding: Binding<Int> {
+        Binding(
+            get: { viewModel.seats.count },
+            set: { count in
+                withAnimation(.easeOut(duration: 0.18)) {
+                    viewModel.setPlayerCount(count)
+                }
+            }
+        )
+    }
+
+    /// A collapsed, answered group — tap to re-open it, like the web's
+    /// StepChip.
+    private func roundChip(label: String, summary: String, group: Int) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeOut(duration: 0.22)) {
+                viewModel.reopenRoundGroup(group)
+            }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(label)
+                        .font(SticksFont.mono(9))
+                        .kerning(1.1)
+                        .foregroundStyle(Color.sticksGreen)
+
+                    Text(summary)
+                        .font(SticksFont.sans(14.5, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Text("EDIT")
+                    .font(SticksFont.mono(10))
+                    .kerning(0.8)
+                    .foregroundStyle(Color.sticksGreen)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.sticksGreen.opacity(0.1))
+                    .clipShape(.capsule)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("\(label): \(summary). Double tap to edit.")
+    }
+
+    /// Inline advance for a reveal group — green-tinted, deliberately
+    /// lighter than the footer CTA.
+    private func roundContinueButton(from group: Int, label: String) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeOut(duration: 0.22)) {
+                viewModel.advanceRound(from: group)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Text(label)
+                    .font(SticksFont.sans(14, weight: .semibold))
+                    .kerning(0.5)
+
+                if label == "CONTINUE" {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 12, weight: .bold))
+                }
+            }
+            .foregroundStyle(Color.sticksGreen)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(Color.sticksGreen.opacity(0.1))
+            .clipShape(.rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.sticksGreen.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableButtonStyle())
+    }
+
+    /// "7/11 2:05PM · 18 holes" — the web's chip summary shape.
+    private static let teeTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d h:mma"
+        return formatter
+    }()
+
+    private var teeHolesSummary: String {
+        "\(Self.teeTimeFormatter.string(from: viewModel.teeTime)) · \(holesLabel)"
+    }
+
+    private var holesLabel: String {
+        switch viewModel.holesChoice {
+        case .full18: return "18 holes"
+        case .front9: return "Front 9"
+        case .back9: return "Back 9"
+        }
+    }
+
+    private var formatSummary: String {
+        let formatName: String
+        switch viewModel.format {
+        case "SCRAMBLE": formatName = "Scramble"
+        case "BOTH": formatName = "Both"
+        default: formatName = "Individual"
+        }
+        let scoring = viewModel.scoringMode == "GROSS" ? "Gross" : "Net"
+        return "\(formatName) · \(playerCountLabel) · \(scoring)"
+    }
+
+    private var playerCountLabel: String {
+        switch viewModel.seats.count {
+        case 1: return "Solo"
+        case 2: return "Twosome"
+        case 3: return "Threesome"
+        case 4: return "Foursome"
+        default: return "\(viewModel.seats.count) players"
+        }
     }
 
     // MARK: - Course
@@ -384,7 +639,9 @@ struct CreateMatchView: View {
                     Rectangle().fill(Color.sticksHairline).frame(height: 1)
                 }
                 Button {
-                    viewModel.selectCourse(course, session: session)
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        viewModel.selectCourse(course, session: session)
+                    }
                     isCourseFieldFocused = false
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
@@ -456,7 +713,9 @@ struct CreateMatchView: View {
             Spacer(minLength: 8)
 
             Button {
-                viewModel.selectedCourse = nil
+                withAnimation(.easeOut(duration: 0.22)) {
+                    viewModel.selectedCourse = nil
+                }
             } label: {
                 Text("CHANGE")
                     .font(SticksFont.mono(10))
@@ -484,27 +743,7 @@ struct CreateMatchView: View {
         return parts.joined(separator: " · ")
     }
 
-    // MARK: - Holes & scoring
-
-    private var holesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("HOLES")
-
-            SegmentPicker(
-                options: [(18, "18 HOLES"), (9, "9 HOLES")],
-                selection: Bindable(viewModel).holes
-            )
-
-            if viewModel.holes == 9 {
-                SegmentPicker(
-                    options: [(false, "FRONT 9"), (true, "BACK 9")],
-                    selection: Bindable(viewModel).startsOnBack
-                )
-                .transition(.opacity)
-            }
-        }
-        .animation(.easeOut(duration: 0.18), value: viewModel.holes)
-    }
+    // MARK: - Scoring
 
     private var scoringSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1314,6 +1553,8 @@ private struct SegmentPicker<Value: Hashable>: View {
                     Text(option.1)
                         .font(SticksFont.mono(11.5))
                         .kerning(0.7)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .foregroundStyle(isActive ? Color.sticksCream : Color.sticksMuted)
                         .frame(maxWidth: .infinity)
                         .frame(height: 42)

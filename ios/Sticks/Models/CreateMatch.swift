@@ -155,15 +155,16 @@ nonisolated struct CreateMatchPlayer: Encodable {
     let team: Int?
 }
 
-/// Body for POST /matches. `scheduledAt` is intentionally omitted —
-/// the server defaults it to now. Optional keys (sideGames, groupId)
-/// are dropped when nil. `format` is INDIVIDUAL / SCRAMBLE / BOTH —
-/// BOTH makes the server spin up the team match itself (never send
-/// TEAM_VS_TEAM as a side game).
+/// Body for POST /matches. `scheduledAt` is the tee time as an ISO
+/// 8601 string (slice 45 — defaults to "now" in the wizard). Optional
+/// keys (sideGames, groupId) are dropped when nil. `format` is
+/// INDIVIDUAL / SCRAMBLE / BOTH — BOTH makes the server spin up the
+/// team match itself (never send TEAM_VS_TEAM as a side game).
 nonisolated struct CreateMatchRequest: Encodable {
     let courseName: String
     let holes: Int
     let startingHole: Int
+    let scheduledAt: String
     let scoringMode: String
     let format: String
     let players: [CreateMatchPlayer]
