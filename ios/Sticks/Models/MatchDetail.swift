@@ -182,19 +182,45 @@ nonisolated struct OddsSeriesPoint: Decodable, Hashable {
 
 /// Win probabilities keyed by matchPlayerId (0..1). Absent or empty
 /// when the server has no live odds for the match.
+///
+/// Slice 41 adds the Market fields — blend weights, crowd call counts,
+/// projected nets, the caller's own call and the open/closed flag. All
+/// decode leniently: older payloads simply omit them.
 nonisolated struct MatchOdds: Decodable, Hashable {
     let probabilities: [String: Double]
     /// Hole-bucketed win-probability history — nil pre-round / when the
     /// server sends none. Decoding is lenient: a malformed series never
     /// fails the match payload.
     let series: [OddsSeriesPoint]?
+    /// Blend weights ("model" / "crowd" / "live") — nil on older payloads.
+    let weights: [String: Double]?
+    /// Crowd "calls" per matchPlayerId. Mutable so POST /call responses
+    /// apply without a full refetch.
+    var wagerCounts: [String: Int]
+    /// Projected net per matchPlayerId — a player is absent early in the
+    /// round (server sends null); null values are dropped on decode.
+    let projNet: [String: Double]
+    var totalCalls: Int
+    /// The caller's current call — nil when they haven't called anyone.
+    var myCall: String?
+    /// False once the match is COMPLETED — the market is closed.
+    let open: Bool
 
-    private enum CodingKeys: String, CodingKey { case probabilities, series }
+    private enum CodingKeys: String, CodingKey {
+        case probabilities, series, weights, wagerCounts, projNet, totalCalls, myCall, open
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         probabilities = (try? container.decode([String: Double].self, forKey: .probabilities)) ?? [:]
         series = try? container.decode([OddsSeriesPoint].self, forKey: .series)
+        weights = try? container.decode([String: Double].self, forKey: .weights)
+        wagerCounts = (try? container.decode([String: Int].self, forKey: .wagerCounts)) ?? [:]
+        let rawProjNet = (try? container.decode([String: Double?].self, forKey: .projNet)) ?? [:]
+        projNet = rawProjNet.compactMapValues { $0 }
+        totalCalls = (try? container.decode(Int.self, forKey: .totalCalls)) ?? 0
+        myCall = try? container.decode(String.self, forKey: .myCall)
+        open = (try? container.decode(Bool.self, forKey: .open)) ?? true
     }
 }
 
@@ -270,7 +296,8 @@ nonisolated struct MatchDetailResponse: Decodable {
     /// Wind conditions — nil when the server has none.
     let wind: Wind?
     /// Live win odds — nil/empty when the server has none (solo rounds).
-    let odds: MatchOdds?
+    /// Mutable so POST /call responses apply to the market in place.
+    var odds: MatchOdds?
     /// Side games with pre-computed leaderboards — empty when none.
     let sideGames: [SideGame]
 

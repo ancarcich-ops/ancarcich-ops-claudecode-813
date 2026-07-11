@@ -253,6 +253,33 @@ final class MatchDetailViewModel {
         await loadShares(session: session)
     }
 
+    /// POSTs a crowd call (nil withdraws the current one). The response's
+    /// myCall / wagerCounts / totalCalls apply to the local odds
+    /// immediately — no full refetch. Throws APIError — a 400 (market
+    /// closed) shows the server message verbatim; a 401 signs the user out.
+    func placeCall(pickedPlayerId: String?, session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            let result = try await api.placeCall(
+                matchId: matchId,
+                pickedPlayerId: pickedPlayerId,
+                token: token
+            )
+            guard var updated = response, var odds = updated.odds else { return }
+            odds.myCall = result.myCall
+            odds.wagerCounts = result.wagerCounts
+            odds.totalCalls = result.totalCalls
+            updated.odds = odds
+            response = updated
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+    }
+
     /// POSTs a FIX TEE crowdfix. Returns the server verdict — `ok: false`
     /// carries a `reason` the UI shows verbatim. On success a quiet re-fetch
     /// picks up the corrected tee geometry. Throws APIError on transport or

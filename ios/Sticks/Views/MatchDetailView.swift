@@ -88,14 +88,20 @@ struct MatchDetailView: View {
                                     sideGames: viewModel.response?.sideGames ?? []
                                 )
                             }
-                            // Slice 34: win-odds history graph — shown for
-                            // in-progress AND completed rounds whenever the
-                            // server has ≥ 2 series points and the round has
-                            // more than one player.
-                            if let series = viewModel.response?.odds?.series,
-                               series.count >= 2,
+                            // Slice 41: the Market — blend header, area-fill
+                            // odds graph, per-player rows and crowd calls.
+                            // Shown for in-progress AND completed rounds
+                            // whenever the server prices the match (≥ 2
+                            // players). Replaces the old Win odds card.
+                            if let odds = viewModel.response?.odds,
+                               !odds.probabilities.isEmpty,
                                detail.players.count > 1 {
-                                OddsGraphCard(detail: detail, series: series)
+                                MarketCard(
+                                    detail: detail,
+                                    odds: odds,
+                                    viewModel: viewModel,
+                                    session: session
+                                )
                             }
                             if showsFinishCTA {
                                 finishRoundButton

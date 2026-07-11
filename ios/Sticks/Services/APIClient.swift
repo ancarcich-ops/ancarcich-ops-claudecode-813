@@ -154,6 +154,43 @@ nonisolated struct JoinGroupRequest: Encodable {
     let code: String
 }
 
+/// Body for POST /matches/:id/call. `pickedPlayerId: null` withdraws
+/// the caller's crowd call, so nil MUST encode as an explicit JSON null
+/// (synthesized Codable would drop the key entirely).
+nonisolated struct CallRequest: Encodable {
+    let pickedPlayerId: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case pickedPlayerId
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(pickedPlayerId, forKey: .pickedPlayerId)
+    }
+}
+
+/// Response for POST /matches/:id/call — applied straight to the local
+/// odds (myCall / wagerCounts / totalCalls), no full refetch needed.
+nonisolated struct CallResult: Decodable {
+    let ok: Bool
+    let myCall: String?
+    let wagerCounts: [String: Int]
+    let totalCalls: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case ok, myCall, wagerCounts, totalCalls
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        myCall = try? container.decode(String.self, forKey: .myCall)
+        wagerCounts = (try? container.decode([String: Int].self, forKey: .wagerCounts)) ?? [:]
+        totalCalls = (try? container.decode(Int.self, forKey: .totalCalls)) ?? 0
+    }
+}
+
 /// Body for POST /matches/:id/tee (FIX TEE crowdfix).
 nonisolated struct TeeRequest: Encodable {
     let hole: Int
@@ -307,6 +344,15 @@ nonisolated struct APIClient {
     func deleteShare(shareId: String, token: String) async throws {
         let request = makeRequest(path: "shares/\(shareId)", method: "DELETE", token: token)
         let _: OkResponse = try await perform(request)
+    }
+
+    /// POST /matches/:id/call — places (or withdraws, with nil) the
+    /// caller's crowd call on a player. One call per user; 400 when the
+    /// market is closed, with the server message shown verbatim.
+    func placeCall(matchId: String, pickedPlayerId: String?, token: String) async throws -> CallResult {
+        var request = makeRequest(path: "matches/\(matchId)/call", method: "POST", token: token)
+        request.httpBody = try encoder.encode(CallRequest(pickedPlayerId: pickedPlayerId))
+        return try await perform(request)
     }
 
     /// POST /matches/:id/tee — crowdfix the tee position from live GPS.
