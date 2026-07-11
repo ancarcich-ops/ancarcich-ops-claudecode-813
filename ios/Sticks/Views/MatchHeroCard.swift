@@ -11,6 +11,11 @@
 //  height), and the hairline + hole line live INSIDE the right pane
 //  (indented under NET), matching the web's InRoundLive.
 //
+//  Slice 46: the gross column vertically centers against the right
+//  pane (web's items-center), and the label sits snug under the
+//  number by cropping the font's dead line-box space — the glyph
+//  itself stays unclipped.
+//
 
 import SwiftUI
 
@@ -26,7 +31,7 @@ struct MatchHeroCard: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .center, spacing: 16) {
             grossColumn
 
             Rectangle()
@@ -62,6 +67,9 @@ struct MatchHeroCard: View {
 
         return VStack(alignment: .leading, spacing: 2) {
             // Slice 36: no height clamp — the glyph renders in full.
+            // Slice 46: negative padding crops the font's empty line-box
+            // margins (web line-height 0.78) so the label hugs the digits;
+            // padding never clips the glyph itself.
             Text(MatchDetailMath.toParLabel(gross))
                 .font(SticksFont.display(56, weight: .bold))
                 .monospacedDigit()
@@ -69,6 +77,8 @@ struct MatchHeroCard: View {
                 .lineLimit(1)
                 .fixedSize()
                 .foregroundStyle(grossColor(gross))
+                .padding(.top, -4)
+                .padding(.bottom, -7)
 
             Text("GROSS · THRU \(thru)")
                 .font(SticksFont.mono(9.5))
