@@ -80,6 +80,9 @@ nonisolated struct MatchSummary: Identifiable, Hashable {
     /// Group this match was posted to, when any.
     let groupId: String?
     let players: [MatchPlayerSummary]
+    /// Server-provided marquee strings for the home-card ticker
+    /// ("SEUSS.MD 74%", "LEADER -1 THRU 9", …). Empty when absent.
+    let tickerItems: [String]
 
     /// Absolute hole number for round index `index`, honoring startingHole
     /// with wraparound past 18 (shotgun/back-nine starts).
@@ -112,7 +115,7 @@ extension MatchSummary: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, completedAt, status, holes
         case startingHole, scoringMode, format, pars, probabilities
-        case myMatchPlayerId, groupId, players
+        case myMatchPlayerId, groupId, players, tickerItems
     }
 
     init(from decoder: Decoder) throws {
@@ -131,6 +134,7 @@ extension MatchSummary: Decodable {
         myMatchPlayerId = try container.decodeIfPresent(String.self, forKey: .myMatchPlayerId)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         players = try container.decodeIfPresent([MatchPlayerSummary].self, forKey: .players) ?? []
+        tickerItems = try container.decodeIfPresent([String].self, forKey: .tickerItems) ?? []
     }
 }
 

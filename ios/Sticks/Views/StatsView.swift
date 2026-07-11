@@ -1212,7 +1212,8 @@ private struct LoggedRoundsCard: View {
             probabilities: [:],
             myMatchPlayerId: nil,
             groupId: nil,
-            players: []
+            players: [],
+            tickerItems: []
         )
     }
 }

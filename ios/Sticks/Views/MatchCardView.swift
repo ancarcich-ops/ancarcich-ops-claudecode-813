@@ -21,6 +21,13 @@ struct MatchCardView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
+            // Slice 48: live-odds marquee, LIVE/UPCOMING only — bleeds to
+            // the card edges by cancelling the card's 16pt padding.
+            if match.status != .completed, !match.tickerItems.isEmpty {
+                MatchTickerView(items: match.tickerItems)
+                    .padding(.horizontal, -16)
+            }
+
             switch match.status {
             case .inProgress:
                 livePlayerBlocks
