@@ -53,6 +53,19 @@ struct ContentView: View {
         .onChange(of: session.phase) { _, _ in
             dismissSplashIfReady()
         }
+        // Slice 51: one-time post-login offer to enable Face ID sign-in.
+        .alert(
+            "Use \(BiometricService.displayName) next time?",
+            isPresented: Binding(
+                get: { session.offersBiometricEnrollment },
+                set: { if !$0 { session.declineBiometricEnrollment() } }
+            )
+        ) {
+            Button("Enable") { session.acceptBiometricEnrollment() }
+            Button("Not now", role: .cancel) { session.declineBiometricEnrollment() }
+        } message: {
+            Text("Skip the password — sign in to Sticks with \(BiometricService.displayName). You can turn this off any time in Settings.")
+        }
     }
 
     private func dismissSplashIfReady() {

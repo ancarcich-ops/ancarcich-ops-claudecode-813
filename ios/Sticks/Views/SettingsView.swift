@@ -38,6 +38,10 @@ struct SettingsView: View {
     @State private var showsSignOutConfirm = false
     @State private var saveError: String?
 
+    // Slice 51: Face ID sign-in toggle (hidden without biometrics).
+    @State private var biometricsAvailable = false
+    @State private var biometricSignInEnabled = false
+
     // Slice 42: resetting this flag replays the first-launch welcome.
     @AppStorage("sticks.welcomed.v1") private var welcomed: Bool = true
 
@@ -88,6 +92,10 @@ struct SettingsView: View {
         }
         .task {
             await viewModel.load(session: session)
+        }
+        .onAppear {
+            biometricsAvailable = BiometricService.isAvailable
+            biometricSignInEnabled = session.isBiometricSignInEnabled
         }
         .onChange(of: photoItem) { _, newItem in
             guard let newItem else { return }
@@ -363,6 +371,11 @@ struct SettingsView: View {
                 readOnlyRow(label: "VERSION", value: Self.versionText)
                 hairline
 
+                if biometricsAvailable {
+                    biometricRow
+                    hairline
+                }
+
                 Button {
                     welcomed = false
                 } label: {
@@ -400,6 +413,43 @@ struct SettingsView: View {
                 .buttonStyle(PressableButtonStyle())
             }
         }
+    }
+
+    /// Slice 51: enabling stores the current session token behind
+    /// Face ID; disabling clears the biometric Keychain item so the
+    /// login screen's Face ID button disappears.
+    private var biometricRow: some View {
+        HStack(spacing: 8) {
+            Text("\(BiometricService.displayName.uppercased()) SIGN-IN")
+                .font(SticksFont.mono(12))
+                .kerning(1.2)
+                .foregroundStyle(Color.sticksInk)
+
+            Spacer()
+
+            Toggle("", isOn: biometricToggleBinding)
+                .labelsHidden()
+                .tint(Color.sticksGreen)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 52)
+    }
+
+    private var biometricToggleBinding: Binding<Bool> {
+        Binding(
+            get: { biometricSignInEnabled },
+            set: { newValue in
+                if newValue {
+                    biometricSignInEnabled = session.enableBiometricSignIn()
+                    if !biometricSignInEnabled {
+                        saveError = "Couldn't enable \(BiometricService.displayName) sign-in. Try again."
+                    }
+                } else {
+                    session.disableBiometricSignIn()
+                    biometricSignInEnabled = false
+                }
+            }
+        )
     }
 
     // MARK: - Photo upload

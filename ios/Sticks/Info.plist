@@ -8,6 +8,8 @@
 	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Sticks uses Face ID to sign you in without retyping your password.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Newsreader-Medium.ttf</string>
