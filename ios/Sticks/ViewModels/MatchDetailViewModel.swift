@@ -203,6 +203,24 @@ final class MatchDetailViewModel {
         await load(session: session, quiet: true)
     }
 
+    /// POSTs one game's settings (Targets stat/target/ante, Wolf
+    /// rotation/push rule), then quiet-refetches so the leaderboards
+    /// recompute against the new config. Throws APIError — 403
+    /// (non-creator) shows the server message verbatim; 401 signs out.
+    func setSideGameConfig<C: Encodable>(kind: String, config: C, session: SessionStore) async throws {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            try await api.setSideGameConfig(matchId: matchId, kind: kind, config: config, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+        await load(session: session, quiet: true)
+    }
+
     /// POSTs one side-game event (Snake 3-putt, BBB award, Match press),
     /// applies it optimistically to the local events, then quiet-refetches
     /// so the game's leaderboard recomputes server-side. Throws APIError —
@@ -228,9 +246,14 @@ final class MatchDetailViewModel {
         Task { await load(session: session, quiet: true) }
     }
 
+    /// The three mutually-exclusive Wolf picks per hole.
+    private static let wolfPickKinds: Set<String> = ["PARTNER", "LONE_WOLF", "PRE_LONE_WOLF"]
+
     /// Optimistic local mirror of the server's event semantics after a
     /// confirmed POST: BBB awards are single-holder (replace on assign,
-    /// clear on nil player); THREE_PUTT and PRESS toggle.
+    /// clear on nil player); Wolf picks are mutually exclusive per hole
+    /// (replace on new pick, toggle off on repeat); THREE_PUTT, PRESS
+    /// and PUSH toggle.
     private func applyEventLocally(gameKind: String, kind: String, hole: Int, matchPlayerId: String?) {
         guard var updated = response else { return }
         var events = updated.sideGameEvents
@@ -238,6 +261,12 @@ final class MatchDetailViewModel {
         case "BINGO", "BANGO", "BONGO":
             events.removeAll { $0.kind == kind && $0.hole == hole }
             if let matchPlayerId {
+                events.append(SideGameEvent(gameKind: gameKind, hole: hole, kind: kind, matchPlayerId: matchPlayerId))
+            }
+        case _ where Self.wolfPickKinds.contains(kind):
+            let existing = events.first { Self.wolfPickKinds.contains($0.kind) && $0.hole == hole }
+            events.removeAll { Self.wolfPickKinds.contains($0.kind) && $0.hole == hole }
+            if existing?.kind != kind || existing?.matchPlayerId != matchPlayerId {
                 events.append(SideGameEvent(gameKind: gameKind, hole: hole, kind: kind, matchPlayerId: matchPlayerId))
             }
         default:

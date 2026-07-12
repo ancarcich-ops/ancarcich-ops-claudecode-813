@@ -84,16 +84,18 @@ struct MatchDetailView: View {
                                 )
                             }
                             scorecardCard(detail)
-                            // Slice 52: one prominent "score it" card per
-                            // enabled event-driven side game (Snake, BBB,
-                            // Match press) — the obvious way in, matching
-                            // the web's inline editor. Hidden for
-                            // spectators and completed rounds.
+                            // Slice 52/53: one prominent "score it" card per
+                            // enabled game with a native editor (Snake, BBB,
+                            // Match press, Wolf, Targets) — the obvious way
+                            // in, matching the web's inline editor. Hidden
+                            // for spectators and completed rounds; Targets
+                            // is config-only, so its card is creator-only.
                             if detail.canEnterScores, detail.status != .completed {
-                                ForEach(eventDrivenGames) { game in
+                                ForEach(editableSideGames) { game in
                                     SideGameScoreCard(
                                         game: game,
                                         eventCount: eventCount(for: game),
+                                        stateOverride: stateOverride(for: game),
                                         onOpen: { eventEditorGame = $0 }
                                     )
                                 }
@@ -169,7 +171,16 @@ struct MatchDetailView: View {
             }
         }
         .sheet(item: $eventEditorGame) { game in
-            SideGameEventEditorView(game: game, viewModel: viewModel, session: session)
+            // Slice 53: Wolf and Targets get their own editors; the
+            // event-driven trio keeps the slice-50 per-hole editor.
+            switch MatchDetailMath.eventGameKey(game.kind) {
+            case "WOLF":
+                WolfEditorView(game: game, viewModel: viewModel, session: session)
+            case "TARGETS":
+                TargetsConfigView(viewModel: viewModel, session: session)
+            default:
+                SideGameEventEditorView(game: game, viewModel: viewModel, session: session)
+            }
         }
         .sheet(isPresented: $showsEditSideGames) {
             if let detail = viewModel.detail {
@@ -699,12 +710,40 @@ struct MatchDetailView: View {
         .buttonStyle(PressableButtonStyle())
     }
 
-    /// Slice 52: enabled event-driven side games (Snake, BBB, Match
-    /// press) — the server emits a section for every enabled game even
-    /// with zero events, so an on-but-empty game still gets a card.
-    private var eventDrivenGames: [SideGame] {
-        (viewModel.response?.sideGames ?? []).filter {
-            MatchDetailMath.isEventDriven($0.kind)
+    /// Slice 52/53: enabled side games with a native editor (Snake, BBB,
+    /// Match press, Wolf, Targets) — the server emits a section for every
+    /// enabled game even with zero events, so an on-but-empty game still
+    /// gets a card. Targets is settings-only (creator-only endpoint), so
+    /// non-creators don't get its card.
+    private var editableSideGames: [SideGame] {
+        (viewModel.response?.sideGames ?? []).filter { game in
+            guard MatchDetailMath.hasNativeEditor(game.kind) else { return false }
+            if MatchDetailMath.eventGameKey(game.kind) == "TARGETS" {
+                return viewModel.detail?.isCreator == true
+            }
+            return true
+        }
+    }
+
+    /// Slice 53: config-driven state lines — Targets shows its saved
+    /// settings (or a set-up nudge); an unconfigured Wolf nudges toward
+    /// the rotation. Nil keeps the default event-count line.
+    private func stateOverride(for game: SideGame) -> String? {
+        switch MatchDetailMath.eventGameKey(game.kind) {
+        case "TARGETS":
+            guard let config = TargetsConfig.decode(from: viewModel.response?.sideGameConfigs["TARGETS"]) else {
+                return "Not set up yet — tap to configure"
+            }
+            let stat = config.stat == TargetsConfig.birdieOrBetter ? "Birdie or better" : "Par or better"
+            let ante = config.ante > 0 ? " · $\(config.ante) ante" : ""
+            return "\(stat) × \(config.target)\(ante)"
+        case "WOLF":
+            if WolfConfig.decode(from: viewModel.response?.sideGameConfigs["WOLF"]) == nil {
+                return "Set the rotation, then record picks"
+            }
+            return nil
+        default:
+            return nil
         }
     }
 

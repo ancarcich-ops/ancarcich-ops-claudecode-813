@@ -16,6 +16,9 @@ struct SideGameScoreCard: View {
     let game: SideGame
     /// Recorded events for THIS game — drives the current-state line.
     let eventCount: Int
+    /// Slice 53: overrides the event-count state line — config-driven
+    /// games (Targets, unconfigured Wolf) describe their settings instead.
+    var stateOverride: String? = nil
     let onOpen: (SideGame) -> Void
 
     var body: some View {
@@ -82,6 +85,7 @@ struct SideGameScoreCard: View {
         case "BBB": return "BINGO BANGO BONGO"
         case "MATCH": return "MATCH · PRESSES"
         case "WOLF": return "WOLF"
+        case "TARGETS": return "TARGETS"
         default: return MatchDetailMath.kindLabel(game.kind).uppercased()
         }
     }
@@ -91,12 +95,14 @@ struct SideGameScoreCard: View {
         case "SNAKE": return "Tap in who 3-putted each hole"
         case "BBB": return "Record bingo / bango / bongo per hole"
         case "MATCH": return "Add or remove a press per hole"
-        case "WOLF": return "Set the wolf's pick and the hole result"
+        case "WOLF": return "Record the wolf's partner or lone-wolf call"
+        case "TARGETS": return "Set the stat, target and ante"
         default: return "Record what happened each hole"
         }
     }
 
     private var stateLine: String {
+        if let stateOverride { return stateOverride }
         switch eventCount {
         case 0: return "No events yet — tap to score"
         case 1: return "1 event recorded"
@@ -109,6 +115,8 @@ struct SideGameScoreCard: View {
         case "SNAKE": return "pencil"
         case "BBB": return "dice"
         case "MATCH": return "bolt"
+        case "WOLF": return "pawprint"
+        case "TARGETS": return "target"
         default: return "pencil"
         }
     }

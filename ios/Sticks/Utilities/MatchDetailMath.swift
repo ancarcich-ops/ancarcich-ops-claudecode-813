@@ -117,10 +117,16 @@ nonisolated enum MatchDetailMath {
     }
 
     /// True for side games whose state comes from recorded per-hole
-    /// events (Snake 3-putts, BBB awards, Match presses) rather than
-    /// the scorecard. Wolf joins in a later slice.
+    /// events (Snake 3-putts, BBB awards, Match presses, Wolf picks)
+    /// rather than the scorecard alone.
     static func isEventDriven(_ kind: String) -> Bool {
-        ["SNAKE", "BBB", "MATCH"].contains(eventGameKey(kind))
+        ["SNAKE", "BBB", "MATCH", "WOLF"].contains(eventGameKey(kind))
+    }
+
+    /// True when the app has a native editor for the game — the
+    /// event-driven games plus config-only Targets (slice 53).
+    static func hasNativeEditor(_ kind: String) -> Bool {
+        isEventDriven(kind) || eventGameKey(kind) == "TARGETS"
     }
 
     /// Segmented-tab label for a side-game kind.

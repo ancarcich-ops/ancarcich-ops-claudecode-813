@@ -147,6 +147,13 @@ nonisolated struct SideGameEventRequest: Encodable {
     let matchPlayerId: String?
 }
 
+/// Body for POST /matches/:id/side-game-config — { kind, config }.
+/// Generic over the config payload (TargetsConfig, WolfConfig, …).
+nonisolated struct SideGameConfigRequest<C: Encodable>: Encodable {
+    let kind: String
+    let config: C
+}
+
 nonisolated struct SharesResponse: Decodable {
     let shares: [RoundShare]
 }
@@ -370,6 +377,15 @@ nonisolated struct APIClient {
         request.httpBody = try encoder.encode(
             SideGameEventRequest(kind: kind, hole: hole, matchPlayerId: matchPlayerId)
         )
+        let _: OkResponse = try await perform(request)
+    }
+
+    /// POST /matches/:id/side-game-config — saves a game's settings
+    /// (Targets stat/target/ante, Wolf rotation/push rule). Creator-only;
+    /// 400/403 carry server messages shown verbatim.
+    func setSideGameConfig<C: Encodable>(matchId: String, kind: String, config: C, token: String) async throws {
+        var request = makeRequest(path: "matches/\(matchId)/side-game-config", method: "POST", token: token)
+        request.httpBody = try encoder.encode(SideGameConfigRequest(kind: kind, config: config))
         let _: OkResponse = try await perform(request)
     }
 

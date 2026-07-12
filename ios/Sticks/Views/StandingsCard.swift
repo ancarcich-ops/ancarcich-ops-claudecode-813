@@ -233,7 +233,7 @@ struct StandingsCard: View {
 
     private func sideGameBody(_ game: SideGame) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            if MatchDetailMath.isEventDriven(game.kind), let onRecordEvents {
+            if MatchDetailMath.hasNativeEditor(game.kind), let onRecordEvents {
                 recordEventsButton(game: game, open: onRecordEvents)
             }
             ForEach(game.leaderboards) { board in
@@ -245,16 +245,17 @@ struct StandingsCard: View {
     }
 
     /// Event-driven games fill from per-hole taps, not the scorecard —
-    /// this is the way in.
+    /// this is the way in. Config-only Targets gets a settings variant.
     private func recordEventsButton(game: SideGame, open: @escaping (SideGame) -> Void) -> some View {
-        Button {
+        let isConfigOnly = MatchDetailMath.eventGameKey(game.kind) == "TARGETS"
+        return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             open(game)
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "plus.circle.fill")
+                Image(systemName: isConfigOnly ? "gearshape.fill" : "plus.circle.fill")
                     .font(.system(size: 13, weight: .semibold))
-                Text("RECORD EVENTS")
+                Text(isConfigOnly ? "GAME SETTINGS" : "RECORD EVENTS")
                     .font(SticksFont.mono(10.5))
                     .kerning(1)
                 Spacer(minLength: 8)
@@ -274,7 +275,11 @@ struct StandingsCard: View {
             .contentShape(.rect)
         }
         .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel("Record \(MatchDetailMath.kindLabel(game.kind)) events")
+        .accessibilityLabel(
+            MatchDetailMath.eventGameKey(game.kind) == "TARGETS"
+                ? "\(MatchDetailMath.kindLabel(game.kind)) settings"
+                : "Record \(MatchDetailMath.kindLabel(game.kind)) events"
+        )
     }
 
     private func leaderboardSection(_ board: SideGameLeaderboard) -> some View {
