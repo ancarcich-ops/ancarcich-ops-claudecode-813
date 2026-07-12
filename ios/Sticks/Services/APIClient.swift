@@ -455,6 +455,37 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /tournaments — the caller's tournaments, newest first.
+    func tournaments(token: String) async throws -> TournamentsResponse {
+        let request = makeRequest(path: "tournaments", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// GET /tournaments/:id — full tournament detail with rounds,
+    /// roster, cumulative leaderboard, and win odds. 403/404 carry
+    /// server messages shown verbatim.
+    func tournamentDetail(id: String, token: String) async throws -> TournamentDetailResponse {
+        let request = makeRequest(path: "tournaments/\(id)", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// POST /tournaments — creates a tournament and returns its id +
+    /// invite code. 400s carry server messages shown verbatim.
+    func createTournament(_ body: CreateTournamentRequest, token: String) async throws -> CreateTournamentResponse {
+        var request = makeRequest(path: "tournaments", method: "POST", token: token)
+        request.httpBody = try encoder.encode(body)
+        return try await perform(request)
+    }
+
+    /// POST /tournaments/join — joins via invite code (+ optional
+    /// handicap). A 404 carries the server's bad-code message, shown
+    /// to the user verbatim.
+    func joinTournament(code: String, handicap: Double?, token: String) async throws -> JoinTournamentResponse {
+        var request = makeRequest(path: "tournaments/join", method: "POST", token: token)
+        request.httpBody = try encoder.encode(JoinTournamentRequest(code: code, handicap: handicap))
+        return try await perform(request)
+    }
+
     /// GET /stats — the caller's personal stats + handicap baselines.
     /// 404 means nothing is logged yet (shown as an empty state).
     func stats(token: String) async throws -> StatsResponse {

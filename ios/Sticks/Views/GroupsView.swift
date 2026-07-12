@@ -51,6 +51,16 @@ struct GroupsView: View {
             .navigationDestination(for: MatchSummary.self) { match in
                 MatchDetailView(match: match, session: session)
             }
+            // Slice 55: tournaments — the list, and detail by id (so
+            // fresh create/join responses can push straight in).
+            .navigationDestination(for: TournamentsDestination.self) { _ in
+                TournamentsListView(user: user, session: session) { id in
+                    path.append(TournamentRoute(id: id))
+                }
+            }
+            .navigationDestination(for: TournamentRoute.self) { route in
+                TournamentDetailView(tournamentId: route.id, user: user, session: session)
+            }
             .toolbar(.hidden, for: .navigationBar)
         }
         .fullScreenCover(isPresented: $showsCreate) {
@@ -105,6 +115,8 @@ struct GroupsView: View {
                         }
                     }
                 }
+
+                TournamentsEntryCard()
 
                 CreateGroupCard(viewModel: viewModel, session: session)
                 JoinGroupCard(viewModel: viewModel, session: session)
@@ -227,6 +239,59 @@ nonisolated enum GroupIdentity {
         UIPasteboard.general.string =
             "\(code) — https://sticks-golf.vercel.app/groups/join?code=\(code)"
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+// MARK: - Tournaments entry (slice 55)
+
+/// Pushes the tournaments list — the Groups tab is the home of
+/// everything social, so multi-round events live behind this row.
+private struct TournamentsEntryCard: View {
+    var body: some View {
+        NavigationLink(value: TournamentsDestination()) {
+            HStack(spacing: 12) {
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.sticksGold)
+                    .frame(width: 46, height: 46)
+                    .background(Color.sticksGold.opacity(0.12))
+                    .clipShape(.rect(cornerRadius: 13))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Tournaments")
+                            .font(SticksFont.display(20))
+                            .foregroundStyle(Color.sticksInk)
+
+                        Text("→")
+                            .font(SticksFont.mono(12))
+                            .foregroundStyle(Color.sticksFaint)
+                    }
+
+                    Text("Multi-round events · cumulative leaderboard")
+                        .font(SticksFont.mono(12))
+                        .foregroundStyle(Color.sticksMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.sticksFaint)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.05), radius: 5, y: 3)
+            .contentShape(.rect)
+        }
+        .buttonStyle(GroupCardPressStyle())
     }
 }
 

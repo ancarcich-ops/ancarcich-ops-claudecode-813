@@ -162,13 +162,23 @@ final class CreateMatchViewModel {
     /// instead of creating one (POST).
     private(set) var editingMatchId: String?
 
+    /// Set = the new round binds to this tournament as its next round
+    /// (slice 55) — sent as `tournamentId` in the POST /matches body.
+    private let tournamentId: String?
+
     private let api: APIClient
     private let locationProvider = OneShotLocationProvider()
     private var courseSearchTask: Task<Void, Never>?
     private var playerSearchTask: Task<Void, Never>?
 
-    init(api: APIClient = .shared, editing: MatchEditContext? = nil, user: User? = nil) {
+    init(
+        api: APIClient = .shared,
+        editing: MatchEditContext? = nil,
+        user: User? = nil,
+        tournamentId: String? = nil
+    ) {
         self.api = api
+        self.tournamentId = tournamentId
         guard let editing, let user else { return }
         // Property observers don't fire during init, so these seeds never
         // trip the course-change/holes-change resets.
@@ -632,7 +642,8 @@ final class CreateMatchViewModel {
             format: effectiveFormat,
             players: players,
             sideGames: games.isEmpty ? nil : games.sorted(),
-            groupId: selectedGroupId
+            groupId: selectedGroupId,
+            tournamentId: isEditing ? nil : tournamentId
         )
         do {
             let response: CreateMatchResponse

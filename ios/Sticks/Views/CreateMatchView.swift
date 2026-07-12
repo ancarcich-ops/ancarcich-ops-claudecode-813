@@ -55,13 +55,18 @@ struct CreateMatchView: View {
         session: SessionStore,
         editing: MatchEditContext? = nil,
         initialStep: Step = .round,
+        tournamentId: String? = nil,
         onCreated: @escaping (String) -> Void
     ) {
         self.user = user
         self.session = session
         self.onCreated = onCreated
         _step = State(initialValue: initialStep)
-        _viewModel = State(initialValue: CreateMatchViewModel(editing: editing, user: user))
+        _viewModel = State(initialValue: CreateMatchViewModel(
+            editing: editing,
+            user: user,
+            tournamentId: tournamentId
+        ))
     }
 
     var body: some View {
