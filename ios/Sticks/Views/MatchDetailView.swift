@@ -84,22 +84,6 @@ struct MatchDetailView: View {
                                 )
                             }
                             scorecardCard(detail)
-                            // Slice 52/53: one prominent "score it" card per
-                            // enabled game with a native editor (Snake, BBB,
-                            // Match press, Wolf, Targets) — the obvious way
-                            // in, matching the web's inline editor. Hidden
-                            // for spectators and completed rounds; Targets
-                            // is config-only, so its card is creator-only.
-                            if detail.canEnterScores, detail.status != .completed {
-                                ForEach(editableSideGames) { game in
-                                    SideGameScoreCard(
-                                        game: game,
-                                        eventCount: eventCount(for: game),
-                                        stateOverride: stateOverride(for: game),
-                                        onOpen: { eventEditorGame = $0 }
-                                    )
-                                }
-                            }
                             if detail.status == .inProgress {
                                 StandingsCard(
                                     detail: detail,
@@ -109,6 +93,23 @@ struct MatchDetailView: View {
                                         ? { game in eventEditorGame = game }
                                         : nil
                                 )
+                            }
+                            // Slice 52/53: one prominent "score it" card per
+                            // enabled game with a native editor (Snake, BBB,
+                            // Match press, Wolf, Targets) — the obvious way
+                            // in, matching the web's inline editor. Sits under
+                            // the Standings. Hidden for spectators and
+                            // completed rounds; Targets is config-only, so
+                            // its card is creator-only.
+                            if detail.canEnterScores, detail.status != .completed {
+                                ForEach(editableSideGames) { game in
+                                    SideGameScoreCard(
+                                        game: game,
+                                        eventCount: eventCount(for: game),
+                                        stateOverride: stateOverride(for: game),
+                                        onOpen: { eventEditorGame = $0 }
+                                    )
+                                }
                             }
                             // Slice 41: the Market — blend header, area-fill
                             // odds graph, per-player rows and crowd calls.
