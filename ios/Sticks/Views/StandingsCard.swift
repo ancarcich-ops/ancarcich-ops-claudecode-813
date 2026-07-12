@@ -6,6 +6,10 @@
 //  with win bars fed by the odds engine) plus one segmented tab per
 //  side-game kind rendering the server's pre-formatted leaderboards.
 //
+//  Slice 57: creator-only settings affordances — a gear next to the
+//  Snake/BBB record buttons and a settings button on the Stableford
+//  tab (its first editor), opening the house-rule config sheets.
+//
 
 import SwiftUI
 
@@ -18,6 +22,13 @@ struct StandingsCard: View {
     /// (Snake, BBB, Match press). Nil hides the button — spectators
     /// and completed rounds.
     var onRecordEvents: ((SideGame) -> Void)? = nil
+    /// Slice 57: opens a game's settings editor (Stableford scale, BBB
+    /// points, Snake stake) — called with the canonical game key. Nil
+    /// hides the controls — non-creators and completed rounds.
+    var onOpenSettings: ((String) -> Void)? = nil
+
+    /// Game keys with a slice-57 settings editor.
+    private static let configEditorKeys: Set<String> = ["STABLEFORD", "BBB", "SNAKE"]
 
     /// nil = Overall; otherwise a side-game kind.
     @State private var selectedKind: String?
@@ -231,10 +242,21 @@ struct StandingsCard: View {
 
     // MARK: - Side-game tabs
 
+    @ViewBuilder
     private func sideGameBody(_ game: SideGame) -> some View {
+        let key = MatchDetailMath.eventGameKey(game.kind)
         VStack(alignment: .leading, spacing: 14) {
             if MatchDetailMath.hasNativeEditor(game.kind), let onRecordEvents {
-                recordEventsButton(game: game, open: onRecordEvents)
+                HStack(spacing: 8) {
+                    recordEventsButton(game: game, open: onRecordEvents)
+                    if let onOpenSettings, Self.configEditorKeys.contains(key) {
+                        settingsChip(kind: key, open: onOpenSettings)
+                    }
+                }
+            } else if key == "STABLEFORD", let onOpenSettings {
+                // Stableford has no event editor — the settings button
+                // on its standings section is the way into the scale.
+                stablefordSettingsButton(open: onOpenSettings)
             }
             ForEach(game.leaderboards) { board in
                 leaderboardSection(board)
@@ -242,6 +264,61 @@ struct StandingsCard: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
+    }
+
+    /// Compact gear square next to Snake/BBB's RECORD EVENTS button.
+    private func settingsChip(kind: String, open: @escaping (String) -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            open(kind)
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.sticksGreen)
+                .frame(width: 44, height: 40)
+                .background(Color.sticksGreen.opacity(0.08))
+                .clipShape(.rect(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.sticksGreen.opacity(0.35), lineWidth: 1)
+                )
+                .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("\(MatchDetailMath.kindLabel(kind)) settings")
+    }
+
+    /// Full-width settings entry on the Stableford tab — same visual
+    /// weight as the record-events button on the other games.
+    private func stablefordSettingsButton(open: @escaping (String) -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            open("STABLEFORD")
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("SCORING SETTINGS")
+                    .font(SticksFont.mono(10.5))
+                    .kerning(1)
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color.sticksGreen)
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .background(Color.sticksGreen.opacity(0.08))
+            .clipShape(.rect(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.sticksGreen.opacity(0.35), lineWidth: 1)
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("Stableford settings")
     }
 
     /// Event-driven games fill from per-hole taps, not the scorecard —

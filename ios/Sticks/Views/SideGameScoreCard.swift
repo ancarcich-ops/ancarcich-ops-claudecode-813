@@ -8,6 +8,9 @@
 //  web, where the editor is inline on the match page — and opens the
 //  slice-50 per-hole editor. Standings tabs keep the leaderboards.
 //
+//  Slice 57: Snake and BBB gain a creator-only trailing gear button
+//  opening their settings editors (stake, award points).
+//
 
 import SwiftUI
 import UIKit
@@ -20,57 +23,84 @@ struct SideGameScoreCard: View {
     /// games (Targets, unconfigured Wolf) describe their settings instead.
     var stateOverride: String? = nil
     let onOpen: (SideGame) -> Void
+    /// Slice 57: creator-only settings affordance (Snake stake, BBB
+    /// points) — a trailing gear button next to the score entry. Nil
+    /// hides it (non-creators, games without a config editor).
+    var onSettings: (() -> Void)? = nil
 
     var body: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            onOpen(game)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: iconName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.sticksGreen)
-                    .frame(width: 32, height: 32)
-                    .background(Color.sticksGreen.opacity(0.1))
-                    .clipShape(.circle)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(SticksFont.mono(10.5))
-                        .kerning(1)
+        HStack(spacing: 0) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onOpen(game)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: iconName)
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.sticksGreen)
+                        .frame(width: 32, height: 32)
+                        .background(Color.sticksGreen.opacity(0.1))
+                        .clipShape(.circle)
 
-                    Text(hint)
-                        .font(SticksFont.sans(14, weight: .semibold))
-                        .foregroundStyle(Color.sticksInk)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(SticksFont.mono(10.5))
+                            .kerning(1)
+                            .foregroundStyle(Color.sticksGreen)
 
-                    Text(stateLine)
-                        .font(SticksFont.sans(12))
-                        .foregroundStyle(Color.sticksMuted)
+                        Text(hint)
+                            .font(SticksFont.sans(14, weight: .semibold))
+                            .foregroundStyle(Color.sticksInk)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(stateLine)
+                            .font(SticksFont.sans(12))
+                            .foregroundStyle(Color.sticksMuted)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.sticksFaint)
                 }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.sticksFaint)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.sticksCard)
-            .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
-                    .stroke(Color.sticksHairline, lineWidth: 1)
-            )
-            .contentShape(.rect)
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityLabel("Score \(MatchDetailMath.kindLabel(game.kind))")
+            .accessibilityHint(hint)
+
+            if let onSettings {
+                Rectangle()
+                    .fill(Color.sticksHairline)
+                    .frame(width: 1)
+                    .padding(.vertical, 10)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onSettings()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sticksGreen)
+                        .frame(width: 48)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel("\(MatchDetailMath.kindLabel(game.kind)) settings")
+            }
         }
-        .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel("Score \(MatchDetailMath.kindLabel(game.kind))")
-        .accessibilityHint(hint)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
     }
 
     // MARK: - Per-game copy

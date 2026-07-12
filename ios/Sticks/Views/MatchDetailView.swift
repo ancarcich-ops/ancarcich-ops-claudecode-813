@@ -49,6 +49,10 @@ struct MatchDetailView: View {
     /// Slice 50: the event-driven side game whose per-hole editor sheet
     /// is open (Snake, BBB, Match press).
     @State private var eventEditorGame: SideGame?
+    /// Slice 57: which side-game settings editor sheet is open
+    /// (Stableford scale, BBB points, Snake stake). Separate from the
+    /// event editor — Snake/BBB need both.
+    @State private var configEditorKind: SideGameConfigKind?
     /// Slice 54: which content tab is showing — Scorecard (default) or
     /// Live odds (the Market). Matches the web's match-page tabs.
     @State private var selectedTab: MatchDetailTab = .scorecard
@@ -135,6 +139,17 @@ struct MatchDetailView: View {
                 TargetsConfigView(viewModel: viewModel, session: session)
             default:
                 SideGameEventEditorView(game: game, viewModel: viewModel, session: session)
+            }
+        }
+        .sheet(item: $configEditorKind) { kind in
+            // Slice 57: house-rule settings editors, creator-only.
+            switch kind {
+            case .stableford:
+                StablefordConfigView(viewModel: viewModel, session: session)
+            case .bbb:
+                BbbConfigView(viewModel: viewModel, session: session)
+            case .snake:
+                SnakeConfigView(viewModel: viewModel, session: session)
             }
         }
         .sheet(isPresented: $showsEditSideGames) {
@@ -555,6 +570,9 @@ struct MatchDetailView: View {
                 sideGames: viewModel.response?.sideGames ?? [],
                 onRecordEvents: detail.canEnterScores && detail.status != .completed
                     ? { game in eventEditorGame = game }
+                    : nil,
+                onOpenSettings: detail.isCreator && detail.status != .completed
+                    ? { kind in configEditorKind = SideGameConfigKind(rawValue: kind) }
                     : nil
             )
         }
@@ -571,7 +589,8 @@ struct MatchDetailView: View {
                     game: game,
                     eventCount: eventCount(for: game),
                     stateOverride: stateOverride(for: game),
-                    onOpen: { eventEditorGame = $0 }
+                    onOpen: { eventEditorGame = $0 },
+                    onSettings: settingsAction(for: game)
                 )
             }
         }
@@ -849,6 +868,18 @@ struct MatchDetailView: View {
             return nil
         default:
             return nil
+        }
+    }
+
+    /// Slice 57: creator-only settings for the games with a config
+    /// editor on their score card (Snake stake, BBB points). Stableford
+    /// has no score card — its entry lives on the Standings tab.
+    private func settingsAction(for game: SideGame) -> (() -> Void)? {
+        guard viewModel.detail?.isCreator == true else { return nil }
+        switch MatchDetailMath.eventGameKey(game.kind) {
+        case "SNAKE": return { configEditorKind = .snake }
+        case "BBB": return { configEditorKind = .bbb }
+        default: return nil
         }
     }
 
