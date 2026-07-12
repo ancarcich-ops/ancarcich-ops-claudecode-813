@@ -51,36 +51,43 @@ struct MatchTickerView: View {
 
     // MARK: - Marquee
 
+    /// The scrolling pair is drawn as an OVERLAY on a proposal-sized
+    /// Color anchor: the doubled `.fixedSize()` text is far wider than
+    /// the screen, and letting it participate in layout inflates the
+    /// whole match card past the screen edges. Overlays never affect
+    /// layout, and `.clipped()` + the fade mask confine the drawing.
     private var marquee: some View {
-        HStack(spacing: 0) {
-            tickerText
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TickerWidthKey.self,
-                            value: proxy.size.width
+        Color.clear
+            .overlay(alignment: .leading) {
+                HStack(spacing: 0) {
+                    tickerText
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: TickerWidthKey.self,
+                                    value: proxy.size.width
+                                )
+                            }
                         )
-                    }
-                )
-            tickerText
-        }
-        .fixedSize()
-        .offset(x: isScrolling ? -contentWidth : 0)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clipped()
-        .mask(edgeFade)
-        .onPreferenceChange(TickerWidthKey.self) { width in
-            guard width > 0, abs(width - contentWidth) > 0.5 else { return }
-            // Restart the loop cleanly whenever the measured width changes.
-            isScrolling = false
-            contentWidth = width
-            withAnimation(
-                .linear(duration: Self.loopDuration)
-                    .repeatForever(autoreverses: false)
-            ) {
-                isScrolling = true
+                    tickerText
+                }
+                .fixedSize()
+                .offset(x: isScrolling ? -contentWidth : 0)
             }
-        }
+            .clipped()
+            .mask(edgeFade)
+            .onPreferenceChange(TickerWidthKey.self) { width in
+                guard width > 0, abs(width - contentWidth) > 0.5 else { return }
+                // Restart the loop cleanly whenever the measured width changes.
+                isScrolling = false
+                contentWidth = width
+                withAnimation(
+                    .linear(duration: Self.loopDuration)
+                        .repeatForever(autoreverses: false)
+                ) {
+                    isScrolling = true
+                }
+            }
     }
 
     /// Soft-enter on the right, soft-exit on the left — like the web.
