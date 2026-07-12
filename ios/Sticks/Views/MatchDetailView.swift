@@ -24,6 +24,11 @@
 //  HeaderControls) replaces the floating back/⋯ circles; the ⋯ actions
 //  menu moves inline next to the course title, like the web.
 //
+//  Slice 54: web parity — a Scorecard | Live odds tab switcher under
+//  the match header. The Market lives on the Live-odds tab only; the
+//  scorecard/standings/side-games stay on Scorecard. The Live-odds tab
+//  is hidden entirely for unpriced/solo rounds.
+//
 
 import SwiftUI
 import UIKit
@@ -44,6 +49,9 @@ struct MatchDetailView: View {
     /// Slice 50: the event-driven side game whose per-hole editor sheet
     /// is open (Snake, BBB, Match press).
     @State private var eventEditorGame: SideGame?
+    /// Slice 54: which content tab is showing — Scorecard (default) or
+    /// Live odds (the Market). Matches the web's match-page tabs.
+    @State private var selectedTab: MatchDetailTab = .scorecard
     @State private var showsDeleteConfirm = false
     @State private var showsFinalConfirm = false
     @State private var showsReopenConfirm = false
@@ -71,78 +79,24 @@ struct MatchDetailView: View {
                         failedCard(message)
                     case .loaded:
                         if let detail = viewModel.detail {
-                            // Web order: the GPS launcher is the first
-                            // thing under the header.
-                            if detail.status != .completed {
-                                gpsButton(detail)
+                            // Slice 54: the tab switcher only exists when
+                            // the match is priced — solo/unpriced rounds
+                            // have no Market, so no tab bar at all.
+                            if isMarketPriced(detail) {
+                                detailTabBar(detail)
                             }
-                            if detail.status == .inProgress, detail.myMatchPlayerId != nil {
-                                MatchHeroCard(
-                                    detail: detail,
-                                    holeGeo: viewModel.response?.holeGeo ?? [:],
-                                    currentHoleIndex: currentHoleIndex(detail)
-                                )
-                            }
-                            scorecardCard(detail)
-                            if detail.status == .inProgress {
-                                StandingsCard(
-                                    detail: detail,
-                                    probabilities: viewModel.response?.odds?.probabilities ?? [:],
-                                    sideGames: viewModel.response?.sideGames ?? [],
-                                    onRecordEvents: detail.canEnterScores && detail.status != .completed
-                                        ? { game in eventEditorGame = game }
-                                        : nil
-                                )
-                            }
-                            // Slice 52/53: one prominent "score it" card per
-                            // enabled game with a native editor (Snake, BBB,
-                            // Match press, Wolf, Targets) — the obvious way
-                            // in, matching the web's inline editor. Sits under
-                            // the Standings. Hidden for spectators and
-                            // completed rounds; Targets is config-only, so
-                            // its card is creator-only.
-                            if detail.canEnterScores, detail.status != .completed {
-                                ForEach(editableSideGames) { game in
-                                    SideGameScoreCard(
-                                        game: game,
-                                        eventCount: eventCount(for: game),
-                                        stateOverride: stateOverride(for: game),
-                                        onOpen: { eventEditorGame = $0 }
-                                    )
-                                }
-                            }
-                            // Slice 41: the Market — blend header, area-fill
-                            // odds graph, per-player rows and crowd calls.
-                            // Shown for in-progress AND completed rounds
-                            // whenever the server prices the match (≥ 2
-                            // players). Replaces the old Win odds card.
-                            if let odds = viewModel.response?.odds,
-                               !odds.probabilities.isEmpty,
-                               detail.players.count > 1 {
+                            if selectedTab == .liveOdds,
+                               isMarketPriced(detail),
+                               let odds = viewModel.response?.odds {
+                                // Live odds tab: the Market only.
                                 MarketCard(
                                     detail: detail,
                                     odds: odds,
                                     viewModel: viewModel,
                                     session: session
                                 )
-                            }
-                            if showsFinishCTA {
-                                finishRoundButton
-                            }
-                            if canEditSideGames {
-                                editSideGamesButton
-                            }
-                            if detail.myMatchPlayerId != nil {
-                                ShareRoundCard(viewModel: viewModel, session: session)
-                            }
-                            if !detail.canEnterScores {
-                                Text("You're viewing as a spectator — only seated players or the match creator can enter scores.")
-                                    .font(SticksFont.sans(12))
-                                    .foregroundStyle(Color.sticksMuted)
-                                    .padding(.horizontal, 4)
-                            }
-                            if hasMenuActions {
-                                roundActionsCard
+                            } else {
+                                scorecardTabContent(detail)
                             }
                         }
                     }
@@ -489,6 +443,156 @@ struct MatchDetailView: View {
         let mode = detail?.scoringMode ?? match.scoringMode
         let format = detail?.format ?? match.format
         return "\(holes) HOLES · \(mode.uppercased()) · \(format.replacingOccurrences(of: "_", with: " ").uppercased())"
+    }
+
+    // MARK: - Tabs (slice 54)
+
+    /// Priced = the server sent non-empty win probabilities and there's
+    /// an actual field to bet on (≥ 2 players).
+    private func isMarketPriced(_ detail: MatchDetail) -> Bool {
+        guard let odds = viewModel.response?.odds else { return false }
+        return !odds.probabilities.isEmpty && detail.players.count > 1
+    }
+
+    /// Web-style segmented text tabs — Scorecard (with thru/holes badge)
+    /// and Live odds (with the call count, hidden at 0). Active tab gets
+    /// an ink label and a green underline; inactive is muted.
+    private func detailTabBar(_ detail: MatchDetail) -> some View {
+        let callCount = viewModel.response?.odds?.totalCalls ?? 0
+        return HStack(spacing: 24) {
+            tabButton(
+                title: "Scorecard",
+                badge: "\(thruCount(detail))/\(detail.holes)",
+                isActive: selectedTab == .scorecard
+            ) { selectTab(.scorecard) }
+
+            tabButton(
+                title: "Live odds",
+                badge: callCount > 0 ? "\(callCount)" : nil,
+                isActive: selectedTab == .liveOdds
+            ) { selectTab(.liveOdds) }
+
+            Spacer(minLength: 0)
+        }
+        .overlay(alignment: .bottom) {
+            Color.sticksHairline.frame(height: 1)
+        }
+    }
+
+    private func selectTab(_ tab: MatchDetailTab) {
+        guard selectedTab != tab else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.easeOut(duration: 0.15)) {
+            selectedTab = tab
+        }
+    }
+
+    private func tabButton(
+        title: String,
+        badge: String?,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(SticksFont.sans(15, weight: .semibold))
+                        .foregroundStyle(isActive ? Color.sticksInk : Color.sticksMuted)
+                    if let badge {
+                        Text(badge)
+                            .font(SticksFont.mono(10))
+                            .foregroundStyle(isActive ? Color.sticksGreen : Color.sticksFaint)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                (isActive ? Color.sticksGreen : Color.sticksFaint)
+                                    .opacity(0.1)
+                            )
+                            .clipShape(.capsule)
+                    }
+                }
+                Rectangle()
+                    .fill(isActive ? Color.sticksGreen : Color.clear)
+                    .frame(height: 2)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+    }
+
+    /// Holes-scored count for the Scorecard badge — the caller's row when
+    /// seated, else the first player (same rule as the scorecard's meta).
+    private func thruCount(_ detail: MatchDetail) -> Int {
+        let player = detail.players.first { $0.id == detail.myMatchPlayerId }
+            ?? detail.players.first
+        guard let player else { return 0 }
+        return MatchDetailMath.holesPlayed(for: player, in: detail)
+    }
+
+    /// Everything except the Market — the whole pre-slice-54 flow.
+    @ViewBuilder
+    private func scorecardTabContent(_ detail: MatchDetail) -> some View {
+        // Web order: the GPS launcher is the first
+        // thing under the header.
+        if detail.status != .completed {
+            gpsButton(detail)
+        }
+        if detail.status == .inProgress, detail.myMatchPlayerId != nil {
+            MatchHeroCard(
+                detail: detail,
+                holeGeo: viewModel.response?.holeGeo ?? [:],
+                currentHoleIndex: currentHoleIndex(detail)
+            )
+        }
+        scorecardCard(detail)
+        if detail.status == .inProgress {
+            StandingsCard(
+                detail: detail,
+                probabilities: viewModel.response?.odds?.probabilities ?? [:],
+                sideGames: viewModel.response?.sideGames ?? [],
+                onRecordEvents: detail.canEnterScores && detail.status != .completed
+                    ? { game in eventEditorGame = game }
+                    : nil
+            )
+        }
+        // Slice 52/53: one prominent "score it" card per
+        // enabled game with a native editor (Snake, BBB,
+        // Match press, Wolf, Targets) — the obvious way
+        // in, matching the web's inline editor. Sits under
+        // the Standings. Hidden for spectators and
+        // completed rounds; Targets is config-only, so
+        // its card is creator-only.
+        if detail.canEnterScores, detail.status != .completed {
+            ForEach(editableSideGames) { game in
+                SideGameScoreCard(
+                    game: game,
+                    eventCount: eventCount(for: game),
+                    stateOverride: stateOverride(for: game),
+                    onOpen: { eventEditorGame = $0 }
+                )
+            }
+        }
+        if showsFinishCTA {
+            finishRoundButton
+        }
+        if canEditSideGames {
+            editSideGamesButton
+        }
+        if detail.myMatchPlayerId != nil {
+            ShareRoundCard(viewModel: viewModel, session: session)
+        }
+        if !detail.canEnterScores {
+            Text("You're viewing as a spectator — only seated players or the match creator can enter scores.")
+                .font(SticksFont.sans(12))
+                .foregroundStyle(Color.sticksMuted)
+                .padding(.horizontal, 4)
+        }
+        if hasMenuActions {
+            roundActionsCard
+        }
     }
 
     // MARK: - Scorecard
@@ -844,6 +948,13 @@ struct MatchDetailView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
+}
+
+/// Slice 54: the match-detail content tabs, mirroring the web's
+/// Scorecard | Live odds switcher.
+enum MatchDetailTab {
+    case scorecard
+    case liveOdds
 }
 
 /// Shared press-scale feedback for prominent buttons.
