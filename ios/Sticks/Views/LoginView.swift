@@ -52,10 +52,7 @@ struct LoginView: View {
     }
 
     private var loginContent: some View {
-        ZStack {
-            backdrop
-
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 0) {
                     wordmark
                         .padding(.top, 64)
@@ -106,10 +103,10 @@ struct LoginView: View {
                     signUpFooter
                         .padding(.top, 18)
                 }
-                .padding(.bottom, 32)
-            }
-            .scrollBounceBehavior(.basedOnSize)
+            .padding(.bottom, 32)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .background(backdrop)
         .onTapGesture { focusedField = nil }
         .onAppear {
             canUseBiometricSignIn = BiometricService.isAvailable && session.isBiometricSignInEnabled
@@ -120,6 +117,8 @@ struct LoginView: View {
 
     /// Cream with subtle depth — a warmer wash at the top and faint
     /// course-contour rings behind the logo. Quiet, Caddie's Notebook.
+    /// Applied via `.background` so the oversized rings can never widen
+    /// the layout and push the form off-screen.
     private var backdrop: some View {
         ZStack {
             Color.sticksBg.ignoresSafeArea()
@@ -135,6 +134,7 @@ struct LoginView: View {
             .ignoresSafeArea()
 
             ContourBackdrop()
+                .frame(width: 1, height: 1)
                 .offset(y: -160)
         }
     }
