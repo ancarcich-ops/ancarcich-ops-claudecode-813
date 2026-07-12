@@ -526,10 +526,12 @@ final class CreateMatchViewModel {
     }
 
     /// Round-step player-count chips (Solo / Twosome / Threesome /
-    /// Foursome). Grows with empty guest seats, shrinks from the bottom
+    /// Foursome+). Grows with empty guest seats, shrinks from the bottom
     /// (never removes the "me" seat). Solo forces Individual, like the
-    /// web.
+    /// web. Foursome+ is a floor: asking for 4 when the party is already
+    /// 4–8 is a no-op, so re-tapping the preset never drops added seats.
     func setPlayerCount(_ count: Int) {
+        if count == 4, seats.count >= 4 { return }
         let target = min(max(count, 1), 8)
         while seats.count < target, canAddSeat {
             addSeat()

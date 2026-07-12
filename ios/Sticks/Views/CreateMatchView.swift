@@ -21,7 +21,7 @@
 //  reveal "Round" step (Course → Tee & holes → Format), one group open
 //  at a time, answered groups collapsing to tappable chips. Adds the
 //  tee-time picker (→ scheduledAt), Full 18/Front 9/Back 9, and the
-//  Solo/Twosome/Threesome/Foursome player-count chips.
+//  Solo/Twosome/Threesome/Foursome+ player-count chips.
 //
 
 import SwiftUI
@@ -383,30 +383,35 @@ struct CreateMatchView: View {
         }
     }
 
-    /// Solo / Twosome / Threesome / Foursome — sets how many seats the
-    /// Players step starts with. Solo forces Individual.
+    /// Solo / Twosome / Threesome / Foursome+ — sets how many seats the
+    /// Players step starts with. Solo forces Individual. Foursome+ is a
+    /// floor, not a cap: it stays active for 5–8 players and tapping it
+    /// never shrinks a larger party back to 4.
     private var playerCountSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("NUMBER OF PLAYERS")
 
             SegmentPicker(
-                options: [(1, "SOLO"), (2, "TWOSOME"), (3, "THREESOME"), (4, "FOURSOME")],
+                options: [(1, "SOLO"), (2, "TWOSOME"), (3, "THREESOME"), (4, "FOURSOME+")],
                 selection: playerCountBinding
             )
 
             Text(
                 viewModel.seats.count == 1
                     ? "Just you — solo rounds play Individual."
-                    : "You'll name everyone on the Players step."
+                    : "Add up to 8 on the next step."
             )
             .font(SticksFont.mono(10.5, weight: .regular))
             .foregroundStyle(Color.sticksFaint)
         }
     }
 
+    /// Clamps the read side to 4 so a 5–8 party keeps Foursome+ lit;
+    /// the picker's own is-active guard then makes tapping it a no-op
+    /// for any party of 4 or more.
     private var playerCountBinding: Binding<Int> {
         Binding(
-            get: { viewModel.seats.count },
+            get: { min(viewModel.seats.count, 4) },
             set: { count in
                 withAnimation(.easeOut(duration: 0.18)) {
                     viewModel.setPlayerCount(count)
