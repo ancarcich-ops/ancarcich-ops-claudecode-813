@@ -150,6 +150,9 @@ struct MatchDetailView: View {
                 BbbConfigView(viewModel: viewModel, session: session)
             case .snake:
                 SnakeConfigView(viewModel: viewModel, session: session)
+            case .nassau:
+                // Slice 58: Nassau auto-press + stake.
+                NassauConfigView(viewModel: viewModel, session: session)
             }
         }
         .sheet(isPresented: $showsEditSideGames) {

@@ -10,6 +10,10 @@
 //  Snake/BBB record buttons and a settings button on the Stableford
 //  tab (its first editor), opening the house-rule config sheets.
 //
+//  Slice 58: Nassau joins the settings-only games — a creator-only
+//  settings button on its standings tab opens the auto-press + stake
+//  editor.
+//
 
 import SwiftUI
 
@@ -27,8 +31,12 @@ struct StandingsCard: View {
     /// hides the controls — non-creators and completed rounds.
     var onOpenSettings: ((String) -> Void)? = nil
 
-    /// Game keys with a slice-57 settings editor.
-    private static let configEditorKeys: Set<String> = ["STABLEFORD", "BBB", "SNAKE"]
+    /// Game keys with a slice-57/58 settings editor.
+    private static let configEditorKeys: Set<String> = ["STABLEFORD", "BBB", "SNAKE", "NASSAU"]
+
+    /// Settings-only games — no event editor, so the settings button on
+    /// their standings tab is the only way into their config.
+    private static let settingsOnlyKeys: Set<String> = ["STABLEFORD", "NASSAU"]
 
     /// nil = Overall; otherwise a side-game kind.
     @State private var selectedKind: String?
@@ -253,10 +261,11 @@ struct StandingsCard: View {
                         settingsChip(kind: key, open: onOpenSettings)
                     }
                 }
-            } else if key == "STABLEFORD", let onOpenSettings {
-                // Stableford has no event editor — the settings button
-                // on its standings section is the way into the scale.
-                stablefordSettingsButton(open: onOpenSettings)
+            } else if Self.settingsOnlyKeys.contains(key), let onOpenSettings {
+                // Stableford/Nassau have no event editor — the settings
+                // button on their standings section is the way in
+                // (Stableford's scale; Nassau's auto-press + stake).
+                settingsOnlyButton(kind: key, open: onOpenSettings)
             }
             ForEach(game.leaderboards) { board in
                 leaderboardSection(board)
@@ -288,17 +297,18 @@ struct StandingsCard: View {
         .accessibilityLabel("\(MatchDetailMath.kindLabel(kind)) settings")
     }
 
-    /// Full-width settings entry on the Stableford tab — same visual
-    /// weight as the record-events button on the other games.
-    private func stablefordSettingsButton(open: @escaping (String) -> Void) -> some View {
+    /// Full-width settings entry on a settings-only game's tab
+    /// (Stableford, Nassau) — same visual weight as the record-events
+    /// button on the other games.
+    private func settingsOnlyButton(kind: String, open: @escaping (String) -> Void) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            open("STABLEFORD")
+            open(kind)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 13, weight: .semibold))
-                Text("SCORING SETTINGS")
+                Text(kind == "NASSAU" ? "PRESS & STAKE SETTINGS" : "SCORING SETTINGS")
                     .font(SticksFont.mono(10.5))
                     .kerning(1)
                 Spacer(minLength: 8)
@@ -318,7 +328,7 @@ struct StandingsCard: View {
             .contentShape(.rect)
         }
         .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel("Stableford settings")
+        .accessibilityLabel("\(MatchDetailMath.kindLabel(kind)) settings")
     }
 
     /// Event-driven games fill from per-hole taps, not the scorecard —

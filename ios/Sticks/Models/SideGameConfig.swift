@@ -10,6 +10,8 @@
 //  Slice 57: Stableford scale, BBB points and Snake stake join the
 //  typed configs, backing the new native settings editors.
 //
+//  Slice 58: Nassau auto-press + stake joins the typed configs.
+//
 
 import Foundation
 
@@ -223,11 +225,46 @@ nonisolated struct SnakeConfig: Codable, Hashable {
     }
 }
 
+/// Nassau settings — auto-press spawns a new press bet whenever a
+/// side falls `autoPressThreshold` holes down inside the front or
+/// back match; `stake` is dollars per bet (front, back, total, and
+/// each press are each a bet). Presses apply to 2-player rounds only.
+nonisolated struct NassauConfig: Codable, Hashable {
+    var autoPress: Bool?
+    var autoPressThreshold: Int?
+    var stake: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case autoPress, autoPressThreshold, stake
+    }
+
+    init(autoPress: Bool? = nil, autoPressThreshold: Int? = nil, stake: Double? = nil) {
+        self.autoPress = autoPress
+        self.autoPressThreshold = autoPressThreshold
+        self.stake = stake
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        autoPress = try? container.decodeIfPresent(Bool.self, forKey: .autoPress)
+        autoPressThreshold = try? container.decodeIfPresent(Int.self, forKey: .autoPressThreshold)
+        stake = try? container.decodeIfPresent(Double.self, forKey: .stake)
+    }
+
+    /// Parses the raw JSON string from sideGameConfigs — nil when the
+    /// game has no config saved yet.
+    static func decode(from raw: String?) -> NassauConfig? {
+        guard let raw, let data = raw.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(NassauConfig.self, from: data)
+    }
+}
+
 /// Slice 57: which side-game settings editor sheet is open.
 enum SideGameConfigKind: String, Identifiable {
     case stableford = "STABLEFORD"
     case bbb = "BBB"
     case snake = "SNAKE"
+    case nassau = "NASSAU"
 
     var id: String { rawValue }
 }
