@@ -31,6 +31,16 @@ extension Notification.Name {
 }
 
 struct HeaderControls: View {
+    /// How the leading Home ghost pill renders. The Home tab's header
+    /// steps down through these (text → icon → hidden) via ViewThatFits
+    /// so the "Sticks." wordmark always wins the space fight — on the
+    /// Home tab the pill is a no-op anyway.
+    enum HomePillStyle {
+        case text
+        case icon
+        case hidden
+    }
+
     let user: User
     let session: SessionStore
     @Binding var showsCreate: Bool
@@ -38,6 +48,7 @@ struct HeaderControls: View {
     /// Settings / leaderboard). nil on pushed screens without a tab
     /// binding (match detail) — those links are omitted there.
     var tabSelection: Binding<SticksTab>? = nil
+    var homePill: HomePillStyle = .text
 
     @Environment(\.dismiss) private var dismiss
 
@@ -45,8 +56,10 @@ struct HeaderControls: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            homeButton
-                .layoutPriority(1)
+            if homePill != .hidden {
+                homeButton
+                    .layoutPriority(1)
+            }
 
             newRoundButton
                 .layoutPriority(1)
@@ -71,17 +84,26 @@ struct HeaderControls: View {
                 NotificationCenter.default.post(name: .sticksGoHome, object: nil)
             }
         } label: {
-            Text("Home")
-                .font(SticksFont.sans(13.5, weight: .semibold))
-                .foregroundStyle(Color.sticksInk)
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.horizontal, 13)
-                .frame(height: 36)
-                .background(Color.sticksCard)
-                .clipShape(.capsule)
-                .overlay(Capsule().stroke(Color.sticksHairline, lineWidth: 1))
-                .contentShape(.capsule)
+            Group {
+                if homePill == .icon {
+                    Image(systemName: "house")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                        .frame(width: 36, height: 36)
+                } else {
+                    Text("Home")
+                        .font(SticksFont.sans(13.5, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 13)
+                        .frame(height: 36)
+                }
+            }
+            .background(Color.sticksCard)
+            .clipShape(.capsule)
+            .overlay(Capsule().stroke(Color.sticksHairline, lineWidth: 1))
+            .contentShape(.capsule)
         }
         .buttonStyle(NewRoundPressStyle())
         .accessibilityLabel("Home")

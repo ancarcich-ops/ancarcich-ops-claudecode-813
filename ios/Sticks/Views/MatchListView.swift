@@ -117,34 +117,19 @@ struct MatchListView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            // The pills are fixed-size, so the brand adapts instead:
-            // full "Sticks." wordmark when it fits, just the clubs mark
-            // when the header cluster needs the room.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    SticksClubsMark()
-                        .frame(width: 34, height: 34)
-
-                    (Text("Sticks").foregroundStyle(Color.sticksInk)
-                        + Text(".").foregroundStyle(Color.sticksGreen))
-                        .font(SticksFont.display(30))
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-
-                SticksClubsMark()
-                    .frame(width: 34, height: 34)
-            }
-
-            Spacer(minLength: 6)
-
-            HeaderControls(
-                user: user,
-                session: session,
-                showsCreate: $showsCreate,
-                tabSelection: $tabSelection
-            )
+        // The pills are fixed-size, so the row adapts around them. The
+        // wordmark is the brand — it must never disappear — so the
+        // ladder trades the clubs mark, then the (no-op on this tab)
+        // Home pill's text, then the pill itself before shrinking the
+        // wordmark. Rows are rigid apart from the Spacer, so
+        // ViewThatFits picks the first row whose content truly fits.
+        ViewThatFits(in: .horizontal) {
+            headerRow(wordmarkSize: 30, showsMark: true, homePill: .text)
+            headerRow(wordmarkSize: 30, showsMark: false, homePill: .text)
+            headerRow(wordmarkSize: 26, showsMark: false, homePill: .icon)
+            headerRow(wordmarkSize: 22, showsMark: false, homePill: .icon)
+            headerRow(wordmarkSize: 30, showsMark: false, homePill: .hidden)
+            headerRow(wordmarkSize: 22, showsMark: false, homePill: .hidden)
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
@@ -152,6 +137,38 @@ struct MatchListView: View {
         .background(Color.sticksBg)
         .overlay(alignment: .bottom) {
             Color.sticksHairline.frame(height: 1)
+        }
+    }
+
+    /// One candidate header row for the ViewThatFits ladder.
+    private func headerRow(
+        wordmarkSize: CGFloat,
+        showsMark: Bool,
+        homePill: HeaderControls.HomePillStyle
+    ) -> some View {
+        HStack(alignment: .center, spacing: 0) {
+            HStack(spacing: 10) {
+                if showsMark {
+                    SticksClubsMark()
+                        .frame(width: 34, height: 34)
+                }
+
+                (Text("Sticks").foregroundStyle(Color.sticksInk)
+                    + Text(".").foregroundStyle(Color.sticksGreen))
+                    .font(SticksFont.display(wordmarkSize))
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+
+            Spacer(minLength: 8)
+
+            HeaderControls(
+                user: user,
+                session: session,
+                showsCreate: $showsCreate,
+                tabSelection: $tabSelection,
+                homePill: homePill
+            )
         }
     }
 
