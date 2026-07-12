@@ -200,21 +200,67 @@ struct OnCourseGPSView: View {
         .onChange(of: cameraMode) { _, _ in
             snapCamera(detail, animated: true)
         }
+        // Preload the 3D flyover for the displayed hole in ANY mode —
+        // the shared WebView streams tiles in the background while the
+        // golfer reads the satellite map, so tapping 3D opens a warm
+        // (often fully loaded) scene. Re-runs on hole change and when
+        // geo arrives from the fetch.
+        .task(id: flyoverURL(detail, geo: geo)) {
+            if let url = flyoverURL(detail, geo: geo) {
+                FlyoverService.shared.prepare(url: url)
+            }
+        }
     }
 
     /// The 3D flyover layer: a dark backdrop + spinner behind the
     /// transparent WebView while the mesh streams in (the page paints its
-    /// own scrim over it, then the flyover fades in). No load-completion
-    /// detection needed. The WebView is created fresh each time 3D mode
-    /// is entered, so the cinematic tee→green intro re-plays.
+    /// own scrim over it, then the flyover fades in). The WebView itself
+    /// is owned by FlyoverService — preloaded before 3D is tapped and
+    /// kept alive across mode switches — and failed/hung loads surface a
+    /// RETRY instead of an infinite spinner.
     private func flyoverLayer(url: URL) -> some View {
-        ZStack {
+        let state = FlyoverService.shared.state
+        return ZStack {
             Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x0D / 255)
-            ProgressView()
-                .tint(Color.sticksGreen)
-            HoleFlyoverWebView(url: url)
+            if state == .loading {
+                ProgressView()
+                    .tint(Color.sticksGreen)
+            }
+            if state == .failed {
+                flyoverRetry
+            } else {
+                HoleFlyoverWebView()
+            }
         }
         .ignoresSafeArea()
+        .task(id: url) {
+            FlyoverService.shared.prepare(url: url)
+        }
+    }
+
+    /// Shown when the flyover page failed to load or hung past the
+    /// watchdog — a spinner-forever is never the end state anymore.
+    private var flyoverRetry: some View {
+        VStack(spacing: 14) {
+            Text("3D VIEW DIDN'T LOAD")
+                .font(SticksFont.label(12, weight: .bold))
+                .kerning(2)
+                .foregroundStyle(.white.opacity(0.8))
+            Button {
+                FlyoverService.shared.retry()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Text("RETRY")
+                    .font(SticksFont.label(12, weight: .bold))
+                    .kerning(2)
+                    .foregroundStyle(Color.sticksCream)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 11)
+                    .background(Color.sticksGreen)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(PressableButtonStyle())
+        }
     }
 
     /// Builds the production flyover embed URL for the current hole from

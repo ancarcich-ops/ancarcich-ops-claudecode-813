@@ -2,50 +2,39 @@
 //  HoleFlyoverWebView.swift
 //  Sticks
 //
-//  Slice 30: WKWebView wrapper for the photorealistic 3D hole flyover
-//  (the production web embed at /embed/hole-flyover — Google 3D Tiles
-//  with a cinematic tee→green intro). Purely the remote page: no native
-//  map SDKs, no downloads. The user can pan/zoom the mesh with gestures;
-//  all native overlays render on top of it.
+//  Hosts FlyoverService's single long-lived WKWebView (the production
+//  web embed at /embed/hole-flyover — Google 3D Tiles with a cinematic
+//  tee→green intro). The WebView is preloaded and kept alive by the
+//  service, so this view only re-parents it: entering 3D mode attaches
+//  an already-streaming (often already-finished) scene instead of
+//  starting a cold page load. The user can pan/zoom the mesh with
+//  gestures; all native overlays render on top of it.
 //
 
 import SwiftUI
 import WebKit
 
 struct HoleFlyoverWebView: UIViewRepresentable {
-    let url: URL
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .clear
+        attachWebView(to: container)
+        return container
     }
 
-    func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.allowsInlineMediaPlayback = true
-
-        let webView = WKWebView(frame: .zero, configuration: config)
-        // Transparent so the native loading treatment (dark backdrop +
-        // spinner) shows through until the page paints its own scrim.
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.backgroundColor = .clear
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
-
-        context.coordinator.lastURL = url
-        webView.load(URLRequest(url: url))
-        return webView
+    func updateUIView(_ container: UIView, context: Context) {
+        attachWebView(to: container)
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        // Reload only when the target URL actually changed (hole switch)
-        // — SwiftUI calls this on unrelated state updates too.
-        guard context.coordinator.lastURL != url else { return }
-        context.coordinator.lastURL = url
-        webView.load(URLRequest(url: url))
-    }
-
-    final class Coordinator {
-        var lastURL: URL?
+    /// Re-parents the shared WebView into `container` (a no-op when it's
+    /// already there). The service keeps the WebView alive when SwiftUI
+    /// tears this view down, preserving the loaded scene.
+    private func attachWebView(to container: UIView) {
+        let webView = FlyoverService.shared.webView
+        guard webView.superview !== container else { return }
+        webView.removeFromSuperview()
+        webView.frame = container.bounds
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        container.addSubview(webView)
     }
 }
