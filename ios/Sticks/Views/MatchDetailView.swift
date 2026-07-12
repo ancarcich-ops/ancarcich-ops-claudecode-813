@@ -84,6 +84,20 @@ struct MatchDetailView: View {
                                 )
                             }
                             scorecardCard(detail)
+                            // Slice 52: one prominent "score it" card per
+                            // enabled event-driven side game (Snake, BBB,
+                            // Match press) — the obvious way in, matching
+                            // the web's inline editor. Hidden for
+                            // spectators and completed rounds.
+                            if detail.canEnterScores, detail.status != .completed {
+                                ForEach(eventDrivenGames) { game in
+                                    SideGameScoreCard(
+                                        game: game,
+                                        eventCount: eventCount(for: game),
+                                        onOpen: { eventEditorGame = $0 }
+                                    )
+                                }
+                            }
                             if detail.status == .inProgress {
                                 StandingsCard(
                                     detail: detail,
@@ -683,6 +697,23 @@ struct MatchDetailView: View {
             .clipShape(.rect(cornerRadius: 14))
         }
         .buttonStyle(PressableButtonStyle())
+    }
+
+    /// Slice 52: enabled event-driven side games (Snake, BBB, Match
+    /// press) — the server emits a section for every enabled game even
+    /// with zero events, so an on-but-empty game still gets a card.
+    private var eventDrivenGames: [SideGame] {
+        (viewModel.response?.sideGames ?? []).filter {
+            MatchDetailMath.isEventDriven($0.kind)
+        }
+    }
+
+    /// Recorded events for one game, aliases normalized.
+    private func eventCount(for game: SideGame) -> Int {
+        let key = MatchDetailMath.eventGameKey(game.kind)
+        return (viewModel.response?.sideGameEvents ?? [])
+            .filter { MatchDetailMath.eventGameKey($0.gameKind) == key }
+            .count
     }
 
     /// Slice 29: creator-only side-game add/remove, hidden once the
