@@ -125,8 +125,35 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     let format: String
     let isCreator: Bool
     let myMatchPlayerId: String?
+    /// Slice 61: true when the caller holds no seat AND at least one seat
+    /// is unlinked (userId == nil) — the server's "you can claim" signal.
+    /// Decoded tolerantly; older payloads default to false.
+    let canClaimSeat: Bool
     let pars: [Int]
     var players: [MatchDetailPlayer]
+
+    private enum CodingKeys: String, CodingKey {
+        case id, courseName, scheduledAt, status, holes, startingHole
+        case scoringMode, format, isCreator, myMatchPlayerId, canClaimSeat
+        case pars, players
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        courseName = try container.decode(String.self, forKey: .courseName)
+        scheduledAt = try container.decode(Date.self, forKey: .scheduledAt)
+        status = try container.decode(MatchStatus.self, forKey: .status)
+        holes = try container.decode(Int.self, forKey: .holes)
+        startingHole = try container.decode(Int.self, forKey: .startingHole)
+        scoringMode = try container.decode(String.self, forKey: .scoringMode)
+        format = try container.decode(String.self, forKey: .format)
+        isCreator = try container.decode(Bool.self, forKey: .isCreator)
+        myMatchPlayerId = try container.decodeIfPresent(String.self, forKey: .myMatchPlayerId)
+        canClaimSeat = (try? container.decode(Bool.self, forKey: .canClaimSeat)) ?? false
+        pars = try container.decodeIfPresent([Int].self, forKey: .pars) ?? []
+        players = try container.decodeIfPresent([MatchDetailPlayer].self, forKey: .players) ?? []
+    }
 
     /// Score entry is allowed if the caller is seated or created the match.
     var canEnterScores: Bool { myMatchPlayerId != nil || isCreator }

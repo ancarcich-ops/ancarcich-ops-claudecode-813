@@ -223,6 +223,12 @@ nonisolated struct CallResult: Decodable {
     }
 }
 
+/// Body for POST /matches/:id/claim-seat — links an unlinked seat
+/// (added by name, userId == null) to the caller's account.
+nonisolated struct ClaimSeatRequest: Encodable {
+    let matchPlayerId: String
+}
+
 /// Body for POST /matches/:id/tee (FIX TEE crowdfix).
 nonisolated struct TeeRequest: Encodable {
     let hole: Int
@@ -425,6 +431,16 @@ nonisolated struct APIClient {
         var request = makeRequest(path: "matches/\(matchId)/call", method: "POST", token: token)
         request.httpBody = try encoder.encode(CallRequest(pickedPlayerId: pickedPlayerId))
         return try await perform(request)
+    }
+
+    /// POST /matches/:id/claim-seat — links an unlinked seat to the
+    /// caller. The seat keeps its display name; only the account link
+    /// changes. 400/403 carry server messages (already seated / already
+    /// claimed / not a member / not in round) shown verbatim.
+    func claimSeat(matchId: String, matchPlayerId: String, token: String) async throws {
+        var request = makeRequest(path: "matches/\(matchId)/claim-seat", method: "POST", token: token)
+        request.httpBody = try encoder.encode(ClaimSeatRequest(matchPlayerId: matchPlayerId))
+        let _: OkResponse = try await perform(request)
     }
 
     /// POST /matches/:id/tee — crowdfix the tee position from live GPS.

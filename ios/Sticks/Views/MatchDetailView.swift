@@ -553,6 +553,13 @@ struct MatchDetailView: View {
     /// Everything except the Market — the whole pre-slice-54 flow.
     @ViewBuilder
     private func scorecardTabContent(_ detail: MatchDetail) -> some View {
+        // Slice 61: "Claim your seat" — the caller is a group member
+        // with no seat, and at least one seat was added by name
+        // (userId == nil). Sits right under the header, above the
+        // scorecard/standings, like the web.
+        if detail.canClaimSeat {
+            ClaimSeatCard(detail: detail, viewModel: viewModel, session: session)
+        }
         // Web order: the GPS launcher is the first
         // thing under the header.
         if detail.status != .completed {

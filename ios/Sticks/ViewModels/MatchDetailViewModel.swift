@@ -23,6 +23,12 @@ final class MatchDetailViewModel {
     private(set) var response: MatchDetailResponse?
     /// The caller's live share links for this round (slice 29).
     private(set) var shares: [RoundShare] = []
+    /// Slice 61: the seat currently being claimed — nil when idle.
+    /// Drives the claim card's spinner/disabled state.
+    private(set) var claimingSeatId: String?
+    /// Slice 61: last claim failure — the server message, shown verbatim
+    /// inline on the claim card. Cleared on the next attempt/success.
+    private(set) var claimError: String?
 
     private let api: APIClient
     private let matchId: String
@@ -281,6 +287,32 @@ final class MatchDetailViewModel {
         }
         updated.sideGameEvents = events
         response = updated
+    }
+
+    /// Slice 61: POSTs the claim linking an unlinked seat to the caller,
+    /// then re-fetches the detail so canClaimSeat / myMatchPlayerId /
+    /// canScore all update — the card disappears and "your round"
+    /// treatment turns on. Errors land in `claimError` (server messages
+    /// verbatim); a 401 signs the user out.
+    func claimSeat(matchPlayerId: String, session: SessionStore) async {
+        guard claimingSeatId == nil else { return }
+        guard let token = session.token else {
+            session.signOut()
+            return
+        }
+        claimingSeatId = matchPlayerId
+        claimError = nil
+        defer { claimingSeatId = nil }
+        do {
+            try await api.claimSeat(matchId: matchId, matchPlayerId: matchPlayerId, token: token)
+            await load(session: session, quiet: true)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+        } catch let error as APIError {
+            claimError = error.message
+        } catch {
+            claimError = "Couldn't claim that seat. Check your connection and try again."
+        }
     }
 
     /// Fetches the caller's live share links. Quiet on failure — an
