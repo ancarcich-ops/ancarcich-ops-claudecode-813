@@ -12,9 +12,13 @@
 //  - Switching 3D → HOLE → 3D re-attaches the same WebView instantly
 //    instead of reloading the page from zero.
 //  - Real failure handling: navigation errors and WebContent process
-//    crashes (frequent with WebGL-heavy pages) flip `state` so the UI
-//    can show a RETRY instead of an infinite spinner, and a watchdog
-//    catches loads that silently hang.
+//    crashes (frequent with WebGL-heavy pages) flip `state` to .failed,
+//    and a watchdog catches loads that silently hang.
+//  - Slice 59: the embed itself now reports status via the
+//    `sticksFlyover` message handler — "ready" fires when the FIRST
+//    MESH TILE actually paints (not merely when the HTML loads), and
+//    "stalled"/"error" surface silent tile failures within ~6s so the
+//    GPS screen can drop to the 2D map instead of spinning.
 //
 
 import WebKit
@@ -26,7 +30,12 @@ final class FlyoverService: NSObject {
 
     enum LoadState {
         case idle
+        /// Page request in flight.
         case loading
+        /// HTML finished loading; waiting on the embed's own "ready"
+        /// (first mesh tile painted). Tiles can still silently stall here.
+        case pageLoaded
+        /// The embed reported "ready" — the 3D scene is actually visible.
         case ready
         case failed
     }
@@ -59,6 +68,11 @@ final class FlyoverService: NSObject {
 
         super.init()
         webView.navigationDelegate = self
+        // The production embed posts real status updates —
+        // { status: "ready" | "stalled" | "error" } — through this
+        // handler. The content controller retains the service; that's
+        // intentional, it's a process-lifetime singleton.
+        webView.configuration.userContentController.add(self, name: "sticksFlyover")
     }
 
     /// Points the flyover at `url`. No-op when that page is already
@@ -90,14 +104,31 @@ final class FlyoverService: NSObject {
             try? await Task.sleep(for: .seconds(Self.watchdogSeconds))
             guard !Task.isCancelled, let self,
                   self.generation == generation,
-                  self.state == .loading else { return }
+                  self.state == .loading || self.state == .pageLoaded else { return }
             self.state = .failed
         }
     }
 
     private func handleFinished() {
-        watchdog?.cancel()
-        state = .ready
+        // The HTML arriving is NOT "ready" — Google's tiles can still
+        // silently stall. Wait for the embed's own status message; the
+        // watchdog stays armed in case the page's JS never runs.
+        if state == .loading { state = .pageLoaded }
+    }
+
+    /// Status posted by the embed's JS (slice 59).
+    private func handleEmbedStatus(_ status: String) {
+        switch status {
+        case "ready":
+            watchdog?.cancel()
+            state = .ready
+        case "stalled", "error":
+            guard state != .ready else { return }
+            watchdog?.cancel()
+            state = .failed
+        default:
+            break
+        }
     }
 
     private func handleFailure(_ error: Error) {
@@ -145,6 +176,19 @@ extension FlyoverService: WKNavigationDelegate {
     nonisolated func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         Task { @MainActor in
             FlyoverService.shared.handleProcessTerminated()
+        }
+    }
+}
+
+extension FlyoverService: WKScriptMessageHandler {
+    nonisolated func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        guard message.name == "sticksFlyover",
+              let status = (message.body as? [String: Any])?["status"] as? String else { return }
+        Task { @MainActor in
+            FlyoverService.shared.handleEmbedStatus(status)
         }
     }
 }

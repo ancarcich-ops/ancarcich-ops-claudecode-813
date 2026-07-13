@@ -44,6 +44,10 @@ struct OnCourseGPSView: View {
     @State private var hasInitialized = false
     @State private var isFinishing = false
     @State private var finishError: String?
+    // Slice 59: brief "3D didn't load" toast shown when the flyover
+    // stalls/fails and the screen auto-drops back to the 2D HOLE map.
+    @State private var showFlyoverToast = false
+    @State private var flyoverToastTask: Task<Void, Never>?
 
     /// Round-scoped location source — owned by the session service so
     /// GPS updates (and the companions they feed) survive leaving this
@@ -180,9 +184,15 @@ struct OnCourseGPSView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomPanel(detail: detail, geo: geo, anchor: anchor)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+            VStack(spacing: 10) {
+                if showFlyoverToast {
+                    flyoverFallbackToast
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                bottomPanel(detail: detail, geo: geo, anchor: anchor)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
         .onChange(of: holeIndex) { _, newIndex in
             aim = nil
@@ -210,14 +220,66 @@ struct OnCourseGPSView: View {
                 FlyoverService.shared.prepare(url: url)
             }
         }
+        // Slice 59: the embed reports "stalled"/"error" (or the service
+        // watchdog fires) — while 3D is on screen, drop straight to the
+        // fast 2D map instead of leaving the golfer on a spinner.
+        .onChange(of: FlyoverService.shared.state) { _, newState in
+            if newState == .failed { fallBackTo2D() }
+        }
+        // Belt-and-suspenders: status messages need the page's JS to run.
+        // If the WebView never even loads the page, no message arrives —
+        // so give 3D ~8s after entry (or a hole change while in 3D) to
+        // report ready, then run the same fallback. The task is cancelled
+        // automatically on mode/hole change and on disappear.
+        .task(id: "\(cameraMode.rawValue)-\(holeIndex)") {
+            guard cameraMode == .threeD else { return }
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled,
+                  FlyoverService.shared.state != .ready else { return }
+            fallBackTo2D()
+        }
+    }
+
+    /// Slice 59: the flyover stalled or failed while 3D was showing —
+    /// return to the 2D HOLE map with a brief toast. The 3D segment stays
+    /// tappable; re-entering retries the load cleanly (the service
+    /// re-prepares a failed page on attach).
+    private func fallBackTo2D() {
+        guard cameraMode == .threeD else { return }
+        withAnimation { cameraMode = .hole }
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        withAnimation { showFlyoverToast = true }
+        flyoverToastTask?.cancel()
+        flyoverToastTask = Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            withAnimation { showFlyoverToast = false }
+        }
+    }
+
+    /// Non-blocking pill above the distance panel: cream label on a dark
+    /// glass capsule, auto-dismissed after ~2.5s.
+    private var flyoverFallbackToast: some View {
+        Text("3D DIDN'T LOAD — SHOWING THE 2D MAP")
+            .font(SticksFont.label(11, weight: .bold))
+            .kerning(1.4)
+            .foregroundStyle(Color.sticksCream)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.black.opacity(0.7))
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+            .environment(\.colorScheme, .dark)
+            .accessibilityLabel("3D view didn't load. Showing the 2D map.")
     }
 
     /// The 3D flyover layer: a dark backdrop + spinner behind the
     /// transparent WebView while the mesh streams in (the page paints its
     /// own scrim over it, then the flyover fades in). The WebView itself
     /// is owned by FlyoverService — preloaded before 3D is tapped and
-    /// kept alive across mode switches — and failed/hung loads surface a
-    /// RETRY instead of an infinite spinner.
+    /// kept alive across mode switches. Failed/stalled loads don't render
+    /// anything here — the screen auto-falls back to the 2D map (slice 59).
     private func flyoverLayer(url: URL) -> some View {
         let state = FlyoverService.shared.state
         return ZStack {
@@ -226,40 +288,11 @@ struct OnCourseGPSView: View {
                 ProgressView()
                     .tint(Color.sticksGreen)
             }
-            if state == .failed {
-                flyoverRetry
-            } else {
-                HoleFlyoverWebView()
-            }
+            HoleFlyoverWebView()
         }
         .ignoresSafeArea()
         .task(id: url) {
             FlyoverService.shared.prepare(url: url)
-        }
-    }
-
-    /// Shown when the flyover page failed to load or hung past the
-    /// watchdog — a spinner-forever is never the end state anymore.
-    private var flyoverRetry: some View {
-        VStack(spacing: 14) {
-            Text("3D VIEW DIDN'T LOAD")
-                .font(SticksFont.label(12, weight: .bold))
-                .kerning(2)
-                .foregroundStyle(.white.opacity(0.8))
-            Button {
-                FlyoverService.shared.retry()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                Text("RETRY")
-                    .font(SticksFont.label(12, weight: .bold))
-                    .kerning(2)
-                    .foregroundStyle(Color.sticksCream)
-                    .padding(.horizontal, 26)
-                    .padding(.vertical, 11)
-                    .background(Color.sticksGreen)
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(PressableButtonStyle())
         }
     }
 
