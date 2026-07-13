@@ -48,6 +48,15 @@ struct OnCourseGPSView: View {
     // stalls/fails and the screen auto-drops back to the 2D HOLE map.
     @State private var showFlyoverToast = false
     @State private var flyoverToastTask: Task<Void, Never>?
+    // Slice 60: "you skipped a hole" prompt — the hole number to offer
+    // scoring for (nil = no alert), plus the holes already prompted this
+    // session so a "Not now" isn't immediately re-asked.
+    @State private var missedScoreHole: Int?
+    @State private var promptedMissedHoles: Set<Int> = []
+    // Set when initializeIfNeeded assigns the starting hole so that first
+    // programmatic jump (e.g. resuming mid-round) never reads as "you
+    // walked off a hole" — consumed by the holeIndex onChange.
+    @State private var isInitialHoleAssignment = false
 
     /// Round-scoped location source — owned by the session service so
     /// GPS updates (and the companions they feed) survive leaving this
@@ -136,6 +145,23 @@ struct OnCourseGPSView: View {
                 )
             }
         }
+        // Slice 60: moving forward off an unscored hole (GPS auto-advance,
+        // rail tap, or post-save advance — all route through holeIndex)
+        // offers to enter that score right now instead of waiting for the
+        // golfer to stumble on it in the score sheet.
+        .alert(
+            "Score hole \(missedScoreHole ?? 0)?",
+            isPresented: Binding(
+                get: { missedScoreHole != nil },
+                set: { if !$0 { missedScoreHole = nil } }
+            ),
+            presenting: missedScoreHole
+        ) { hole in
+            Button("Enter score") { openMissedScoreSheet(hole) }
+            Button("Not now", role: .cancel) { missedScoreHole = nil }
+        } message: { hole in
+            Text("You moved on without entering your score for hole \(hole).")
+        }
     }
 
     // MARK: - Map
@@ -194,7 +220,7 @@ struct OnCourseGPSView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
-        .onChange(of: holeIndex) { _, newIndex in
+        .onChange(of: holeIndex) { oldIndex, newIndex in
             aim = nil
             RoundSessionService.shared.setHole(index: newIndex, matchId: detail.id)
             // The new hole may lack the geo the current mode needs
@@ -205,6 +231,13 @@ struct OnCourseGPSView: View {
                 cameraMode = .hole
             } else {
                 snapCamera(detail, animated: true)
+            }
+            // Slice 60: the very first assignment (resume/initial hole in
+            // initializeIfNeeded) is a jump, not a walk-off — never prompt.
+            if isInitialHoleAssignment {
+                isInitialHoleAssignment = false
+            } else {
+                maybePromptForMissedScore(detail, leftIndex: oldIndex, arrivedIndex: newIndex)
             }
         }
         .onChange(of: cameraMode) { _, _ in
@@ -731,12 +764,19 @@ struct OnCourseGPSView: View {
     private func initializeIfNeeded() {
         guard !hasInitialized, let detail = viewModel.detail else { return }
         hasInitialized = true
+        let startIndex: Int
         if RoundSessionService.shared.activeMatchId == detail.id {
             // Re-opening the GPS screen mid-round: resume the hole the
             // round session last showed instead of recomputing.
-            holeIndex = min(RoundSessionService.shared.holeIndex, max(detail.holes - 1, 0))
+            startIndex = min(RoundSessionService.shared.holeIndex, max(detail.holes - 1, 0))
         } else {
-            holeIndex = initialHoleIndex(detail)
+            startIndex = initialHoleIndex(detail)
+        }
+        if startIndex != holeIndex {
+            // Flag the programmatic jump so the holeIndex onChange doesn't
+            // read it as walking off an unscored hole (slice 60).
+            isInitialHoleAssignment = true
+            holeIndex = startIndex
         }
         snapCamera(detail, animated: false)
     }
@@ -872,6 +912,46 @@ struct OnCourseGPSView: View {
               hole == detail.holeNumber(at: holeIndex),
               holeIndex < detail.holes - 1 else { return }
         withAnimation { holeIndex += 1 }
+    }
+
+    // MARK: - Missed-score prompt (slice 60)
+
+    /// Fires the "Score hole N?" alert when the golfer moves FORWARD off
+    /// a hole they haven't scored themselves. One prompt per hole per
+    /// on-course session; never on finished rounds, never for spectators,
+    /// never when tapping back to an earlier hole.
+    private func maybePromptForMissedScore(_ detail: MatchDetail, leftIndex: Int, arrivedIndex: Int) {
+        // Only when actually moving forward.
+        guard arrivedIndex > leftIndex else { return }
+        // Only during a live round — no nagging on finished rounds or
+        // pre-round hole browsing.
+        guard detail.status == .inProgress else { return }
+        // Me only (v1): the prompt is about *your* score, so it needs a seat.
+        guard detail.myMatchPlayerId != nil else { return }
+        guard leftIndex >= 0, leftIndex < detail.holes else { return }
+        let leftHole = detail.holeNumber(at: leftIndex)
+        // Already scored? Nothing to do (same myScores the rail reads).
+        guard myScores(detail)[leftHole] == nil else { return }
+        // Only prompt once per hole per session.
+        guard !promptedMissedHoles.contains(leftHole) else { return }
+        promptedMissedHoles.insert(leftHole)
+        missedScoreHole = leftHole
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Opens the score sheet on the MISSED hole (not the current one).
+    /// Saving there is position-safe: the sheet's advance callbacks are
+    /// guarded to the currently displayed hole, so the map stays on the
+    /// hole being played.
+    private func openMissedScoreSheet(_ hole: Int) {
+        guard let detail = viewModel.detail else { return }
+        let player = detail.players.first { $0.id == detail.myMatchPlayerId }
+            ?? viewModel.sortedPlayers.first
+        guard let player,
+              let index = (0 ..< detail.holes).first(where: { detail.holeNumber(at: $0) == hole })
+        else { return }
+        missedScoreHole = nil
+        scoreCell = ScoreCellSelection(player: player, hole: hole, par: detail.par(at: index))
     }
 
     private func openScoreSheet(_ detail: MatchDetail, hole: Int) {
