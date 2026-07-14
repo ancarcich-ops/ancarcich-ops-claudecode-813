@@ -198,6 +198,9 @@ struct MatchCardView: View {
 
     // MARK: - FINAL body
 
+    // Mirrors the web's past-round card: winner band, then a full block
+    // per player — rank, identity, TO PAR, the hole-by-hole score chips,
+    // and FRONT/BACK/TOTAL summary pills.
     @ViewBuilder private var finalBody: some View {
         if match.players.count > 1, let winner = MatchCardMath.winner(of: match) {
             WinnerBand(
@@ -206,7 +209,22 @@ struct MatchCardView: View {
             )
         }
 
-        compactRows(showsToPar: true)
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(match.players.enumerated()), id: \.element.id) { position, player in
+                if position > 0 {
+                    Rectangle()
+                        .fill(Color.sticksHairline)
+                        .frame(height: 1)
+                }
+                FinalPlayerBlock(
+                    match: match,
+                    player: player,
+                    rank: match.players.count > 1
+                        ? MatchCardMath.position(of: player, in: match)
+                        : nil
+                )
+            }
+        }
 
         Rectangle()
             .fill(Color.sticksHairline)
@@ -325,6 +343,147 @@ private struct LivePlayerBlock: View {
     }
 }
 
+// MARK: - Final player block
+
+/// One player on a FINAL card, matching the web's past-round layout:
+/// rank · avatar · name · hcp with TO PAR right-aligned, the solid-fill
+/// hole chip row, and FRONT/BACK/TOTAL + per-nine to-par pills below.
+private struct FinalPlayerBlock: View {
+    let match: MatchSummary
+    let player: MatchPlayerSummary
+    /// 1-based standing (net in net modes) — nil for solo rounds.
+    let rank: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            identityRow
+            HoleDotRow(match: match, player: player, showsInPlay: false)
+            summaryPills
+        }
+    }
+
+    private var identityRow: some View {
+        HStack(spacing: 10) {
+            if let rank {
+                Text("\(rank)")
+                    .font(SticksFont.mono(12))
+                    .foregroundStyle(Color.sticksMuted)
+                    .frame(width: 12, alignment: .center)
+            }
+
+            PlayerAvatar(player: player, size: 24, ringWidth: 2)
+
+            Text(player.displayName)
+                .font(SticksFont.sans(14, weight: .medium))
+                .foregroundStyle(Color.sticksInk)
+                .lineLimit(1)
+
+            if let handicap = player.handicap {
+                Text("HCP \(handicap, specifier: "%.1f")")
+                    .font(SticksFont.mono(10))
+                    .foregroundStyle(Color.sticksMuted)
+            }
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("TO PAR")
+                    .font(SticksFont.mono(9))
+                    .kerning(0.7)
+                    .foregroundStyle(Color.sticksMuted.opacity(0.75))
+                ToParText(diff: MatchCardMath.grossToPar(for: player, in: match), size: 14)
+            }
+        }
+    }
+
+    // MARK: Summary pills
+
+    private var summaryPills: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                totalsPill(compact: false)
+                ninesToParPill(compact: false)
+            }
+            HStack(spacing: 6) {
+                totalsPill(compact: true)
+                ninesToParPill(compact: true)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                totalsPill(compact: false)
+                ninesToParPill(compact: false)
+            }
+        }
+    }
+
+    private var frontStrokes: Int? { MatchCardMath.strokes(for: player, holes: 1 ... 9) }
+    private var backStrokes: Int? { MatchCardMath.strokes(for: player, holes: 10 ... 18) }
+
+    private var totalStrokes: Int? {
+        switch (frontStrokes, backStrokes) {
+        case (nil, nil): nil
+        case (let front, let back): (front ?? 0) + (back ?? 0)
+        }
+    }
+
+    /// "FRONT 9 44 · BACK 9 40 · TOTAL 84" — 9-hole rounds collapse to
+    /// just the total.
+    private func totalsPill(compact: Bool) -> some View {
+        var parts: [Text] = []
+        if match.holes > 9 {
+            parts.append(segment(label: compact ? "F9" : "FRONT 9", value: frontStrokes))
+            parts.append(segment(label: compact ? "B9" : "BACK 9", value: backStrokes))
+        }
+        parts.append(segment(label: compact ? "TOT" : "TOTAL", value: totalStrokes))
+
+        let separator = Text(" · ").foregroundStyle(Color.sticksMuted.opacity(0.6))
+        return pill(parts.dropFirst().reduce(parts[0]) { $0 + separator + $1 })
+    }
+
+    /// "FRONT +8 | BACK +6" — colored per-nine to par, 18-hole only.
+    @ViewBuilder private func ninesToParPill(compact: Bool) -> some View {
+        if match.holes > 9 {
+            let front = MatchCardMath.toPar(for: player, holes: 1 ... 9, in: match)
+            let back = MatchCardMath.toPar(for: player, holes: 10 ... 18, in: match)
+            pill(
+                Text("\(compact ? "F" : "FRONT") ").foregroundStyle(Color.sticksMuted)
+                    + coloredToPar(front)
+                    + Text(" | ").foregroundStyle(Color.sticksMuted.opacity(0.6))
+                    + Text("\(compact ? "B" : "BACK") ").foregroundStyle(Color.sticksMuted)
+                    + coloredToPar(back)
+            )
+        }
+    }
+
+    private func segment(label: String, value: Int?) -> Text {
+        Text("\(label) ").foregroundStyle(Color.sticksMuted)
+            + Text(value.map(String.init) ?? "—")
+                .fontWeight(value == nil ? .regular : .semibold)
+                .foregroundStyle(value == nil ? Color.sticksMuted : Color.sticksInk)
+    }
+
+    private func coloredToPar(_ diff: Int?) -> Text {
+        let color: Color = {
+            guard let diff, diff != 0 else { return .sticksMuted }
+            return diff < 0 ? .sticksGreen : .sticksError
+        }()
+        return Text(MatchCardMath.toParLabel(diff))
+            .fontWeight(.semibold)
+            .foregroundStyle(color)
+    }
+
+    private func pill(_ content: Text) -> some View {
+        content
+            .font(SticksFont.mono(10))
+            .kerning(0.6)
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .overlay(
+                Capsule().stroke(Color.sticksHairline, lineWidth: 1)
+            )
+    }
+}
+
 // MARK: - Nine summary pill
 
 /// "FRONT 9 39 · BACK 9 — · TOTAL 39 (9h)" — mirrors the web's live-card
@@ -394,6 +553,9 @@ private struct NineSummaryPill: View {
 private struct HoleDotRow: View {
     let match: MatchSummary
     let player: MatchPlayerSummary
+    /// Dashed accent on the hole in play — off for FINAL cards, where an
+    /// unscored hole is just a gap, not "up next".
+    var showsInPlay: Bool = true
 
     var body: some View {
         HStack(spacing: 3) {
@@ -420,7 +582,7 @@ private struct HoleDotRow: View {
         Group {
             if let score {
                 scoredDot(score: score, par: match.par(at: index))
-            } else if index == match.nextHoleIndex {
+            } else if showsInPlay, index == match.nextHoleIndex {
                 // Hole currently in play: dashed accent, no number.
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color.sticksGreen.opacity(0.08))
@@ -634,14 +796,71 @@ nonisolated enum MatchCardMath {
         return diff > 0 ? "+\(diff)" : "\(diff)"
     }
 
-    /// Winner of a completed match: lowest gross to par, ties broken by
-    /// the lowest seat. nil when nobody has a score.
+    /// GROSS Σ(strokes − par) restricted to the given ABSOLUTE hole
+    /// numbers — nil when none of those holes are scored.
+    static func toPar(
+        for player: MatchPlayerSummary,
+        holes range: ClosedRange<Int>,
+        in match: MatchSummary
+    ) -> Int? {
+        var diff = 0
+        var played = 0
+        for index in 0 ..< match.holes {
+            let hole = match.holeNumber(at: index)
+            guard range.contains(hole),
+                  let score = player.scoresByHole[hole] else { continue }
+            diff += score - match.par(at: index)
+            played += 1
+        }
+        return played > 0 ? diff : nil
+    }
+
+    /// True for any scoring mode other than GROSS — matches
+    /// MatchDetailMath.isNetMode, so cards rank like the detail screen.
+    static func isNetMode(_ match: MatchSummary) -> Bool {
+        match.scoringMode.uppercased() != "GROSS"
+    }
+
+    /// NET = gross − handicap × (holesPlayed / totalHoles), one decimal —
+    /// the same proration as MatchDetailMath.netToPar.
+    static func netToPar(for player: MatchPlayerSummary, in match: MatchSummary) -> Double? {
+        guard match.holes > 0,
+              let gross = grossToPar(for: player, in: match) else { return nil }
+        let played = (0 ..< match.holes)
+            .filter { player.scoresByHole[match.holeNumber(at: $0)] != nil }
+            .count
+        let handicap = player.handicap ?? 0
+        let raw = Double(gross) - handicap * Double(played) / Double(match.holes)
+        return (raw * 10).rounded() / 10
+    }
+
+    /// Ranking metric — net in net modes, gross otherwise; no scores
+    /// ranks as even (0). Mirrors the web/detail standings.
+    static func rankMetric(for player: MatchPlayerSummary, in match: MatchSummary) -> Double {
+        if isNetMode(match) {
+            return netToPar(for: player, in: match) ?? 0
+        }
+        return Double(grossToPar(for: player, in: match) ?? 0)
+    }
+
+    /// 1-based rank by the mode's metric, lowest best; ties share the
+    /// lower rank.
+    static func position(of player: MatchPlayerSummary, in match: MatchSummary) -> Int {
+        let mine = rankMetric(for: player, in: match)
+        let better = match.players.filter { rankMetric(for: $0, in: match) < mine - 0.000001 }.count
+        return better + 1
+    }
+
+    /// Winner of a completed match — rank-1 player under the mode's
+    /// metric (net in net modes, matching the web's winner band), ties
+    /// broken by the lowest seat. nil when nobody has a score.
     static func winner(of match: MatchSummary) -> MatchPlayerSummary? {
-        let ranked: [(player: MatchPlayerSummary, diff: Int)] = match.players.compactMap { player in
-            grossToPar(for: player, in: match).map { (player, $0) }
+        let ranked: [(player: MatchPlayerSummary, metric: Double)] = match.players.compactMap { player in
+            guard grossToPar(for: player, in: match) != nil else { return nil }
+            return (player, rankMetric(for: player, in: match))
         }
         return ranked.min {
-            if $0.diff != $1.diff { return $0.diff < $1.diff }
+            if $0.metric != $1.metric { return $0.metric < $1.metric }
             return ($0.player.seat ?? Int.max) < ($1.player.seat ?? Int.max)
         }?.player
     }
