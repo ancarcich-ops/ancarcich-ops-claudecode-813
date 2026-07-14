@@ -90,6 +90,13 @@
 			);
 			target = 105FC5792E9EAD3100EA8BCF /* Sticks */;
 		};
+		XXA7C4E19B2D5F8036E4B1XX /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = XX4C334FAF25F0AE7D1CF3XX /* SticksWatch */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -115,6 +122,9 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SticksWatch;
 			sourceTree = "<group>";
+			exceptions = (
+				XXA7C4E19B2D5F8036E4B1XX /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -758,6 +768,10 @@
 				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SticksWatch/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = SticksWatch/SticksWatch.entitlements;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Sticks reads your heart rate and activity during a round to track it as a golf workout and keep live yardages on your wrist.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Sticks saves your round to Health as a golf workout so it counts toward your Activity rings.";
 				INFOPLIST_KEY_WKApplication = YES;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -810,6 +824,10 @@
 				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SticksWatch/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = SticksWatch/SticksWatch.entitlements;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Sticks reads your heart rate and activity during a round to track it as a golf workout and keep live yardages on your wrist.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Sticks saves your round to Health as a golf workout so it counts toward your Activity rings.";
 				INFOPLIST_KEY_WKApplication = YES;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
