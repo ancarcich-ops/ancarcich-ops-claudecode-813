@@ -79,8 +79,8 @@ struct MatchDetailView: View {
                     switch viewModel.phase {
                     case .loading:
                         loadingCard
-                    case .failed(let message):
-                        failedCard(message)
+                    case .failed(let message, let statusCode):
+                        failedCard(message, statusCode: statusCode)
                     case .loaded:
                         if let detail = viewModel.detail {
                             // Slice 54: the tab switcher only exists when
@@ -1003,19 +1003,35 @@ struct MatchDetailView: View {
         .padding(.vertical, 60)
     }
 
-    private func failedCard(_ message: String) -> some View {
-        VStack(spacing: 14) {
-            Image(systemName: "wifi.slash")
+    /// Access denials (403/404) render as an honest "private round"
+    /// state — a lock, an explanation, and a way back. Retrying a 403
+    /// can never succeed, so Try Again only appears for transport/5xx
+    /// failures.
+    private func failedCard(_ message: String, statusCode: Int) -> some View {
+        let isAccessDenied = statusCode == 403 || statusCode == 404
+        return VStack(spacing: 14) {
+            Image(systemName: isAccessDenied ? "lock.fill" : "wifi.slash")
                 .font(.system(size: 28, weight: .medium))
                 .foregroundStyle(Color.sticksMuted)
-            Text(message)
-                .font(SticksFont.sans(15))
+            Text(isAccessDenied ? "This round is private" : message)
+                .font(SticksFont.sans(16, weight: .semibold))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.sticksInk)
+            if isAccessDenied {
+                Text("It shows in your feed because someone in your groups is playing, but the full scorecard is only open to the round's players and its group.")
+                    .font(SticksFont.sans(13))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Color.sticksMuted)
+                    .padding(.horizontal, 12)
+            }
             Button {
-                Task { await viewModel.load(session: session) }
+                if isAccessDenied {
+                    dismiss()
+                } else {
+                    Task { await viewModel.load(session: session) }
+                }
             } label: {
-                Text("Try Again")
+                Text(isAccessDenied ? "Back to feed" : "Try Again")
                     .font(SticksFont.sans(15, weight: .semibold))
                     .foregroundStyle(Color.sticksCream)
                     .padding(.horizontal, 28)

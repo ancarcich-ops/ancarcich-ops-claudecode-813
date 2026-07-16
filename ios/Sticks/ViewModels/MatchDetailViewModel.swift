@@ -15,8 +15,10 @@ final class MatchDetailViewModel {
         case loading
         /// Detail loaded.
         case loaded
-        /// First load failed with a user-facing message.
-        case failed(String)
+        /// First load failed with a user-facing message. The status code
+        /// distinguishes access denials (403/404 — retrying can't help)
+        /// from transient transport failures (retry makes sense).
+        case failed(message: String, statusCode: Int)
     }
 
     private(set) var phase: Phase = .loading
@@ -442,10 +444,15 @@ final class MatchDetailViewModel {
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
         } catch let error as APIError {
-            if response == nil && !quiet { phase = .failed(error.message) }
+            if response == nil && !quiet {
+                phase = .failed(message: error.message, statusCode: error.statusCode)
+            }
         } catch {
             if response == nil && !quiet {
-                phase = .failed("Can't reach Sticks. Check your connection and try again.")
+                phase = .failed(
+                    message: "Can't reach Sticks. Check your connection and try again.",
+                    statusCode: -1
+                )
             }
         }
     }
