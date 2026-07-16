@@ -55,6 +55,20 @@ struct MatchListView: View {
             .navigationDestination(for: MatchSummary.self) { match in
                 MatchDetailView(match: match, session: session)
             }
+            // Slice 63 tweaks: match detail's "created by" pushes a
+            // member profile from this stack too. The caller's own
+            // profile pops and hops to the Stats tab.
+            .navigationDestination(for: MemberProfileDestination.self) { destination in
+                MemberProfileView(
+                    username: destination.username,
+                    fallbackName: destination.displayName,
+                    session: session,
+                    onOpenOwnStats: {
+                        if !path.isEmpty { path.removeLast() }
+                        tabSelection = .stats
+                    }
+                )
+            }
             .toolbar(.hidden, for: .navigationBar)
         }
         .fullScreenCover(isPresented: $showsCreate) {

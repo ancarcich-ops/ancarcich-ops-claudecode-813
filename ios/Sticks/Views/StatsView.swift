@@ -26,9 +26,10 @@ struct StatsView: View {
     @State private var viewModel = StatsViewModel()
     @State private var baselineSelection: BaselineSelection = .hcp(10)
     @State private var showsCreate = false
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.sticksBg.ignoresSafeArea()
 
@@ -56,6 +57,19 @@ struct StatsView: View {
             }
             .navigationDestination(for: MatchSummary.self) { match in
                 MatchDetailView(match: match, session: session)
+            }
+            // Slice 63 tweaks: match detail's "created by" pushes a
+            // member profile here too. The caller's own profile just
+            // pops to root — this tab IS their editable stats.
+            .navigationDestination(for: MemberProfileDestination.self) { destination in
+                MemberProfileView(
+                    username: destination.username,
+                    fallbackName: destination.displayName,
+                    session: session,
+                    onOpenOwnStats: {
+                        path = NavigationPath()
+                    }
+                )
             }
             .toolbar(.hidden, for: .navigationBar)
         }

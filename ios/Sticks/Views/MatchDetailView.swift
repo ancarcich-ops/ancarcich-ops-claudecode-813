@@ -443,7 +443,45 @@ struct MatchDetailView: View {
                 .font(SticksFont.label(11, weight: .semibold))
                 .kerning(1.4)
                 .foregroundStyle(Color.sticksMuted)
+
+            // Slice 63 tweaks: the creator's handle links to their
+            // read-only profile (the caller's own resolves back to the
+            // Stats tab via the profile's isSelf routing).
+            if let creatorUsername = detail?.createdByUsername {
+                createdByLink(
+                    username: creatorUsername,
+                    displayName: detail?.createdByDisplayName
+                )
+            }
         }
+    }
+
+    /// "CREATED BY @USER ›" — pushes the creator's read-only profile.
+    private func createdByLink(username: String, displayName: String?) -> some View {
+        NavigationLink(
+            value: MemberProfileDestination(
+                username: username,
+                displayName: displayName ?? username
+            )
+        ) {
+            HStack(spacing: 4) {
+                (
+                    Text("CREATED BY ").foregroundStyle(Color.sticksFaint)
+                    + Text("@\(username.uppercased())").foregroundStyle(Color.sticksGreen)
+                )
+                .font(SticksFont.label(11, weight: .semibold))
+                .kerning(1.4)
+                .lineLimit(1)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Color.sticksGreen.opacity(0.8))
+            }
+            .padding(.vertical, 2)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Created by \(username). Opens their stats")
     }
 
     private var dateText: String {

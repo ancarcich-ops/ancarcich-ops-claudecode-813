@@ -131,11 +131,23 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     let canClaimSeat: Bool
     let pars: [Int]
     var players: [MatchDetailPlayer]
+    /// Slice 63 tweaks: the creator's Sticks handle + display name for
+    /// the header's "created by" tap-through — nil when the payload
+    /// carries none (the line simply doesn't render).
+    let createdByUsername: String?
+    let createdByDisplayName: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, status, holes, startingHole
         case scoringMode, format, isCreator, myMatchPlayerId, canClaimSeat
         case pars, players
+        case createdByUsername, createdBy, creator
+    }
+
+    /// Nested creator shapes — `{ username, displayName }` under
+    /// `createdBy` / `creator`.
+    private enum CreatorKeys: String, CodingKey {
+        case username, displayName
     }
 
     init(from decoder: Decoder) throws {
@@ -153,6 +165,22 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
         canClaimSeat = (try? container.decode(Bool.self, forKey: .canClaimSeat)) ?? false
         pars = try container.decodeIfPresent([Int].self, forKey: .pars) ?? []
         players = try container.decodeIfPresent([MatchDetailPlayer].self, forKey: .players) ?? []
+
+        // Creator handle, decoded tolerantly across payload shapes: a
+        // flat createdByUsername, a nested createdBy/creator object, or
+        // a bare createdBy string. Anything absent/empty → nil.
+        var creatorUsername = (try? container.decodeIfPresent(String.self, forKey: .createdByUsername)) ?? nil
+        var creatorDisplayName: String? = nil
+        for key in [CodingKeys.createdBy, CodingKeys.creator] where creatorUsername == nil {
+            if let nested = try? container.nestedContainer(keyedBy: CreatorKeys.self, forKey: key) {
+                creatorUsername = (try? nested.decodeIfPresent(String.self, forKey: .username)) ?? nil
+                creatorDisplayName = (try? nested.decodeIfPresent(String.self, forKey: .displayName)) ?? nil
+            } else if let flat = (try? container.decodeIfPresent(String.self, forKey: key)) ?? nil {
+                creatorUsername = flat
+            }
+        }
+        createdByUsername = (creatorUsername?.isEmpty ?? true) ? nil : creatorUsername
+        createdByDisplayName = (creatorDisplayName?.isEmpty ?? true) ? nil : creatorDisplayName
     }
 
     /// Score entry is allowed if the caller is seated or created the match.

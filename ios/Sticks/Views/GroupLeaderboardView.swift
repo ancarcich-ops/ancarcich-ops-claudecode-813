@@ -108,7 +108,11 @@ struct GroupLeaderboardView: View {
 
                 let winners = latestWinners(leaderboard.champions)
                 if !winners.isEmpty {
-                    LatestWinnersCard(entries: winners)
+                    LatestWinnersCard(
+                        entries: winners,
+                        currentUsername: session.user?.username,
+                        onSelfTap: onOpenOwnStats
+                    )
                 }
 
                 StandingsSection(
@@ -118,7 +122,11 @@ struct GroupLeaderboardView: View {
                 )
 
                 if leaderboard.headToHead.users.count >= 2 {
-                    HeadToHeadCard(headToHead: leaderboard.headToHead)
+                    HeadToHeadCard(
+                        headToHead: leaderboard.headToHead,
+                        currentUserId: session.user?.id,
+                        onSelfTap: onOpenOwnStats
+                    )
                 }
 
                 let streaks = leaderboard.streaks.filter { $0.bestMainStreak >= 2 }
@@ -248,6 +256,9 @@ private struct MedalDisc: View {
 
 private struct LatestWinnersCard: View {
     let entries: [ChampionEntry]
+    /// The caller's own handle — their name hops to the Stats tab.
+    let currentUsername: String?
+    let onSelfTap: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -307,8 +318,7 @@ private struct LatestWinnersCard: View {
 
             // Winner names + sub-line.
             VStack(alignment: .leading, spacing: 3) {
-                winnerNames(entry)
-                    .lineLimit(1)
+                winnerNamesRow(entry)
 
                 Text(subline(entry))
                     .font(SticksFont.mono(10.5))
@@ -333,26 +343,62 @@ private struct LatestWinnersCard: View {
     }
 
     /// Names in display bold, joined with an "&" lighter than the names.
-    private func winnerNames(_ entry: ChampionEntry) -> Text {
-        let names = entry.winners.map(\.displayName).filter { !$0.isEmpty }
-        guard let first = names.first else {
-            return Text("—")
-                .font(SticksFont.display(19, weight: .bold))
-                .foregroundStyle(Color.sticksFaint)
-        }
-        var combined = Text(first)
-            .font(SticksFont.display(19, weight: .bold))
-            .foregroundStyle(Color.sticksInk)
-        for name in names.dropFirst() {
-            combined = combined
-                + Text(" & ")
+    /// Sticks-linked winners push their read-only profile; the caller's
+    /// own name hops to the Stats tab; name-only guests stay inert.
+    private func winnerNamesRow(_ entry: ChampionEntry) -> some View {
+        let winners = entry.winners.filter { !$0.displayName.isEmpty }
+        return HStack(spacing: 5) {
+            if winners.isEmpty {
+                Text("—")
                     .font(SticksFont.display(19, weight: .bold))
                     .foregroundStyle(Color.sticksFaint)
-                + Text(name)
-                    .font(SticksFont.display(19, weight: .bold))
-                    .foregroundStyle(Color.sticksInk)
+            }
+            ForEach(Array(winners.enumerated()), id: \.offset) { position, winner in
+                if position > 0 {
+                    Text("&")
+                        .font(SticksFont.display(19, weight: .bold))
+                        .foregroundStyle(Color.sticksFaint)
+                }
+                winnerName(winner)
+            }
         }
-        return combined
+    }
+
+    @ViewBuilder
+    private func winnerName(_ winner: ChampionEntry.Winner) -> some View {
+        let label = Text(winner.displayName)
+            .font(SticksFont.display(19, weight: .bold))
+            .foregroundStyle(Color.sticksInk)
+            .lineLimit(1)
+
+        if winner.username.isEmpty {
+            label
+        } else if isSelf(winner) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onSelfTap()
+            } label: {
+                label.contentShape(.rect)
+            }
+            .buttonStyle(NamePressStyle())
+            .accessibilityHint("Opens your stats")
+        } else {
+            NavigationLink(
+                value: MemberProfileDestination(
+                    username: winner.username,
+                    displayName: winner.displayName
+                )
+            ) {
+                label.contentShape(.rect)
+            }
+            .buttonStyle(NamePressStyle())
+            .accessibilityHint("Opens \(winner.displayName)'s stats")
+        }
+    }
+
+    private func isSelf(_ winner: ChampionEntry.Winner) -> Bool {
+        guard let currentUsername, !currentUsername.isEmpty else { return false }
+        return winner.username.caseInsensitiveCompare(currentUsername) == .orderedSame
     }
 
     private func subline(_ entry: ChampionEntry) -> String {
@@ -683,6 +729,9 @@ private struct H2HScrollState: Equatable {
 
 private struct HeadToHeadCard: View {
     let headToHead: HeadToHead
+    /// The caller's own row/column hops to the Stats tab.
+    let currentUserId: String?
+    let onSelfTap: () -> Void
 
     @State private var scrollState = H2HScrollState()
 
@@ -760,14 +809,17 @@ private struct HeadToHeadCard: View {
             Color.clear.frame(height: Self.headerHeight)
 
             ForEach(Array(headToHead.users.enumerated()), id: \.element.id) { position, user in
-                Text(user.name)
-                    .font(SticksFont.sans(12.5, weight: .semibold))
-                    .foregroundStyle(Color.sticksInk)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, 6)
-                    .frame(height: Self.rowHeight)
-                    .background(rowTint(position))
+                tappableName(user) {
+                    Text(user.name)
+                        .font(SticksFont.sans(12.5, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.trailing, 6)
+                        .frame(height: Self.rowHeight)
+                        .contentShape(.rect)
+                }
+                .background(rowTint(position))
             }
         }
         .frame(width: Self.pinnedWidth)
@@ -777,18 +829,21 @@ private struct HeadToHeadCard: View {
     private var headerRow: some View {
         HStack(spacing: 0) {
             ForEach(headToHead.users) { user in
-                VStack(spacing: 2) {
-                    Text("VS")
-                        .font(SticksFont.mono(8))
-                        .kerning(0.6)
-                        .foregroundStyle(Color.sticksFaint)
+                tappableName(user) {
+                    VStack(spacing: 2) {
+                        Text("VS")
+                            .font(SticksFont.mono(8))
+                            .kerning(0.6)
+                            .foregroundStyle(Color.sticksFaint)
 
-                    Text(user.name)
-                        .font(SticksFont.sans(11, weight: .bold))
-                        .foregroundStyle(Color.sticksMuted)
-                        .lineLimit(1)
+                        Text(user.name)
+                            .font(SticksFont.sans(11, weight: .bold))
+                            .foregroundStyle(Color.sticksMuted)
+                            .lineLimit(1)
+                    }
+                    .frame(width: Self.columnWidth)
+                    .contentShape(.rect)
                 }
-                .frame(width: Self.columnWidth)
             }
         }
         .frame(height: Self.headerHeight, alignment: .bottom)
@@ -830,6 +885,47 @@ private struct HeadToHeadCard: View {
     /// Even rows (2nd, 4th, …) get a faint accent tint.
     private func rowTint(_ position: Int) -> Color {
         position % 2 == 1 ? Color.sticksGreen.opacity(0.04) : Color.clear
+    }
+
+    /// Wraps a name cell in the profile tap-through: Sticks-linked
+    /// members push their read-only profile, the caller hops to the
+    /// Stats tab, and members without a handle stay inert.
+    @ViewBuilder
+    private func tappableName<Label: View>(
+        _ user: HeadToHead.Member,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        if user.username.isEmpty {
+            label()
+        } else if user.userId == currentUserId {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onSelfTap()
+            } label: {
+                label()
+            }
+            .buttonStyle(NamePressStyle())
+            .accessibilityHint("Opens your stats")
+        } else {
+            NavigationLink(
+                value: MemberProfileDestination(
+                    username: user.username,
+                    displayName: user.name
+                )
+            ) {
+                label()
+            }
+            .buttonStyle(NamePressStyle())
+            .accessibilityHint("Opens \(user.name)'s stats")
+        }
+    }
+}
+
+/// Press feedback for inline tappable names — a brief dim.
+private struct NamePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.45 : 1)
     }
 }
 

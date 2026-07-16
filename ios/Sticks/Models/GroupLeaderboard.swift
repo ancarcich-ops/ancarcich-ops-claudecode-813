@@ -148,13 +148,16 @@ extension HeadToHead: Decodable {
 nonisolated struct ChampionEntry: Identifiable, Hashable {
     nonisolated struct Winner: Decodable, Hashable {
         let displayName: String
+        /// Sticks handle — empty for name-only guests (not tappable).
+        let username: String
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
+            username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         }
 
-        private enum CodingKeys: String, CodingKey { case displayName }
+        private enum CodingKeys: String, CodingKey { case displayName, username }
     }
 
     let kind: String
