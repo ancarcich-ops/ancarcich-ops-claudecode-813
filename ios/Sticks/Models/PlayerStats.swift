@@ -201,6 +201,97 @@ extension StatsCourseRecord: Decodable {
     }
 }
 
+/// One round in the last-20 scoring record, with its handicap
+/// differential. `method` is "WHS" (real rating/slope) or "score-only"
+/// (estimated — tagged **est** in the UI).
+nonisolated struct BreakdownRound: Identifiable, Hashable {
+    let matchId: String
+    let courseName: String
+    let holesPlayed: Int
+    let gross: Int
+    let vsPar: Int
+    let rating: Double?
+    let slope: Double?
+    let differential: Double
+    let method: String
+    /// True when this differential counts toward the index (lowest N).
+    let used: Bool
+
+    var id: String { matchId + "-" + String(differential) }
+
+    var isEstimated: Bool { method == "score-only" }
+}
+
+extension BreakdownRound: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case matchId, courseName, holesPlayed, gross, vsPar
+        case rating, slope, differential, method, used
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        matchId = try container.decodeIfPresent(String.self, forKey: .matchId) ?? ""
+        courseName = try container.decodeIfPresent(String.self, forKey: .courseName) ?? ""
+        holesPlayed = try container.decodeIfPresent(Int.self, forKey: .holesPlayed) ?? 0
+        gross = try container.decodeIfPresent(Int.self, forKey: .gross) ?? 0
+        vsPar = try container.decodeIfPresent(Int.self, forKey: .vsPar) ?? 0
+        rating = try container.decodeIfPresent(Double.self, forKey: .rating)
+        slope = try container.decodeIfPresent(Double.self, forKey: .slope)
+        differential = try container.decodeIfPresent(Double.self, forKey: .differential) ?? 0
+        method = try container.decodeIfPresent(String.self, forKey: .method) ?? "WHS"
+        used = try container.decodeIfPresent(Bool.self, forKey: .used) ?? false
+    }
+}
+
+/// Wraps an element decode so a single malformed entry drops out of an
+/// array instead of failing the whole payload.
+nonisolated private struct LossyElement<T: Decodable>: Decodable {
+    let value: T?
+
+    init(from decoder: Decoder) {
+        value = try? T(from: decoder)
+    }
+}
+
+/// How the Sticks index is built — every round's differential plus the
+/// average → adjust → ×0.96 math. The server sends null until the
+/// player has 3+ rounds.
+nonisolated struct IndexBreakdown: Hashable {
+    /// Chronological, one per round in the last-20 scoring record.
+    let perRound: [BreakdownRound]
+    /// The "best N" differentials that count.
+    let usedCount: Int
+    /// Strokes subtracted for short records (0 when none).
+    let adjust: Double
+    /// Mean of the used differentials.
+    let average: Double
+    /// The bonus-of-excellence multiplier (0.96).
+    let factor: Double
+    let index: Double
+    let fromRounds: Int
+    let totalRounds: Int
+}
+
+extension IndexBreakdown: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case perRound, usedCount, adjust, average, factor, index
+        case fromRounds, totalRounds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let lossy = try container.decodeIfPresent([LossyElement<BreakdownRound>].self, forKey: .perRound) ?? []
+        perRound = lossy.compactMap { $0.value }
+        usedCount = try container.decodeIfPresent(Int.self, forKey: .usedCount) ?? 0
+        adjust = try container.decodeIfPresent(Double.self, forKey: .adjust) ?? 0
+        average = try container.decodeIfPresent(Double.self, forKey: .average) ?? 0
+        factor = try container.decodeIfPresent(Double.self, forKey: .factor) ?? 0.96
+        index = try container.decodeIfPresent(Double.self, forKey: .index) ?? 0
+        fromRounds = try container.decodeIfPresent(Int.self, forKey: .fromRounds) ?? 0
+        totalRounds = try container.decodeIfPresent(Int.self, forKey: .totalRounds) ?? 0
+    }
+}
+
 /// The full personal-stats payload.
 nonisolated struct PlayerStats {
     let username: String
@@ -231,6 +322,8 @@ nonisolated struct PlayerStats {
     let bestMainStreak: Int
     let winsByGame: WinsByGame
     let courseRecords: [StatsCourseRecord]
+    /// How the index is built — nil until the player has 3+ rounds.
+    let indexBreakdown: IndexBreakdown?
 }
 
 extension PlayerStats: Decodable {
@@ -239,7 +332,7 @@ extension PlayerStats: Decodable {
         case indexTrajectory, roundsCompleted, ghin, targetIndex, avg18Gross, bestRound
         case rounds, par3, par4, par5, distribution
         case matchesPlayed, totalWins, mainWins, currentMainStreak, bestMainStreak
-        case winsByGame, courseRecords
+        case winsByGame, courseRecords, indexBreakdown
     }
 
     init(from decoder: Decoder) throws {
@@ -274,6 +367,7 @@ extension PlayerStats: Decodable {
         bestMainStreak = try container.decodeIfPresent(Int.self, forKey: .bestMainStreak) ?? 0
         winsByGame = try container.decodeIfPresent(WinsByGame.self, forKey: .winsByGame) ?? .zero
         courseRecords = try container.decodeIfPresent([StatsCourseRecord].self, forKey: .courseRecords) ?? []
+        indexBreakdown = (try? container.decodeIfPresent(IndexBreakdown.self, forKey: .indexBreakdown)) ?? nil
     }
 }
 

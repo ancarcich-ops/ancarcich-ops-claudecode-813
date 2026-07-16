@@ -6,6 +6,8 @@
 //  Sticks-index panel (trend pill + trajectory sparkline) beside two
 //  stat cells (avg score, best round). Equal-height columns via the
 //  fixedSize trick; the left panel is flex ~1.15.
+//  Slice 62: when the server sends indexBreakdown, the index numeral
+//  and a "HOW IS THIS CALCULATED?" link open the breakdown sheet.
 //
 
 import SwiftUI
@@ -13,14 +15,22 @@ import SwiftUI
 struct StatsHeroCard: View {
     let stats: PlayerStats
 
+    @State private var showsBreakdown = false
+
     var body: some View {
         HStack(spacing: 0) {
-            IndexPanel(stats: stats)
-                .containerRelativeFrame(.horizontal) { length, _ in
-                    // Card is inset 20pt each side; left = 1.15 / 2.15.
-                    max(0, length - 40) * (1.15 / 2.15)
+            IndexPanel(
+                stats: stats,
+                onExplainIndex: stats.indexBreakdown == nil ? nil : {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showsBreakdown = true
                 }
-                .frame(maxHeight: .infinity)
+            )
+            .containerRelativeFrame(.horizontal) { length, _ in
+                // Card is inset 20pt each side; left = 1.15 / 2.15.
+                max(0, length - 40) * (1.15 / 2.15)
+            }
+            .frame(maxHeight: .infinity)
 
             StatCellsPanel(stats: stats)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -32,6 +42,11 @@ struct StatsHeroCard: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.sticksHairline, lineWidth: 1)
         )
+        .sheet(isPresented: $showsBreakdown) {
+            if let breakdown = stats.indexBreakdown {
+                HandicapBreakdownSheet(breakdown: breakdown)
+            }
+        }
     }
 }
 
@@ -39,6 +54,9 @@ struct StatsHeroCard: View {
 
 private struct IndexPanel: View {
     let stats: PlayerStats
+    /// Non-nil when the server sent a breakdown — makes the index
+    /// numeral tappable and shows the "HOW IS THIS CALCULATED?" link.
+    let onExplainIndex: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -48,11 +66,7 @@ private struct IndexPanel: View {
                 .foregroundStyle(Color.sticksCream.opacity(0.72))
 
             if let index = stats.index {
-                Text(Self.indexText(index))
-                    .font(SticksFont.display(44, weight: .bold))
-                    .monospacedDigit()
-                    .lineSpacing(-4)
-                    .foregroundStyle(Color.sticksCream)
+                indexNumeral(index)
 
                 if let delta = stats.indexDelta30, abs(delta) >= 0.1 {
                     trendPill(delta: delta)
@@ -66,6 +80,10 @@ private struct IndexPanel: View {
                     IndexSparkline(values: stats.indexTrajectory)
                         .frame(height: 26)
                         .frame(maxWidth: .infinity)
+                }
+
+                if let onExplainIndex {
+                    explainLink(onExplainIndex)
                 }
             } else {
                 Text("pending")
@@ -104,6 +122,48 @@ private struct IndexPanel: View {
             }
         }
         .clipped()
+    }
+
+    /// The big index numeral — a plain-styled button when a breakdown
+    /// is available, static text otherwise.
+    @ViewBuilder
+    private func indexNumeral(_ index: Double) -> some View {
+        let numeral = Text(Self.indexText(index))
+            .font(SticksFont.display(44, weight: .bold))
+            .monospacedDigit()
+            .lineSpacing(-4)
+            .foregroundStyle(Color.sticksCream)
+
+        if let onExplainIndex {
+            Button(action: onExplainIndex) {
+                numeral.contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Sticks index \(Self.indexText(index)). How is this calculated?")
+            .accessibilityAddTraits(.isButton)
+        } else {
+            numeral
+        }
+    }
+
+    /// "HOW IS THIS CALCULATED? ›" — opens the breakdown sheet.
+    private func explainLink(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text("HOW IS THIS CALCULATED?")
+                    .font(SticksFont.mono(8.5))
+                    .kerning(0.7)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 7, weight: .bold))
+            }
+            .foregroundStyle(Color.sticksCream.opacity(0.85))
+            .padding(.vertical, 4)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 
     /// "TARGET 9.0 · 2.6 TO GO" — or "· ON TRACK" once the gap closes.
