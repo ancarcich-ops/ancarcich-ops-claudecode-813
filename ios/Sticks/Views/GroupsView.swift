@@ -46,7 +46,24 @@ struct GroupsView: View {
                 GroupFeedView(group: group, session: session)
             }
             .navigationDestination(for: LeaderboardDestination.self) { destination in
-                GroupLeaderboardView(group: destination.group, session: session)
+                GroupLeaderboardView(
+                    group: destination.group,
+                    session: session,
+                    onOpenOwnStats: { tabSelection = .stats }
+                )
+            }
+            // Slice 63: a member's read-only stats profile. If it
+            // resolves to the caller, pop it and hop to the Stats tab.
+            .navigationDestination(for: MemberProfileDestination.self) { destination in
+                MemberProfileView(
+                    username: destination.username,
+                    fallbackName: destination.displayName,
+                    session: session,
+                    onOpenOwnStats: {
+                        if !path.isEmpty { path.removeLast() }
+                        tabSelection = .stats
+                    }
+                )
             }
             .navigationDestination(for: MatchSummary.self) { match in
                 MatchDetailView(match: match, session: session)

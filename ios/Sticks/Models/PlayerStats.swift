@@ -416,14 +416,19 @@ extension StatsBaseline: Decodable {
 nonisolated struct StatsResponse: Decodable {
     let stats: PlayerStats
     let baselines: [StatsBaseline]
+    /// True when a /users/:username/stats lookup resolved to the caller
+    /// (route those to the editable Stats tab). Absent on /stats —
+    /// defaults false.
+    let isSelf: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case stats, baselines
+        case stats, baselines, isSelf
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         stats = try container.decode(PlayerStats.self, forKey: .stats)
         baselines = try container.decodeIfPresent([StatsBaseline].self, forKey: .baselines) ?? []
+        isSelf = (try? container.decodeIfPresent(Bool.self, forKey: .isSelf)) ?? false
     }
 }

@@ -509,6 +509,17 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /users/:username/stats — another member's read-only stats.
+    /// Same envelope as /stats plus `isSelf` (true when the username
+    /// resolves to the caller). The server nulls ghin/targetIndex and
+    /// forces createdByMe false. 404 when the name has no account.
+    /// The raw username is passed to appendingPathComponent, which
+    /// percent-encodes it (pre-encoding here would double-encode).
+    func userStats(username: String, token: String) async throws -> StatsResponse {
+        let request = makeRequest(path: "users/\(username)/stats", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     /// GET /me/profile — the caller's editable profile.
     func profile(token: String) async throws -> ProfileResponse {
         let request = makeRequest(path: "me/profile", method: "GET", token: token)

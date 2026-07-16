@@ -19,6 +19,9 @@ struct LeaderboardDestination: Hashable {
 struct GroupLeaderboardView: View {
     let group: SticksGroup
     let session: SessionStore
+    /// Called when the caller taps their own standings row — the owner
+    /// lands on the editable Stats tab, not a read-only mirror.
+    var onOpenOwnStats: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = GroupLeaderboardViewModel()
@@ -108,7 +111,11 @@ struct GroupLeaderboardView: View {
                     LatestWinnersCard(entries: winners)
                 }
 
-                StandingsSection(leaderboard: leaderboard)
+                StandingsSection(
+                    leaderboard: leaderboard,
+                    currentUserId: session.user?.id,
+                    onSelfTap: onOpenOwnStats
+                )
 
                 if leaderboard.headToHead.users.count >= 2 {
                     HeadToHeadCard(headToHead: leaderboard.headToHead)
@@ -401,6 +408,8 @@ private enum StandingsColumn: String, CaseIterable {
 
 private struct StandingsSection: View {
     let leaderboard: GroupLeaderboard
+    let currentUserId: String?
+    let onSelfTap: () -> Void
 
     @State private var sort: StandingsSort = .all
 
@@ -525,7 +534,34 @@ private struct StandingsSection: View {
         .padding(.bottom, 7)
     }
 
+    /// Rows with a real username open that member's read-only profile;
+    /// the caller's own row hops to the editable Stats tab. Name-only
+    /// entries (no account) stay inert — never a dead push.
+    @ViewBuilder
     private func standingsRow(row: LeaderboardRow, rank: Int) -> some View {
+        if row.username.isEmpty {
+            rowContent(row: row, rank: rank, isTappable: false)
+        } else if row.userId == currentUserId {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onSelfTap()
+            } label: {
+                rowContent(row: row, rank: rank, isTappable: true)
+            }
+            .buttonStyle(StandingsRowPressStyle())
+            .accessibilityHint("Opens your stats")
+        } else {
+            NavigationLink(
+                value: MemberProfileDestination(username: row.username, displayName: row.name)
+            ) {
+                rowContent(row: row, rank: rank, isTappable: true)
+            }
+            .buttonStyle(StandingsRowPressStyle())
+            .accessibilityHint("Opens \(row.name)'s stats")
+        }
+    }
+
+    private func rowContent(row: LeaderboardRow, rank: Int, isTappable: Bool) -> some View {
         HStack(spacing: 8) {
             rankView(rank)
                 .frame(width: Self.rankWidth)
@@ -549,6 +585,12 @@ private struct StandingsSection: View {
                         .foregroundStyle(Color.sticksFaint)
                         .lineLimit(1)
                 }
+
+                if isTappable {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.sticksFaint.opacity(0.7))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -571,6 +613,7 @@ private struct StandingsSection: View {
                 )
             }
         }
+        .contentShape(.rect)
     }
 
     @ViewBuilder
@@ -586,6 +629,14 @@ private struct StandingsSection: View {
             Text("\(rank)")
                 .font(SticksFont.mono(12))
                 .foregroundStyle(Color.sticksFaint)
+        }
+    }
+
+    /// Press feedback for tappable standings rows — a faint accent wash.
+    private struct StandingsRowPressStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .background(configuration.isPressed ? Color.sticksGreen.opacity(0.07) : Color.clear)
         }
     }
 
