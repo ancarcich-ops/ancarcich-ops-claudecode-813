@@ -603,7 +603,10 @@ struct MatchDetailView: View {
         if detail.status != .completed {
             gpsButton(detail)
         }
-        if detail.status == .inProgress, detail.myMatchPlayerId != nil {
+        // Slice 65: the Hero renders on any non-upcoming round, seated
+        // or not — a spectator's nil seat shows em-dashes for the personal
+        // stats while keeping the hole line, matching the web.
+        if detail.status != .upcoming {
             MatchHeroCard(
                 detail: detail,
                 holeGeo: viewModel.response?.holeGeo ?? [:],
@@ -611,7 +614,10 @@ struct MatchDetailView: View {
             )
         }
         scorecardCard(detail)
-        if detail.status == .inProgress {
+        // Slice 65: Standings also renders on completed rounds (final
+        // odds, winner at 100%). The inner onRecordEvents/onOpenSettings
+        // gates keep editors off completed/spectator rounds.
+        if detail.status != .upcoming {
             StandingsCard(
                 detail: detail,
                 probabilities: viewModel.response?.odds?.probabilities ?? [:],
@@ -717,12 +723,13 @@ struct MatchDetailView: View {
         )
     }
 
-    /// Round index of the current hole for a live match — the round
-    /// session's hole when this match is on-course (it advances live),
-    /// otherwise the first hole any player still hasn't scored. Nil for
-    /// upcoming/completed matches. Read-only — purely visual.
+    /// Round index of the current hole — the round session's hole when
+    /// this match is on-course (it advances live), otherwise the first
+    /// hole any player still hasn't scored, else the last hole (so a
+    /// completed round anchors on hole 18, like the web). Nil only for
+    /// upcoming. Read-only — purely visual.
     private func currentHoleIndex(_ detail: MatchDetail) -> Int? {
-        guard detail.status == .inProgress else { return nil }
+        guard detail.status != .upcoming else { return nil }
         let roundSession = RoundSessionService.shared
         if roundSession.activeMatchId == detail.id {
             return min(roundSession.holeIndex, detail.holes - 1)
