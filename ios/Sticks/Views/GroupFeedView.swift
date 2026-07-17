@@ -92,11 +92,23 @@ struct GroupFeedView: View {
         .background(Color.sticksBg.opacity(0.97))
     }
 
-    /// "8 members · code ABC123" — the code part is tappable and copies
-    /// the same invite line as the card ticket.
+    /// "8 members · code ABC123" — the members part opens the roster
+    /// (slice 64), the code part copies the same invite line as the
+    /// card ticket.
     private var subtitle: some View {
         HStack(spacing: 0) {
-            Text(memberText + " · ")
+            NavigationLink(value: GroupMembersDestination(group: group)) {
+                Text(memberText)
+                    .font(SticksFont.mono(11))
+                    .kerning(0.8)
+                    .foregroundStyle(Color.sticksGreen)
+                    .padding(.vertical, 2)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Group members")
+
+            Text(" · ")
                 .font(SticksFont.mono(11))
                 .foregroundStyle(Color.sticksMuted)
 

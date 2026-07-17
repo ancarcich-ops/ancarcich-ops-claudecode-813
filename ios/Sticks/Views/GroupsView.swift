@@ -52,6 +52,15 @@ struct GroupsView: View {
                     onOpenOwnStats: { tabSelection = .stats }
                 )
             }
+            // Slice 64: the group's Members roster — reached from the
+            // card's "N members" / avatar stack and the feed header.
+            .navigationDestination(for: GroupMembersDestination.self) { destination in
+                GroupMembersView(
+                    group: destination.group,
+                    session: session,
+                    onOpenOwnStats: { tabSelection = .stats }
+                )
+            }
             // Slice 63: a member's read-only stats profile. If it
             // resolves to the caller, pop it and hop to the Stats tab.
             .navigationDestination(for: MemberProfileDestination.self) { destination in
@@ -324,10 +333,7 @@ private struct GroupCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationLink(value: group) {
-                topRow
-            }
-            .buttonStyle(GroupCardPressStyle())
+            topRow
 
             Rectangle()
                 .fill(Color.sticksHairline)
@@ -350,33 +356,50 @@ private struct GroupCard: View {
 
     // MARK: Top row
 
+    /// Slice 64: sibling tap targets — the identity (monogram + name)
+    /// opens the group feed, while "N members" and the avatar stack
+    /// open the Members roster. A members link can't nest inside a
+    /// feed link, so the row is split instead of wrapped whole.
     private var topRow: some View {
         HStack(spacing: 12) {
-            monogram
+            NavigationLink(value: group) {
+                monogram
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(group.name) feed")
 
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(group.name)
-                        .font(SticksFont.display(20))
-                        .foregroundStyle(Color.sticksInk)
-                        .lineLimit(1)
+                NavigationLink(value: group) {
+                    HStack(spacing: 6) {
+                        Text(group.name)
+                            .font(SticksFont.display(20))
+                            .foregroundStyle(Color.sticksInk)
+                            .lineLimit(1)
 
-                    Text("→")
-                        .font(SticksFont.mono(12))
-                        .foregroundStyle(Color.sticksFaint)
+                        Text("→")
+                            .font(SticksFont.mono(12))
+                            .foregroundStyle(Color.sticksFaint)
+                    }
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(group.name) feed")
 
                 metaLine
             }
 
             Spacer(minLength: 8)
 
-            avatarStack
+            NavigationLink(value: GroupMembersDestination(group: group)) {
+                avatarStack
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Group members")
         }
         .padding(.leading, 19) // 14 + the 5pt spine
         .padding(.trailing, 14)
         .padding(.vertical, 14)
-        .contentShape(.rect)
     }
 
     private var monogram: some View {
@@ -396,17 +419,29 @@ private struct GroupCard: View {
             )
     }
 
-    /// "8 members · 24 matches" — numbers in ink, words mute.
+    /// "8 members › · 24 matches" — the members segment is its own
+    /// link to the roster (green = tappable); matches stay plain text.
     private var metaLine: some View {
-        (
-            Text("\(group.memberCount)").foregroundStyle(Color.sticksInk)
-            + Text(group.memberCount == 1 ? " member" : " members").foregroundStyle(Color.sticksMuted)
-            + Text(" · ").foregroundStyle(Color.sticksMuted)
-            + Text("\(group.matchCount)").foregroundStyle(Color.sticksInk)
-            + Text(group.matchCount == 1 ? " match" : " matches").foregroundStyle(Color.sticksMuted)
-        )
-        .font(SticksFont.mono(12))
-        .lineLimit(1)
+        HStack(spacing: 0) {
+            NavigationLink(value: GroupMembersDestination(group: group)) {
+                Text(group.memberCount == 1 ? "1 member ›" : "\(group.memberCount) members ›")
+                    .font(SticksFont.mono(12))
+                    .foregroundStyle(Color.sticksGreen)
+                    .lineLimit(1)
+                    .padding(.vertical, 2)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Group members")
+
+            (
+                Text(" · ").foregroundStyle(Color.sticksMuted)
+                + Text("\(group.matchCount)").foregroundStyle(Color.sticksInk)
+                + Text(group.matchCount == 1 ? " match" : " matches").foregroundStyle(Color.sticksMuted)
+            )
+            .font(SticksFont.mono(12))
+            .lineLimit(1)
+        }
     }
 
     private var avatarStack: some View {

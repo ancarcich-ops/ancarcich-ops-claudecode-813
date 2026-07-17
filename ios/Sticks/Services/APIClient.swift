@@ -584,6 +584,14 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /groups/:id/members — the group's full roster (owner
+    /// first, then by join date). Caller must be a member; 403/404
+    /// carry server messages shown verbatim.
+    func groupMembers(groupId: String, token: String) async throws -> GroupMembersResponse {
+        let request = makeRequest(path: "groups/\(groupId)/members", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     /// GET /courses?q= — course search by name.
     func searchCourses(query: String, token: String) async throws -> CoursesResponse {
         let request = makeRequest(
