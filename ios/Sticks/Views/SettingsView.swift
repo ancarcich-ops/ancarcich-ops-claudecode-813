@@ -45,6 +45,11 @@ struct SettingsView: View {
     // Slice 42: resetting this flag replays the first-launch welcome.
     @AppStorage("sticks.welcomed.v1") private var welcomed: Bool = true
 
+    // Slice 66: which satellite imagery the on-course 2D map renders.
+    // The GPS screen reads this live — flipping it mid-round swaps the
+    // map instantly, no reload.
+    @AppStorage("mapImagerySource") private var mapImagerySourceRaw: String = MapImagerySource.esri.rawValue
+
     // Profile photo picking
     @State private var photoItem: PhotosPickerItem?
 
@@ -64,6 +69,7 @@ struct SettingsView: View {
                         profilePhotoCard
                         profileCard
                         handicapCard
+                        mapCard
                         accountCard
                     }
                     .padding(.horizontal, 20)
@@ -361,6 +367,36 @@ struct SettingsView: View {
     private var ghinValueText: String {
         guard let ghin = viewModel.profile?.ghin, !ghin.isEmpty else { return "Not set" }
         return "#\(ghin)"
+    }
+
+    // MARK: - Map card (slice 66)
+
+    /// On-course satellite imagery source — Esri (default, usually
+    /// sharper/greener) vs the original Apple satellite layer.
+    private var mapCard: some View {
+        sectionBlock("ON-COURSE MAP") {
+            panelCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("SATELLITE IMAGERY")
+                        .font(SticksFont.mono(10))
+                        .kerning(1)
+                        .foregroundStyle(Color.sticksFaint)
+
+                    Picker("Satellite imagery", selection: $mapImagerySourceRaw) {
+                        ForEach(MapImagerySource.allCases) { source in
+                            Text(source.label).tag(source.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Esri usually looks sharper on resort courses; switch to Apple if a course looks better there.")
+                        .font(SticksFont.sans(12))
+                        .foregroundStyle(Color.sticksMuted)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+            }
+        }
     }
 
     // MARK: - Account card

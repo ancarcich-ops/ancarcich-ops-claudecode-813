@@ -23,7 +23,7 @@ import MapKit
 /// HOLE snap the native MapKit camera; 3D swaps the map for the remote
 /// photorealistic flyover WebView. Readouts, markers, wind, FIX TEE,
 /// and ENTER SCORE are identical in all four.
-private enum GPSCameraMode: String, CaseIterable {
+enum GPSCameraMode: String, CaseIterable {
     case tee = "TEE"
     case green = "GREEN"
     case hole = "HOLE"
@@ -57,6 +57,15 @@ struct OnCourseGPSView: View {
     // programmatic jump (e.g. resuming mid-round) never reads as "you
     // walked off a hole" — consumed by the holeIndex onChange.
     @State private var isInitialHoleAssignment = false
+
+    // Slice 66: which satellite imagery the 2D map renders — Esri (the
+    // default) or the original Apple `Map`. Persisted; read live so a
+    // mid-round Settings flip swaps the renderer instantly.
+    @AppStorage("mapImagerySource") private var mapImagerySourceRaw: String = MapImagerySource.esri.rawValue
+
+    private var imagerySource: MapImagerySource {
+        MapImagerySource(rawValue: mapImagerySourceRaw) ?? .esri
+    }
 
     /// Round-scoped location source — owned by the session service so
     /// GPS updates (and the companions they feed) survive leaving this
@@ -179,6 +188,29 @@ struct OnCourseGPSView: View {
             // Switching back to TEE/GREEN/HOLE returns to MapKit instantly.
             if cameraMode == .threeD, let url = flyoverURL(detail, geo: geo) {
                 flyoverLayer(url: url)
+            } else if imagerySource == .esri {
+                // Slice 66: the Esri World Imagery renderer (MKMapView +
+                // tile overlay), reusing the same marker views and framing
+                // math. The Apple `Map` path below is completely untouched
+                // — the Settings toggle flips between them at runtime.
+                ZStack(alignment: .bottomLeading) {
+                    EsriHoleMapView(
+                        geo: geo,
+                        hazards: hazards,
+                        anchorCoordinate: anchor?.coordinate,
+                        aim: aim,
+                        greenForAim: geo?.greenCoordinate,
+                        cameraMode: cameraMode,
+                        holeIndex: holeIndex,
+                        onAim: { coordinate in
+                            aim = coordinate
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    )
+                    .ignoresSafeArea()
+
+                    esriAttribution
+                }
             } else {
                 MapReader { proxy in
                     Map(position: $camera) {
@@ -352,6 +384,20 @@ struct OnCourseGPSView: View {
         }
         components?.queryItems = items
         return components?.url
+    }
+
+    /// Esri's terms require crediting the imagery sources (the Apple map
+    /// shows its own attribution automatically). Sits just above the
+    /// bottom readout panel, never intercepting map gestures.
+    private var esriAttribution: some View {
+        Text("Esri, Maxar, Earthstar Geographics")
+            .font(SticksFont.sans(9))
+            .foregroundStyle(.white.opacity(0.8))
+            .shadow(color: .black.opacity(0.9), radius: 2)
+            .padding(.leading, 12)
+            .padding(.bottom, 4)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// Fixed back button on the hole rail row — chips scroll past it.
@@ -1016,7 +1062,9 @@ private struct WindTile: View {
 
 // MARK: - Map markers
 
-private struct TeeMarker: View {
+// Internal (not private): slice 66's Esri renderer hosts these SAME
+// views in its MKAnnotationViews, so markers match pixel-for-pixel.
+struct TeeMarker: View {
     var body: some View {
         Text("T")
             .font(SticksFont.label(11, weight: .bold))
@@ -1029,7 +1077,7 @@ private struct TeeMarker: View {
     }
 }
 
-private struct PinMarker: View {
+struct PinMarker: View {
     var body: some View {
         Image(systemName: "flag.fill")
             .font(.system(size: 12, weight: .bold))
@@ -1042,7 +1090,7 @@ private struct PinMarker: View {
     }
 }
 
-private struct AimMarker: View {
+struct AimMarker: View {
     var body: some View {
         ZStack {
             Circle()
@@ -1056,7 +1104,7 @@ private struct AimMarker: View {
     }
 }
 
-private struct HazardChip: View {
+struct HazardChip: View {
     let hazard: Hazard
     let distanceYards: Double?
 
