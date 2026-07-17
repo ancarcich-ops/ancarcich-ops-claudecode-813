@@ -443,8 +443,12 @@ struct OnCourseGPSView: View {
             }
         }
 
-        ForEach(0 ..< hazards.count, id: \.self) { index in
-            let hazard = hazards[index]
+        // Slice 67: only annotate hazards worth a pill — drops pills that
+        // would sit ON the green polygon or PAST the green (not a carry).
+        // The hazard itself stays visible on the satellite imagery.
+        let shownHazards = GolfGeo.annotatableHazards(geo: geo, hazards: hazards, anchor: anchor?.coordinate)
+        ForEach(0 ..< shownHazards.count, id: \.self) { index in
+            let hazard = shownHazards[index]
             if let lat = hazard.lat, let lng = hazard.lng, GolfGeo.isUsable(lat: lat, lng: lng) {
                 let coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
                 Annotation("", coordinate: coordinate) {

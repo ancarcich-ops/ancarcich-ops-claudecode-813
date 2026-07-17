@@ -87,6 +87,60 @@ nonisolated enum GolfGeo {
         return CLLocationCoordinate2D(latitude: lat2 * 180 / .pi, longitude: lng2 * 180 / .pi)
     }
 
+    /// Ray-cast point-in-polygon on lat/lng. Planar approximation — accurate
+    /// enough at the scale of a green. Mirrors the web's pointInLatLngPolygon.
+    static func isInside(_ p: CLLocationCoordinate2D,
+                         polygon: [CLLocationCoordinate2D]) -> Bool {
+        guard polygon.count >= 3 else { return false }
+        let px = p.longitude, py = p.latitude
+        var inside = false
+        var j = polygon.count - 1
+        for i in 0 ..< polygon.count {
+            let xi = polygon[i].longitude, yi = polygon[i].latitude
+            let xj = polygon[j].longitude, yj = polygon[j].latitude
+            if ((yi > py) != (yj > py)) &&
+               (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+                inside.toggle()
+            }
+            j = i
+        }
+        return inside
+    }
+
+    /// Hazards worth a distance pill: on-screen the bunker/water is always
+    /// visible, but we drop the PILL when it would (a) sit inside the green
+    /// polygon or (b) be past the green (not a carry on the approach) — same
+    /// as the web map (`pointInLatLngPolygon` skip + `distance > pinD - 10`
+    /// carry rule). `anchor` is the same reference point the pill's distance
+    /// is measured from, so the "beyond the green" test agrees with the
+    /// number we'd show. Shared by BOTH 2D renderers (Apple `Map` and the
+    /// Esri MKMapView) so they behave identically.
+    static func annotatableHazards(geo: HoleGeo?,
+                                   hazards: [Hazard],
+                                   anchor: CLLocationCoordinate2D?) -> [Hazard] {
+        let greenPoly = geo?.greenPolygonCoordinates ?? []
+        let greenCenterDist: Double? = {
+            guard let anchor, let green = geo?.greenCoordinate else { return nil }
+            return yards(from: anchor, to: green)
+        }()
+        return hazards.filter { hazard in
+            guard let lat = hazard.lat, let lng = hazard.lng,
+                  isUsable(lat: lat, lng: lng) else { return false }
+            let coord = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+            // (a) overlap: inside the green polygon
+            if greenPoly.count >= 3, isInside(coord, polygon: greenPoly) {
+                return false
+            }
+            // (b) beyond the green: farther from the anchor than the green
+            //     center (10y buffer, mirroring the web's `pinD - 10`)
+            if let anchor, let greenCenterDist {
+                let d = yards(from: anchor, to: coord)
+                if d > greenCenterDist - 10 { return false }
+            }
+            return true
+        }
+    }
+
     /// Signed projection of `point` onto the hole axis, in meters from
     /// `origin` along `heading` (positive = up-course, toward the green).
     /// Used to fit tee, green, and hazards inside the map's visible band.

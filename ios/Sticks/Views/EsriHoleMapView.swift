@@ -150,7 +150,16 @@ struct EsriHoleMapView: UIViewRepresentable {
                 }
             }
 
-            for hazard in parent.hazards {
+            // Slice 67: the same pill filter as the Apple path — no pill on
+            // hazards that sit ON the green polygon or PAST the green. The
+            // camera framing above still uses the raw list, matching the
+            // Apple renderer's framing math exactly.
+            let shownHazards = GolfGeo.annotatableHazards(
+                geo: parent.geo,
+                hazards: parent.hazards,
+                anchor: parent.anchorCoordinate
+            )
+            for hazard in shownHazards {
                 guard let lat = hazard.lat, let lng = hazard.lng,
                       GolfGeo.isUsable(lat: lat, lng: lng) else { continue }
                 let coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
