@@ -246,6 +246,176 @@ nonisolated struct TeeResponse: Decodable {
     let reason: String?
 }
 
+// MARK: - Follows (slice 68)
+
+/// A person in the follow graph — search results, requests, and the
+/// following/followers lists all share this shape. Email/phone are
+/// never returned by the server.
+nonisolated struct FollowUser: Identifiable, Hashable {
+    let id: String
+    let username: String
+    let displayName: String?
+    let avatarUrl: String?
+    let avatarSeed: String?
+    let avatarVariant: String?
+
+    /// Best display label — the custom name, else @username.
+    var name: String {
+        if let displayName, !displayName.isEmpty { return displayName }
+        return username
+    }
+}
+
+extension FollowUser: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case id, username, displayName, avatarUrl, avatarSeed, avatarVariant
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        displayName = try? container.decodeIfPresent(String.self, forKey: .displayName)
+        avatarUrl = try? container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        avatarSeed = try? container.decodeIfPresent(String.self, forKey: .avatarSeed)
+        avatarVariant = try? container.decodeIfPresent(String.self, forKey: .avatarVariant)
+    }
+}
+
+/// One people-search hit — a FollowUser plus my relationship to them.
+nonisolated struct UserSearchResult: Identifiable, Hashable {
+    let user: FollowUser
+    /// "none" | "pending" | "accepted".
+    let followState: String
+
+    var id: String { user.id }
+}
+
+extension UserSearchResult: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case followState
+    }
+
+    init(from decoder: Decoder) throws {
+        user = try FollowUser(from: decoder)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        followState = try container.decodeIfPresent(String.self, forKey: .followState) ?? "none"
+    }
+}
+
+/// Someone asking to follow me, with when they asked.
+nonisolated struct FollowRequestRow: Identifiable, Hashable {
+    let user: FollowUser
+    let since: Date?
+
+    var id: String { user.id }
+}
+
+extension FollowRequestRow: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case user, since
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        user = try container.decode(FollowUser.self, forKey: .user)
+        since = try? container.decodeIfPresent(Date.self, forKey: .since)
+    }
+}
+
+/// Wraps an element decode so one malformed entry drops out of a list
+/// instead of failing the whole payload.
+nonisolated private struct LossyFollowElement<T: Decodable>: Decodable {
+    let value: T?
+
+    init(from decoder: Decoder) {
+        value = try? T(from: decoder)
+    }
+}
+
+/// GET /follows — the People screen data.
+nonisolated struct FollowsResponse: Decodable {
+    /// People asking to follow me (approval pending).
+    let requests: [FollowRequestRow]
+    /// People I follow (accepted).
+    let following: [FollowUser]
+    /// People who follow me (accepted).
+    let followers: [FollowUser]
+    /// My "public profile" toggle — anyone can follow without approval.
+    let autoAcceptFollows: Bool
+    /// My searchable phone (last-10 digits) — nil when unset.
+    let phone: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case requests, following, followers, autoAcceptFollows, phone
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let lossyRequests = try container.decodeIfPresent(
+            [LossyFollowElement<FollowRequestRow>].self, forKey: .requests
+        ) ?? []
+        requests = lossyRequests.compactMap { $0.value }
+        let lossyFollowing = try container.decodeIfPresent(
+            [LossyFollowElement<FollowUser>].self, forKey: .following
+        ) ?? []
+        following = lossyFollowing.compactMap { $0.value }
+        let lossyFollowers = try container.decodeIfPresent(
+            [LossyFollowElement<FollowUser>].self, forKey: .followers
+        ) ?? []
+        followers = lossyFollowers.compactMap { $0.value }
+        autoAcceptFollows = try container.decodeIfPresent(Bool.self, forKey: .autoAcceptFollows) ?? false
+        phone = try? container.decodeIfPresent(String.self, forKey: .phone)
+    }
+}
+
+nonisolated private struct UserSearchResponse: Decodable {
+    let users: [UserSearchResult]
+
+    private enum CodingKeys: String, CodingKey {
+        case users
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let lossy = try container.decodeIfPresent(
+            [LossyFollowElement<UserSearchResult>].self, forKey: .users
+        ) ?? []
+        users = lossy.compactMap { $0.value }
+    }
+}
+
+/// Body for POST /follows — one action per call. Nil fields are
+/// OMITTED by the synthesized Encodable — intended: `request`/`unfollow`
+/// carry only userId, `setAutoAccept` only `on`, `setPhone` only
+/// `phone` ("" removes it).
+nonisolated struct FollowActionRequest: Encodable {
+    let action: String
+    let userId: String?
+    let on: Bool?
+    let phone: String?
+}
+
+/// Response for POST /follows — `state` present for `request`
+/// ("pending", or "accepted" when the target auto-accepts), `phone`
+/// present for `setPhone`.
+nonisolated struct FollowActionResponse: Decodable {
+    let ok: Bool
+    let state: String?
+    let phone: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case ok, state, phone
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = (try? container.decode(Bool.self, forKey: .ok)) ?? false
+        state = try? container.decodeIfPresent(String.self, forKey: .state)
+        phone = try? container.decodeIfPresent(String.self, forKey: .phone)
+    }
+}
+
 nonisolated struct APIClient {
     static let shared = APIClient()
 
@@ -517,6 +687,46 @@ nonisolated struct APIClient {
     /// percent-encodes it (pre-encoding here would double-encode).
     func userStats(username: String, token: String) async throws -> StatsResponse {
         let request = makeRequest(path: "users/\(username)/stats", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// GET /users/search?q= — open people search. Fuzzy on
+    /// username/display-name, exact on email/phone (the server never
+    /// returns either).
+    func searchUsers(q: String, token: String) async throws -> [UserSearchResult] {
+        let request = makeRequest(
+            path: "users/search",
+            method: "GET",
+            queryItems: [URLQueryItem(name: "q", value: q)],
+            token: token
+        )
+        let response: UserSearchResponse = try await perform(request)
+        return response.users
+    }
+
+    /// GET /follows — my requests / following / followers plus the
+    /// auto-accept toggle and searchable phone.
+    func getFollows(token: String) async throws -> FollowsResponse {
+        let request = makeRequest(path: "follows", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// POST /follows — one follow action per call: `request` /
+    /// `unfollow` / `accept` / `decline` (with userId), `setAutoAccept`
+    /// (with on), `setPhone` (with phone; "" removes). 400s carry
+    /// server messages shown verbatim.
+    @discardableResult
+    func followAction(
+        _ action: String,
+        userId: String? = nil,
+        on: Bool? = nil,
+        phone: String? = nil,
+        token: String
+    ) async throws -> FollowActionResponse {
+        var request = makeRequest(path: "follows", method: "POST", token: token)
+        request.httpBody = try encoder.encode(
+            FollowActionRequest(action: action, userId: userId, on: on, phone: phone)
+        )
         return try await perform(request)
     }
 

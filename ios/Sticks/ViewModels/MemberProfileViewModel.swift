@@ -28,6 +28,11 @@ final class MemberProfileViewModel {
     /// True when the username resolved to the caller — the view routes
     /// to the editable Stats tab instead of this read-only mirror.
     private(set) var isSelf = false
+    /// Slice 68: my follow relationship to this profile — nil on
+    /// older servers (the Follow button hides).
+    private(set) var followState: String?
+    /// Slice 68: the profile's userId — the follow-action target.
+    private(set) var targetUserId: String?
 
     private let api: APIClient
 
@@ -46,6 +51,8 @@ final class MemberProfileViewModel {
             stats = response.stats
             baselines = response.baselines
             isSelf = response.isSelf
+            followState = response.followState
+            targetUserId = response.targetUserId
             phase = .loaded
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()

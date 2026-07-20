@@ -420,9 +420,14 @@ nonisolated struct StatsResponse: Decodable {
     /// (route those to the editable Stats tab). Absent on /stats —
     /// defaults false.
     let isSelf: Bool
+    /// Slice 68: my follow relationship to this profile — "none" /
+    /// "pending" / "accepted". Absent on /stats and older servers.
+    let followState: String?
+    /// Slice 68: the profile's userId — the target for follow actions.
+    let targetUserId: String?
 
     private enum CodingKeys: String, CodingKey {
-        case stats, baselines, isSelf
+        case stats, baselines, isSelf, followState, targetUserId
     }
 
     init(from decoder: Decoder) throws {
@@ -430,5 +435,7 @@ nonisolated struct StatsResponse: Decodable {
         stats = try container.decode(PlayerStats.self, forKey: .stats)
         baselines = try container.decodeIfPresent([StatsBaseline].self, forKey: .baselines) ?? []
         isSelf = (try? container.decodeIfPresent(Bool.self, forKey: .isSelf)) ?? false
+        followState = try? container.decodeIfPresent(String.self, forKey: .followState)
+        targetUserId = try? container.decodeIfPresent(String.self, forKey: .targetUserId)
     }
 }

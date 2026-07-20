@@ -125,17 +125,31 @@ struct MemberProfileView: View {
     }
 
     private func identityHeader(_ stats: PlayerStats) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(displayName(stats))
-                .font(SticksFont.display(28, weight: .bold))
-                .foregroundStyle(Color.sticksInk)
-                .lineLimit(2)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(displayName(stats))
+                    .font(SticksFont.display(28, weight: .bold))
+                    .foregroundStyle(Color.sticksInk)
+                    .lineLimit(2)
 
-            Text("@\(handle(stats))")
-                .font(SticksFont.mono(11.5))
-                .kerning(0.6)
-                .foregroundStyle(Color.sticksFaint)
-                .lineLimit(1)
+                Text("@\(handle(stats))")
+                    .font(SticksFont.mono(11.5))
+                    .kerning(0.6)
+                    .foregroundStyle(Color.sticksFaint)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            // Slice 68: follow this player — hidden on your own profile
+            // and on servers that don't send the follow fields yet.
+            if !viewModel.isSelf, let targetUserId = viewModel.targetUserId {
+                FollowButton(
+                    targetUserId: targetUserId,
+                    initialState: viewModel.followState ?? "none",
+                    session: session
+                )
+            }
         }
     }
 

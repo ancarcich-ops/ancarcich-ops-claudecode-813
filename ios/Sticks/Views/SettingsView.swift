@@ -22,6 +22,9 @@ struct SettingsView: View {
     @State private var viewModel = SettingsViewModel()
     @State private var showsCreate = false
 
+    // Slice 68: this tab's push stack — People and member profiles.
+    @State private var path = NavigationPath()
+
     // Display name editing
     @State private var showsNameAlert = false
     @State private var nameText = ""
@@ -37,6 +40,10 @@ struct SettingsView: View {
     // Sign out confirm + save errors
     @State private var showsSignOutConfirm = false
     @State private var saveError: String?
+
+    // Slice 68: searchable phone editing
+    @State private var showsPhoneAlert = false
+    @State private var phoneText = ""
 
     // Slice 51: Face ID sign-in toggle (hidden without biometrics).
     @State private var biometricsAvailable = false
@@ -54,7 +61,7 @@ struct SettingsView: View {
     @State private var photoItem: PhotosPickerItem?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 Color.sticksBg.ignoresSafeArea()
 
@@ -69,6 +76,7 @@ struct SettingsView: View {
                         profilePhotoCard
                         profileCard
                         handicapCard
+                        peopleCard
                         mapCard
                         accountCard
                     }
@@ -78,6 +86,7 @@ struct SettingsView: View {
                 }
                 .refreshable {
                     await viewModel.load(session: session)
+                    await viewModel.loadFollows(session: session)
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -90,6 +99,23 @@ struct SettingsView: View {
                 )
             }
             .toolbar(.hidden, for: .navigationBar)
+            // Slice 68: the People screen (find / follow / requests).
+            .navigationDestination(for: PeopleDestination.self) { _ in
+                PeopleView(session: session)
+            }
+            // Slice 68: People rows push a member's read-only profile.
+            // If it resolves to the caller, pop it and hop to Stats.
+            .navigationDestination(for: MemberProfileDestination.self) { destination in
+                MemberProfileView(
+                    username: destination.username,
+                    fallbackName: destination.displayName,
+                    session: session,
+                    onOpenOwnStats: {
+                        if !path.isEmpty { path.removeLast() }
+                        tabSelection = .stats
+                    }
+                )
+            }
         }
         .fullScreenCover(isPresented: $showsCreate) {
             CreateMatchView(user: user, session: session) { matchId in
@@ -98,6 +124,7 @@ struct SettingsView: View {
         }
         .task {
             await viewModel.load(session: session)
+            await viewModel.loadFollows(session: session)
         }
         .onAppear {
             biometricsAvailable = BiometricService.isAvailable
@@ -133,6 +160,17 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your target Sticks index — it shows on the stats hero card with how far there is to go.")
+        }
+        .alert("Phone number", isPresented: $showsPhoneAlert) {
+            TextField("(818) 309-5011", text: $phoneText)
+                .keyboardType(.phonePad)
+            Button("Save") { savePhone() }
+            if viewModel.followPhone?.isEmpty == false {
+                Button("Remove", role: .destructive) { postPhone("") }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Add your number so friends can find you in People. Matched exactly and never shown.")
         }
         .alert("Sign out of Sticks?", isPresented: $showsSignOutConfirm) {
             Button("Sign out", role: .destructive) { session.signOut() }
@@ -369,6 +407,121 @@ struct SettingsView: View {
         return "#\(ghin)"
     }
 
+    // MARK: - People card (slice 68)
+
+    /// Follows entry point + the follow-privacy controls — auto-accept
+    /// and the searchable phone number.
+    private var peopleCard: some View {
+        sectionBlock("PEOPLE") {
+            panelCard {
+                NavigationLink(value: PeopleDestination()) {
+                    HStack(spacing: 8) {
+                        Text("FOLLOWS & REQUESTS")
+                            .font(SticksFont.mono(12))
+                            .kerning(1.2)
+                            .foregroundStyle(Color.sticksGreen)
+
+                        Spacer()
+
+                        if viewModel.followRequestCount > 0 {
+                            Text("\(viewModel.followRequestCount)")
+                                .font(SticksFont.mono(10, weight: .bold))
+                                .foregroundStyle(Color.sticksCream)
+                                .padding(.horizontal, 7)
+                                .frame(minWidth: 20)
+                                .frame(height: 20)
+                                .background(Color.sticksError)
+                                .clipShape(.capsule)
+                                .accessibilityLabel("\(viewModel.followRequestCount) pending follow requests")
+                        }
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sticksFaint.opacity(0.7))
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 52)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(PressableButtonStyle())
+
+                hairline
+                autoAcceptRow
+                hairline
+
+                editableRow(
+                    label: "PHONE",
+                    value: phoneValueText,
+                    valueColor: viewModel.followPhone?.isEmpty == false ? .sticksInk : .sticksFaint,
+                    disabled: !viewModel.followsLoaded || viewModel.isSaving
+                ) {
+                    phoneText = viewModel.followPhone ?? ""
+                    showsPhoneAlert = true
+                }
+
+                Text("Your number lets friends find you in People. Matched exactly and never shown.")
+                    .font(SticksFont.sans(12))
+                    .foregroundStyle(Color.sticksMuted)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
+        }
+    }
+
+    /// "Public profile" — anyone can follow without approval.
+    private var autoAcceptRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("AUTO-ACCEPT FOLLOWERS")
+                    .font(SticksFont.mono(12))
+                    .kerning(1.2)
+                    .foregroundStyle(Color.sticksInk)
+
+                Spacer()
+
+                Toggle("", isOn: autoAcceptBinding)
+                    .labelsHidden()
+                    .tint(Color.sticksGreen)
+                    .disabled(!viewModel.followsLoaded)
+            }
+
+            Text("When on, anyone can follow you without approval.")
+                .font(SticksFont.sans(12))
+                .foregroundStyle(Color.sticksMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .opacity(viewModel.followsLoaded ? 1 : 0.5)
+    }
+
+    private var autoAcceptBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.autoAcceptFollows },
+            set: { newValue in
+                Task {
+                    if let error = await viewModel.setAutoAccept(newValue, session: session) {
+                        saveError = error
+                    }
+                }
+            }
+        )
+    }
+
+    private var phoneValueText: String {
+        guard let phone = viewModel.followPhone, !phone.isEmpty else { return "Not set" }
+        return Self.formatPhone(phone)
+    }
+
+    /// Formats a 10-digit number as (818) 309-5011; anything else
+    /// renders as-is.
+    private static func formatPhone(_ digits: String) -> String {
+        guard digits.count == 10, digits.allSatisfy(\.isNumber) else { return digits }
+        let area = digits.prefix(3)
+        let mid = digits.dropFirst(3).prefix(3)
+        let last = digits.suffix(4)
+        return "(\(area)) \(mid)-\(last)"
+    }
+
     // MARK: - Map card (slice 66)
 
     /// On-course satellite imagery source — Esri (default, usually
@@ -586,6 +739,26 @@ struct SettingsView: View {
     private func postGoal(_ value: Double?) {
         Task {
             if let error = await viewModel.setTargetIndex(value, session: session) {
+                saveError = error
+            }
+        }
+    }
+
+    /// Normalizes to the last 10 digits (a leading +1 drops off);
+    /// empty removes the number.
+    private func savePhone() {
+        let digits = phoneText.filter(\.isNumber)
+        let normalized = digits.count > 10 ? String(digits.suffix(10)) : digits
+        guard normalized.isEmpty || normalized.count == 10 else {
+            saveError = "Enter a 10-digit phone number, or leave it empty to remove it."
+            return
+        }
+        postPhone(normalized)
+    }
+
+    private func postPhone(_ phone: String) {
+        Task {
+            if let error = await viewModel.setPhone(phone, session: session) {
                 saveError = error
             }
         }
