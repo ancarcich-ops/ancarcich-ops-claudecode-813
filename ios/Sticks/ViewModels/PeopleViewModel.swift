@@ -24,8 +24,11 @@ final class PeopleViewModel {
     }
 
     private(set) var phase: Phase = .loading
-    /// People asking to follow me.
-    private(set) var requests: [FollowRequestRow] = []
+    /// People asking to follow me. Every assignment (load, optimistic
+    /// accept/decline, revert) syncs the shared header badge — slice 69.
+    private(set) var requests: [FollowRequestRow] = [] {
+        didSet { FollowBadgeStore.shared.setCount(requests.count) }
+    }
     /// People I follow (accepted).
     private(set) var following: [FollowUser] = []
     /// People who follow me (accepted).

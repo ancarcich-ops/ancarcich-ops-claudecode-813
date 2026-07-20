@@ -102,6 +102,9 @@ struct MainTabView: View {
         // on matches/groups-changed signals.
         .task {
             await GroupFilterStore.shared.load(session: session)
+            // Slice 69: seed the header's follow-request badge once the
+            // signed-in root appears (briefly cached in the store).
+            await FollowBadgeStore.shared.refresh(session: session)
         }
         .onReceive(NotificationCenter.default.publisher(for: .sticksMatchesDidChange)) { _ in
             Task { await GroupFilterStore.shared.load(session: session) }

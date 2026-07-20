@@ -28,6 +28,10 @@ extension Notification.Name {
     /// Posted by the header's Home button on screens without a tab
     /// binding (pushed match detail); MainTabView selects the Home tab.
     static let sticksGoHome = Notification.Name("sticksGoHome")
+
+    /// Posted by the switcher's "People & follows" link; the Settings
+    /// tab listens and pushes the People screen.
+    static let sticksOpenPeople = Notification.Name("sticksOpenPeople")
 }
 
 struct HeaderControls: View {
@@ -53,6 +57,7 @@ struct HeaderControls: View {
     @Environment(\.dismiss) private var dismiss
 
     private var filter: GroupFilterStore { .shared }
+    private var badge: FollowBadgeStore { .shared }
 
     var body: some View {
         HStack(spacing: 9) {
@@ -147,8 +152,16 @@ struct HeaderControls: View {
             .clipShape(.capsule)
             .overlay(Capsule().stroke(Color.sticksHairline, lineWidth: 1))
             .contentShape(.capsule)
+            // Slice 69: pending follow requests are discoverable
+            // without opening the menu — same pill as the web trigger.
+            .overlay(alignment: .topTrailing) {
+                if badge.requestCount > 0 {
+                    requestBadgePill
+                        .offset(x: 5, y: -5)
+                }
+            }
         }
-        .accessibilityLabel("Group filter and account menu")
+        .accessibilityLabel(accessibilitySwitcherLabel)
     }
 
     /// VIEW — the two scope rows; the active one carries a checkmark.
@@ -222,12 +235,45 @@ struct HeaderControls: View {
                 Label("Manage groups", systemImage: "person.2")
             }
 
+            // Slice 69: web parity — the People entry lives here too.
+            // UIKit menus render text only, so the pending count shows
+            // as the row's subtitle instead of a pill.
+            Button {
+                tabSelection.wrappedValue = .settings
+                NotificationCenter.default.post(name: .sticksOpenPeople, object: nil)
+            } label: {
+                Label("People & follows", systemImage: "person.2")
+                if badge.requestCount > 0 {
+                    Text("\(badge.requestCount) pending request\(badge.requestCount == 1 ? "" : "s")")
+                }
+            }
+
             Button {
                 tabSelection.wrappedValue = .settings
             } label: {
                 Label("Settings", systemImage: "gearshape")
             }
         }
+    }
+
+    /// The web-matching count pill (16pt tall, accent-filled) shown on
+    /// the switcher trigger while follow requests are pending.
+    private var requestBadgePill: some View {
+        Text("\(min(badge.requestCount, 99))")
+            .font(SticksFont.mono(9, weight: .bold))
+            .foregroundStyle(Color.sticksCream)
+            .padding(.horizontal, 4.5)
+            .frame(minWidth: 16)
+            .frame(height: 16)
+            .background(Color.sticksError)
+            .clipShape(.capsule)
+            .accessibilityHidden(true)
+    }
+
+    private var accessibilitySwitcherLabel: String {
+        badge.requestCount > 0
+            ? "Group filter and account menu, \(badge.requestCount) pending follow requests"
+            : "Group filter and account menu"
     }
 
     /// The default "All my groups" never truncates (fixedSize); an

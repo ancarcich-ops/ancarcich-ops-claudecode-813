@@ -126,6 +126,13 @@ struct SettingsView: View {
             await viewModel.load(session: session)
             await viewModel.loadFollows(session: session)
         }
+        // Slice 69: the header dropdown's "People & follows" link — the
+        // menu flips to this tab and we land on the existing People
+        // screen (resetting any deeper push so it's front and center).
+        .onReceive(NotificationCenter.default.publisher(for: .sticksOpenPeople)) { _ in
+            path = NavigationPath()
+            path.append(PeopleDestination())
+        }
         .onAppear {
             biometricsAvailable = BiometricService.isAvailable
             biometricSignInEnabled = session.isBiometricSignInEnabled
