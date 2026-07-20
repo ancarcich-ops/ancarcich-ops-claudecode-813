@@ -125,7 +125,7 @@ struct PeopleView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.sticksFaint)
 
-            TextField("Name, @username, or email", text: $searchText)
+            TextField("Name, @username, phone, or email", text: $searchText)
                 .font(SticksFont.sans(15))
                 .foregroundStyle(Color.sticksInk)
                 .autocorrectionDisabled()

@@ -35,6 +35,7 @@ nonisolated struct SignupRequest: Encodable {
     let email: String
     let password: String
     let displayName: String?
+    let phone: String?
 }
 
 nonisolated struct MeResponse: Codable {
@@ -466,11 +467,12 @@ nonisolated struct APIClient {
         username: String,
         email: String,
         password: String,
-        displayName: String?
+        displayName: String?,
+        phone: String? = nil
     ) async throws -> LoginResponse {
         var request = makeRequest(path: "auth/signup", method: "POST")
         request.httpBody = try encoder.encode(
-            SignupRequest(username: username, email: email, password: password, displayName: displayName)
+            SignupRequest(username: username, email: email, password: password, displayName: displayName, phone: phone)
         )
         return try await perform(request)
     }

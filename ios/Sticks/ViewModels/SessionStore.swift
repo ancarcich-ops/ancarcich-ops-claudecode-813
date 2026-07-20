@@ -78,12 +78,13 @@ final class SessionStore {
     /// Creates an account and signs in — same token-storage path as
     /// `signIn`, so the new user lands on Home immediately.
     /// Throws `APIError` with the server's message on failure.
-    func signUp(username: String, email: String, password: String, displayName: String?) async throws {
+    func signUp(username: String, email: String, password: String, displayName: String?, phone: String? = nil) async throws {
         let response = try await api.signup(
             username: username,
             email: email,
             password: password,
-            displayName: displayName
+            displayName: displayName,
+            phone: phone
         )
         KeychainService.saveToken(response.token)
         phase = .signedIn(response.user)

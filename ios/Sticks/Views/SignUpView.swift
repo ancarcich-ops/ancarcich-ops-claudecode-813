@@ -17,6 +17,7 @@ struct SignUpView: View {
     @State private var username: String = ""
     @State private var email: String = ""
     @State private var displayName: String = ""
+    @State private var phone: String = ""
     @State private var password: String = ""
     @State private var errorMessage: String?
     @State private var isSubmitting: Bool = false
@@ -27,6 +28,7 @@ struct SignUpView: View {
         case username
         case email
         case displayName
+        case phone
         case password
     }
 
@@ -80,7 +82,26 @@ struct SignUpView: View {
                             keyboard: .default,
                             submitLabel: .next
                         ) {
-                            focusedField = .password
+                            focusedField = .phone
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            inputField(
+                                "Phone (optional)",
+                                text: $phone,
+                                field: .phone,
+                                contentType: .telephoneNumber,
+                                keyboard: .phonePad,
+                                submitLabel: .next
+                            ) {
+                                focusedField = .password
+                            }
+
+                            Text("So friends can find you. Optional.")
+                                .font(SticksFont.mono(10))
+                                .kerning(0.8)
+                                .foregroundStyle(Color.sticksFaint)
+                                .padding(.leading, 4)
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
@@ -212,6 +233,7 @@ struct SignUpView: View {
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
         let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
         let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespaces)
         let currentPassword = password
 
         Task {
@@ -221,7 +243,8 @@ struct SignUpView: View {
                     username: trimmedUsername,
                     email: trimmedEmail,
                     password: currentPassword,
-                    displayName: trimmedDisplayName.isEmpty ? nil : trimmedDisplayName
+                    displayName: trimmedDisplayName.isEmpty ? nil : trimmedDisplayName,
+                    phone: trimmedPhone.isEmpty ? nil : trimmedPhone
                 )
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch let error as APIError {
