@@ -375,8 +375,38 @@ struct MatchDetailView: View {
     /// leading, Sticks wordmark, then the shared [+ New round] +
     /// [All my groups ▾] cluster — so match detail reads like the rest
     /// of the app instead of a bare pushed view.
+    ///
+    /// Like Home's header, the row is a ViewThatFits ladder: the back
+    /// chevron, wordmark, and [+ New round]/[All my groups] pills never
+    /// give way; the (redundant here — there's already a back chevron)
+    /// Home pill steps text → icon → hidden and the wordmark shrinks
+    /// before anything squishes or truncates.
     private var appHeaderBar: some View {
-        HStack(alignment: .center, spacing: 10) {
+        ViewThatFits(in: .horizontal) {
+            appHeaderRow(wordmarkSize: 26, homePill: .text)
+            appHeaderRow(wordmarkSize: 26, homePill: .icon)
+            appHeaderRow(wordmarkSize: 22, homePill: .icon)
+            appHeaderRow(wordmarkSize: 26, homePill: .hidden)
+            appHeaderRow(wordmarkSize: 22, homePill: .hidden)
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .background(Color.sticksBg)
+        .overlay(alignment: .bottom) {
+            Color.sticksHairline.frame(height: 1)
+        }
+    }
+
+    /// One candidate row for the ViewThatFits ladder. Rows are rigid
+    /// apart from the Spacer (fixedSize wordmark, fixed-size pills), so
+    /// ViewThatFits picks the first row whose content truly fits.
+    private func appHeaderRow(
+        wordmarkSize: CGFloat,
+        homePill: HeaderControls.HomePillStyle
+    ) -> some View {
+        HStack(alignment: .center, spacing: 0) {
             HStack(spacing: 6) {
                 Button {
                     dismiss()
@@ -392,24 +422,21 @@ struct MatchDetailView: View {
 
                 (Text("Sticks").foregroundStyle(Color.sticksInk)
                     + Text(".").foregroundStyle(Color.sticksGreen))
-                    .font(SticksFont.display(26))
+                    .font(SticksFont.display(wordmarkSize))
                     .lineLimit(1)
+                    .fixedSize()
             }
-            .layoutPriority(1)
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 8)
 
             if let user = session.user {
-                HeaderControls(user: user, session: session, showsCreate: $showsCreate)
+                HeaderControls(
+                    user: user,
+                    session: session,
+                    showsCreate: $showsCreate,
+                    homePill: homePill
+                )
             }
-        }
-        .padding(.leading, 12)
-        .padding(.trailing, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-        .background(Color.sticksBg)
-        .overlay(alignment: .bottom) {
-            Color.sticksHairline.frame(height: 1)
         }
     }
 
