@@ -6,5 +6,9 @@
 	<array>
 		<string>workout-processing</string>
 	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Sticks reads your heart rate and activity during a round to track it as a golf workout and keep live yardages on your wrist.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Sticks saves your round to Health as a golf workout so it counts toward your Activity rings.</string>
 </dict>
 </plist>

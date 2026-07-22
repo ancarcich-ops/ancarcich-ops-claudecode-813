@@ -10,6 +10,12 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Sticks uses Face ID to sign you in without retyping your password.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Sticks uses your location to show live GPS distances to the green while you play, and to keep those distances live on your lock screen and Apple Watch during a round.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Sticks works with Health to launch its Apple Watch companion automatically and record your rounds as golf workouts.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Sticks saves your rounds to Health as golf workouts from your Apple Watch.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Newsreader-Medium.ttf</string>
