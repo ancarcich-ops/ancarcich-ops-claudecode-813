@@ -32,6 +32,11 @@ extension Notification.Name {
     /// Posted by the switcher's "People & follows" link; the Settings
     /// tab listens and pushes the People screen.
     static let sticksOpenPeople = Notification.Name("sticksOpenPeople")
+
+    /// Posted by the create-round wizard's "Start a tournament here"
+    /// note; MainTabView flips to Groups, which pushes the tournaments
+    /// list.
+    static let sticksOpenTournaments = Notification.Name("sticksOpenTournaments")
 }
 
 struct HeaderControls: View {

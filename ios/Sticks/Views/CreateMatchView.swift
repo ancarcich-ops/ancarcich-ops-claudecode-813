@@ -41,6 +41,9 @@ struct CreateMatchView: View {
     /// Called with the match id after a successful POST (or PATCH in
     /// edit mode).
     let onCreated: (String) -> Void
+    /// True when this wizard was opened from a tournament's "add round"
+    /// flow — the tournament note would be circular there.
+    private let isTournamentBound: Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: CreateMatchViewModel
@@ -61,6 +64,7 @@ struct CreateMatchView: View {
         self.user = user
         self.session = session
         self.onCreated = onCreated
+        self.isTournamentBound = tournamentId != nil
         _step = State(initialValue: initialStep)
         _viewModel = State(initialValue: CreateMatchViewModel(
             editing: editing,
@@ -248,7 +252,39 @@ struct CreateMatchView: View {
             Text(stepSubtitle)
                 .font(SticksFont.sans(14))
                 .foregroundStyle(Color.sticksMuted)
+
+            if step == .round, !viewModel.isEditing, !isTournamentBound {
+                tournamentNote
+            }
         }
+    }
+
+    /// The web's note under the intro copy: "Stringing rounds together
+    /// or playing with a large group? Start a tournament here →".
+    /// Tapping it closes the wizard and lands on the Tournaments list
+    /// (Groups tab).
+    private var tournamentNote: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            dismiss()
+            NotificationCenter.default.post(name: .sticksOpenTournaments, object: nil)
+        } label: {
+            (
+                Text("Stringing rounds together or playing with a large group? ")
+                    .foregroundStyle(Color.sticksMuted)
+                + Text("Start a tournament here →")
+                    .foregroundStyle(Color.sticksGreen)
+                    .underline()
+            )
+            .font(SticksFont.sans(13))
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 2)
+        .accessibilityLabel("Start a tournament instead")
+        .accessibilityHint("Closes this form and opens tournaments")
     }
 
     private var stepTitle: String {

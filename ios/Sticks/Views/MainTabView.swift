@@ -124,6 +124,11 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .sticksGoHome)) { _ in
             selection = .home
         }
+        // The create wizard's "Start a tournament here" note — land on
+        // Groups; GroupsView pushes the tournaments list itself.
+        .onReceive(NotificationCenter.default.publisher(for: .sticksOpenTournaments)) { _ in
+            selection = .groups
+        }
     }
 }
 

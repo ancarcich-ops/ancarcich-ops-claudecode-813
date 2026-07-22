@@ -105,6 +105,12 @@ struct GroupsView: View {
             guard let group = known.first(where: { $0.id == groupId }) else { return }
             path.append(LeaderboardDestination(group: group))
         }
+        // The create wizard's "Start a tournament here" note — reset to
+        // the tab root and push the tournaments list.
+        .onReceive(NotificationCenter.default.publisher(for: .sticksOpenTournaments)) { _ in
+            path = NavigationPath()
+            path.append(TournamentsDestination())
+        }
     }
 
     /// A round created away from Home: refresh feeds, hop to the Home
