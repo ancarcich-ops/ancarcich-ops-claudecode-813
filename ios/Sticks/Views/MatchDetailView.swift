@@ -388,6 +388,10 @@ struct MatchDetailView: View {
             appHeaderRow(wordmarkSize: 22, homePill: .icon)
             appHeaderRow(wordmarkSize: 26, homePill: .hidden)
             appHeaderRow(wordmarkSize: 22, homePill: .hidden)
+            // Last-resort rung: nothing above fit (huge Dynamic Type /
+            // very narrow width), so ViewThatFits falls back here. The
+            // wordmark scales down instead of truncating to "Stic…".
+            appHeaderRow(wordmarkSize: 22, homePill: .hidden, wordmarkScales: true)
         }
         .padding(.leading, 12)
         .padding(.trailing, 20)
@@ -404,7 +408,8 @@ struct MatchDetailView: View {
     /// ViewThatFits picks the first row whose content truly fits.
     private func appHeaderRow(
         wordmarkSize: CGFloat,
-        homePill: HeaderControls.HomePillStyle
+        homePill: HeaderControls.HomePillStyle,
+        wordmarkScales: Bool = false
     ) -> some View {
         HStack(alignment: .center, spacing: 0) {
             HStack(spacing: 6) {
@@ -420,11 +425,19 @@ struct MatchDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back")
 
-                (Text("Sticks").foregroundStyle(Color.sticksInk)
+                let mark = (Text("Sticks").foregroundStyle(Color.sticksInk)
                     + Text(".").foregroundStyle(Color.sticksGreen))
                     .font(SticksFont.display(wordmarkSize))
                     .lineLimit(1)
-                    .fixedSize()
+
+                if wordmarkScales {
+                    // Fallback rung only: shrink to fit, never ellipsize.
+                    mark
+                        .minimumScaleFactor(0.55)
+                        .layoutPriority(1)
+                } else {
+                    mark.fixedSize()
+                }
             }
 
             Spacer(minLength: 8)
