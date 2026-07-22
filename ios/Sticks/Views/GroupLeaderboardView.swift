@@ -76,12 +76,14 @@ struct GroupLeaderboardView: View {
 
                 Text(backLabel)
                     .lineLimit(1)
-                    .truncationMode(.tail)
             }
             .font(SticksFont.mono(11.5))
             .kerning(1.15)
             .foregroundStyle(Color.sticksGreen)
-            .frame(maxWidth: 180, alignment: .leading)
+            // The glass toolbar container proposes a compressed width and
+            // ellipsizes even short labels. The label is already bounded —
+            // names > 14 chars fall back to BACK — so refuse compression.
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.leading, 4)
             .padding(.vertical, 6)
             .contentShape(.rect)

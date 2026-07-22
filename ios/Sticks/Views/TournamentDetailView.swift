@@ -86,6 +86,8 @@ struct TournamentDetailView: View {
             .font(SticksFont.mono(11.5))
             .kerning(1.15)
             .foregroundStyle(Color.sticksGreen)
+            // Keep the glass toolbar container from compressing the label.
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.leading, 4)
             .padding(.vertical, 6)
             .contentShape(.rect)
