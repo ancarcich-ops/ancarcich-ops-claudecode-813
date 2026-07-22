@@ -1,34 +1,46 @@
 {
   "theme": {
-    "style": "A premium clubhouse-meets-trading-floor world: deep forest greens paired with ivory and warm brass accents, evoking fairway turf at dusk and old-money golf tradition. Lighting is soft and directional like early morning golf light, with subtle paper and felt textures underneath glassy modern gradients. The mood is confident, tactile, and quietly competitive — never loud, never cartoonish.",
-    "headlineFont": "'Fraunces', serif — import via @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&display=swap')",
+    "style": "Clubhouse-at-dusk luxury: deep forest green felt textures paired with warm ivory and brass light, evoking leather scorecards, polished trophies, and old-money fairways. Lighting is soft and directional like late afternoon sun through clubhouse windows, with fine grain and velvet-smooth gradients. Mood is quietly confident and traditional, never flashy or arcade-like.",
+    "headlineFont": "'Plus Jakarta Sans', sans-serif — import via @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap')",
     "headlineFontSize": 124,
     "mockupIds": {
       "iphone": "deep-blue",
       "ipad": "space-gray"
     },
     "palette": {
-      "primary": "#173B2C",
-      "secondary": "#F4EDE0",
-      "accent": "#C9A227"
+      "primary": "#123524",
+      "secondary": "#F2EBDD",
+      "accent": "#C89B3C"
     }
   },
   "slides": [
     {
       "label": "Live Scorecard",
-      "backgroundPrompt": "Rich cinematic deep forest green environment, nearly solid with a faint vignette darkening toward the edges, a single soft diagonal shaft of warm ivory light sweeping across the lower half. Subtle felt-like texture grain throughout, with faint brass-toned particles drifting in the light beam, deep shadows pooling in the corners for dramatic depth. The upper 30% stays calm and dark for text overlay, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/633b1042-6481-4083-947f-471b71b816f8.png"
+      "backgroundPrompt": "Abstract digital art of a nearly solid deep forest green (#123524) surface with a soft warm ivory (#F2EBDD) light shaft cutting diagonally from the lower right, subtle felt-like texture visible under the light, fine grain throughout, the upper 30% darker and calmer for text overlay, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/cfc73c53-b7ad-4487-b8b4-a06036926379.png"
     },
     {
       "label": "Win Percentage Market",
-      "backgroundPrompt": "Warm ivory cream environment with a fine, almost imperceptible textured grain like aged paper, softly lit from the upper right with a golden brass glow pooling in the lower third. Thin curling ribbons of muted forest green light drift diagonally across the frame, catching subtle highlights as they overlap. The top portion of the frame is lighter but softly diffused and uncluttered for text placement, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/813d232b-9414-43ea-8407-7d0a8912124b.png"
+      "backgroundPrompt": "Abstract digital art on a deep forest green (#123524) base with drifting brass (#C89B3C) particle light trails swirling diagonally from bottom-left to top-right, small glowing embers scattered mid-frame, cinematic rim lighting giving a trading-floor energy, the top third darker and uncluttered, subtle grain texture, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/10970c0c-0f40-4d67-bd7d-a15f6cbe531c.png"
+    },
+    {
+      "label": "Side Games",
+      "backgroundPrompt": "Abstract digital art with an ivory cream (#F2EBDD) base and thin curling ribbons of muted forest green (#123524) light weaving gracefully across the frame, soft golden brass (#C89B3C) highlights catching the ribbon edges, warm diffused lighting from above, delicate depth of field blur at the corners, the upper 30% kept calm and open, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/08c276b1-9bdf-452b-8116-a3b32b873888.png"
+    },
+    {
+      "label": "Stats",
+      "backgroundPrompt": "Abstract digital art of a deep forest green (#123524) vignette with a single soft diagonal ivory (#F2EBDD) light beam crossing from top-left to bottom-right, minimal composition with subtle brass (#C89B3C) glow pooling at the base, fine dust particles suspended in the beam, editorial and restrained mood, upper region dark and calm for text, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/b184dae0-38a1-4402-b959-37edf9702ac7.png"
     }
   ],
   "headlines": {
     "en": {
-      "Live Scorecard": "Scores That<br>Keep Themselves",
-      "Win Percentage Market": "Odds Shift<br>Every Hole"
+      "Live Scorecard": "Scores<br>Keep Themselves",
+      "Win Percentage Market": "Watch The Odds<br>Shift Live",
+      "Side Games": "Classic Games.<br>Zero Math.",
+      "Stats": "Every Round.<br>Remembered."
     }
   }
 }
