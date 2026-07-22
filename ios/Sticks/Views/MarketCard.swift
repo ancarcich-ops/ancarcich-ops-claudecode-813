@@ -561,15 +561,15 @@ struct MarketCard: View {
     // MARK: - Side-game markets
 
     /// A side-game chip's content: that leaderboard (or all of the
-    /// game's boards when it only has one chip).
+    /// game's boards when it only has one chip), rendered with the
+    /// same bordered player-row treatment as the Win % market.
     @ViewBuilder
     private func sideGameSection(_ game: SideGame, board: SideGameLeaderboard?) -> some View {
         let boards: [SideGameLeaderboard] = board.map { [$0] } ?? game.leaderboards
+        let hasRows = boards.contains { !$0.rows.isEmpty }
 
-        if boards.isEmpty {
-            Text("No results yet — scores feed this game as the round goes.")
-                .font(SticksFont.sans(12))
-                .foregroundStyle(Color.sticksMuted)
+        if !hasRows {
+            sideGameEmptyState(game)
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(boards) { board in
@@ -579,52 +579,142 @@ struct MarketCard: View {
         }
     }
 
+    /// Friendly empty state — the boards fill in as scores land.
+    private func sideGameEmptyState(_ game: SideGame) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "chart.bar")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(Color.sticksFaint)
+
+            Text("No \(Self.marketGameLabel(game.kind)) results yet")
+                .font(SticksFont.sans(13, weight: .semibold))
+                .foregroundStyle(Color.sticksInk)
+
+            Text("Scores feed this board as the round goes.")
+                .font(SticksFont.sans(12))
+                .foregroundStyle(Color.sticksMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .background(Color.sticksPanel2.opacity(0.25))
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
     private func boardSection(_ board: SideGameLeaderboard) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
+        // Bars are relative to the board's best positive score; boards
+        // with no positive numbers (all zeros / text-only values) show
+        // empty tracks so the rows still read like the Win % market.
+        let maxNumeric = board.rows.compactMap(\.numeric).map { max($0, 0) }.max() ?? 0
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(board.title)
                     .font(SticksFont.sans(13, weight: .semibold))
                     .foregroundStyle(Color.sticksInk)
+
+                Spacer(minLength: 12)
+
                 if let subtitle = board.subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(SticksFont.sans(12))
+                    Text(subtitle.uppercased())
+                        .font(SticksFont.mono(10))
+                        .kerning(0.8)
                         .foregroundStyle(Color.sticksMuted)
+                        .lineLimit(1)
                 }
             }
 
-            VStack(spacing: 0) {
-                ForEach(Array(board.rows.enumerated()), id: \.offset) { position, row in
-                    if position > 0 {
-                        Rectangle()
-                            .fill(Color.sticksHairline)
-                            .frame(height: 1)
+            if board.rows.isEmpty {
+                Text("No results yet — scores feed this board as the round goes.")
+                    .font(SticksFont.sans(12))
+                    .foregroundStyle(Color.sticksMuted)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(Array(board.rows.enumerated()), id: \.offset) { _, row in
+                        boardRow(row, maxNumeric: maxNumeric)
                     }
-                    boardRow(row)
                 }
             }
         }
     }
 
-    private func boardRow(_ row: SideGameRow) -> some View {
-        HStack(spacing: 8) {
-            Text(row.player)
-                .font(SticksFont.sans(13))
-                .foregroundStyle(Color.sticksInk)
-                .lineLimit(1)
+    /// One side-game row, styled like the Win % player rows — avatar,
+    /// name, LEAD chip, the server-formatted value, and a bar in the
+    /// player's market identity color.
+    private func boardRow(_ row: SideGameRow, maxNumeric: Double) -> some View {
+        // Match the row back to a seated player for the avatar + color.
+        let seatIndex = detail.players.firstIndex { $0.id == row.playerId }
+        let player = seatIndex.map { detail.players[$0] }
+        let color = seatIndex.map(marketColor) ?? Color.sticksMuted
+        let fraction: Double = {
+            guard maxNumeric > 0, let numeric = row.numeric else { return 0 }
+            return min(max(numeric / maxNumeric, 0), 1)
+        }()
 
-            if row.isLeader {
-                MarketLeadChip()
+        return VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if let player {
+                    MarketAvatar(player: player, fallback: color)
+                } else {
+                    MarketInitialsBubble(name: row.player, fill: color)
+                }
+
+                Text(row.player)
+                    .font(SticksFont.sans(13, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
+                    .lineLimit(1)
+
+                if let handicap = player?.handicap {
+                    Text("hcp \(handicapText(handicap))")
+                        .font(SticksFont.mono(9))
+                        .foregroundStyle(Color.sticksMuted)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.sticksPanel2)
+                        .clipShape(.capsule)
+                        .overlay(
+                            Capsule().stroke(Color.sticksHairline, lineWidth: 1)
+                        )
+                }
+
+                if row.isLeader {
+                    MarketLeadChip()
+                }
+
+                Spacer(minLength: 8)
+
+                // Pre-formatted by the server — displayed verbatim.
+                Text(row.value)
+                    .font(SticksFont.display(16, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.sticksInk)
+                    .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
-
-            // Pre-formatted by the server — displayed verbatim.
-            Text(row.value)
-                .font(SticksFont.mono(13))
-                .monospacedDigit()
-                .foregroundStyle(Color.sticksInk)
+            // Relative standing bar in the player's identity color.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.sticksPanel2)
+                    if fraction > 0 {
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(geo.size.width * fraction, 4))
+                            .animation(.easeOut(duration: 0.35), value: fraction)
+                    }
+                }
+            }
+            .frame(height: 6)
         }
-        .padding(.vertical, 8)
+        .padding(12)
+        .background(Color.sticksPanel2.opacity(0.25))
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(row.isLeader ? color.opacity(0.45) : Color.sticksHairline, lineWidth: 1)
+        )
     }
 
     // MARK: - Place your call
@@ -829,6 +919,28 @@ private struct MarketAvatar: View {
 
     private var initials: String {
         let parts = player.displayName.split(separator: " ").prefix(2)
+        let letters = parts.compactMap { $0.first.map(String.init) }
+        return letters.isEmpty ? "?" : letters.joined().uppercased()
+    }
+}
+
+/// 18pt initials bubble for side-game rows whose player isn't seated
+/// in the match payload (name-only rows).
+private struct MarketInitialsBubble: View {
+    let name: String
+    let fill: Color
+
+    var body: some View {
+        Text(initials)
+            .font(SticksFont.label(7, weight: .bold))
+            .foregroundStyle(Color.sticksCream)
+            .frame(width: 18, height: 18)
+            .background(fill)
+            .clipShape(.circle)
+    }
+
+    private var initials: String {
+        let parts = name.split(separator: " ").prefix(2)
         let letters = parts.compactMap { $0.first.map(String.init) }
         return letters.isEmpty ? "?" : letters.joined().uppercased()
     }
