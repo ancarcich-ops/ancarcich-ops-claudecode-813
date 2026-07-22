@@ -20,6 +20,11 @@
       "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/cfc73c53-b7ad-4487-b8b4-a06036926379.png"
     },
     {
+      "label": "On-Course GPS",
+      "backgroundPrompt": "Abstract digital art of a deep forest green (#123524) base evoking a golf course seen from above at dusk: sweeping darker emerald contour bands curving like fairway mowing lines, two faint brass (#C89B3C) arcing lines fading into the dark like yardage arcs, a soft ivory (#F2EBDD) glow rising from the lower edge like coastal light, the upper 30% darker and calm for text overlay, subtle grain texture, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no numbers, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/6f356bff-e172-4078-8c96-0caef21a5cb9.png"
+    },
+    {
       "label": "Win Percentage Market",
       "backgroundPrompt": "Abstract digital art on a deep forest green (#123524) base with drifting brass (#C89B3C) particle light trails swirling diagonally from bottom-left to top-right, small glowing embers scattered mid-frame, cinematic rim lighting giving a trading-floor energy, the top third darker and uncluttered, subtle grain texture, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
       "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/10970c0c-0f40-4d67-bd7d-a15f6cbe531c.png"
@@ -38,6 +43,7 @@
   "headlines": {
     "en": {
       "Live Scorecard": "Scores<br>Keep Themselves",
+      "On-Course GPS": "Exact Yardage.<br>Every Shot.",
       "Win Percentage Market": "Watch The Odds<br>Shift Live",
       "Side Games": "Classic Games.<br>Zero Math.",
       "Stats": "Every Round.<br>Remembered."
