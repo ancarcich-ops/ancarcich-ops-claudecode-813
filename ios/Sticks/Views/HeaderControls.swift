@@ -139,14 +139,14 @@ struct HeaderControls: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                switcherLabel
+            HStack(spacing: 7) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(Color.sticksFaint)
+                switcherLabel
             }
-            .padding(.horizontal, 11)
+            .padding(.horizontal, 13)
             .frame(height: 36)
             .background(Color.sticksCard)
             .clipShape(.capsule)
