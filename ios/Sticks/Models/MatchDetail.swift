@@ -370,6 +370,70 @@ extension SideGameEvent: Decodable {
     }
 }
 
+/// One market's cumulative-per-hole series row. `values[matchPlayerId]`
+/// is that player's running total through `hole`. The server sends each
+/// row as `{ "hole": Int, "<matchPlayerId>": Double, … }` — `hole` is
+/// decoded explicitly and every remaining numeric key becomes a player
+/// entry (same dynamic-key shape as OddsSeriesPoint).
+nonisolated struct SideGameSeriesRow: Decodable, Hashable {
+    let hole: Int
+    /// matchPlayerId → cumulative value through this hole.
+    let values: [String: Double]
+
+    private struct DynamicKey: CodingKey {
+        let stringValue: String
+        let intValue: Int? = nil
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicKey.self)
+        var hole = 0
+        var values: [String: Double] = [:]
+        for key in container.allKeys {
+            if key.stringValue == "hole" {
+                if let intValue = try? container.decode(Int.self, forKey: key) {
+                    hole = intValue
+                } else if let doubleValue = try? container.decode(Double.self, forKey: key) {
+                    hole = Int(doubleValue)
+                }
+            } else if let value = try? container.decode(Double.self, forKey: key) {
+                values[key.stringValue] = value
+            }
+        }
+        self.hole = hole
+        self.values = values
+    }
+}
+
+nonisolated struct SideGameSeriesSet: Decodable, Hashable {
+    let rows: [SideGameSeriesRow]
+
+    private enum CodingKeys: String, CodingKey { case rows }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rows = (try? container.decode([SideGameSeriesRow].self, forKey: .rows)) ?? []
+    }
+}
+
+/// All side-game chart series for the match (slice 71). Absent games —
+/// not enabled on the round, or ineligible (Nassau needs 18 holes,
+/// Sixes needs 18 holes + 4 players) — decode to nil.
+nonisolated struct SideGameSeries: Decodable, Hashable {
+    let stableford: SideGameSeriesSet?
+    let skins: SideGameSeriesSet?
+    let nassauF9: SideGameSeriesSet?
+    let nassauB9: SideGameSeriesSet?
+    let nassauTotal: SideGameSeriesSet?
+    let bbb: SideGameSeriesSet?
+    let snake: SideGameSeriesSet?
+    let wolf: SideGameSeriesSet?
+    let match: SideGameSeriesSet?
+    let sixes: SideGameSeriesSet?
+}
+
 nonisolated struct MatchDetailResponse: Decodable {
     var match: MatchDetail
     /// Keyed by absolute hole number (converted from string keys).
@@ -390,9 +454,14 @@ nonisolated struct MatchDetailResponse: Decodable {
     /// Raw per-game config JSON strings keyed by game kind (Wolf uses
     /// this in a later slice) — empty when none.
     let sideGameConfigs: [String: String]
+    /// Slice 71: cumulative-per-hole chart series for each enabled side
+    /// game — nil on older servers or when the round has none. Decoded
+    /// leniently so malformed data never breaks the screen.
+    let sideGameSeries: SideGameSeries?
 
     private enum CodingKeys: String, CodingKey {
         case match, holeGeo, hazards, wind, odds, sideGames, sideGameEvents, sideGameConfigs
+        case sideGameSeries
     }
 
     init(from decoder: Decoder) throws {
@@ -416,5 +485,6 @@ nonisolated struct MatchDetailResponse: Decodable {
         sideGames = (try? container.decode([SideGame].self, forKey: .sideGames)) ?? []
         sideGameEvents = (try? container.decode([SideGameEvent].self, forKey: .sideGameEvents)) ?? []
         sideGameConfigs = (try? container.decode([String: String].self, forKey: .sideGameConfigs)) ?? [:]
+        sideGameSeries = try? container.decode(SideGameSeries.self, forKey: .sideGameSeries)
     }
 }

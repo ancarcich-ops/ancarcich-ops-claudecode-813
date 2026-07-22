@@ -16,6 +16,11 @@
 //  chart pinned to the full 1…18 hole domain with dotted gridlines
 //  and 25/50/75 axis labels, bordered per-player rows in web market
 //  colors (green/blue/gold/red by seat order) with "wagers" wording.
+//  Slice 71 (graphs): the chips become a real market picker — each
+//  side game draws its own cumulative line chart (SideGameLineChart,
+//  fed by the server's sideGameSeries) in place of the win graph. Only
+//  the chart swaps: the Win % player rows and "Place your call" stay
+//  put, and per-game standings live in the Scorecard tab's Standings.
 //
 
 import SwiftUI
@@ -25,9 +30,9 @@ import UIKit
 struct MarketCard: View {
     let detail: MatchDetail
     let odds: MatchOdds
-    /// Side games with pre-computed leaderboards — each leaderboard
-    /// becomes a market chip next to Win %.
-    var sideGames: [SideGame] = []
+    /// Cumulative per-hole chart series for each enabled side game —
+    /// drives the market picker; absent games simply don't get a pill.
+    var sideGameSeries: SideGameSeries? = nil
     let viewModel: MatchDetailViewModel
     let session: SessionStore
 
@@ -40,10 +45,8 @@ struct MarketCard: View {
     /// True between touch-down and release — hides the latest-dot pulse.
     @State private var isScrubbing = false
 
-    /// Active market chip — `winTabId` shows the Win % market.
-    @State private var selectedTabId: String = MarketCard.winTabId
-
-    private static let winTabId = "win"
+    /// Active market pill — Win % by default.
+    @State private var market: GraphMarket = .win
 
     /// One player's polyline through the series buckets.
     private struct PlayerLine: Identifiable {
@@ -51,14 +54,6 @@ struct MarketCard: View {
         let name: String
         let color: Color
         let points: [(hole: Int, pct: Double)]
-    }
-
-    /// One selectable market: Win % or a single side-game leaderboard.
-    private struct MarketTab: Identifiable {
-        let id: String
-        let label: String
-        let game: SideGame?
-        let board: SideGameLeaderboard?
     }
 
     /// Players ranked by blended win probability, best first — used by
@@ -71,12 +66,7 @@ struct MarketCard: View {
 
     /// Web market identity colors, assigned by seat order.
     private func marketColor(_ index: Int) -> Color {
-        switch index % 4 {
-        case 0: return .sticksGreen
-        case 1: return Color(red: 59 / 255, green: 130 / 255, blue: 246 / 255)
-        case 2: return .sticksGold
-        default: return .sticksError
-        }
+        MarketPalette.color(index)
     }
 
     /// Player index in seat order — drives the market color.
@@ -113,69 +103,43 @@ struct MarketCard: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// Win % plus one chip per side-game leaderboard. A multi-board
-    /// game (Nassau) fans out into "Nassau · F9 / B9 / Total".
-    private var marketTabs: [MarketTab] {
-        var tabs: [MarketTab] = [
-            MarketTab(id: Self.winTabId, label: "Win %", game: nil, board: nil)
-        ]
-        for game in sideGames {
-            let base = Self.marketGameLabel(game.kind)
-            if game.leaderboards.count > 1 {
-                for board in game.leaderboards {
-                    tabs.append(MarketTab(
-                        id: "\(game.kind)|\(board.id)",
-                        label: "\(base) · \(Self.boardShortLabel(board))",
-                        game: game,
-                        board: board
-                    ))
-                }
-            } else {
-                tabs.append(MarketTab(
-                    id: "\(game.kind)|all",
-                    label: base,
-                    game: game,
-                    board: game.leaderboards.first
-                ))
-            }
+    /// Win % first, then only the side games with a non-empty series —
+    /// same order as the web. Drives which pills show.
+    private var availableMarkets: [GraphMarket] {
+        var out: [GraphMarket] = [.win]
+        for m in GraphMarket.sideGameOrder where !(m.rows(sideGameSeries)?.isEmpty ?? true) {
+            out.append(m)
         }
-        return tabs
-    }
-
-    /// Full chip label — the web spells out Stableford.
-    private static func marketGameLabel(_ kind: String) -> String {
-        kind == "STABLEFORD" ? "Stableford" : MatchDetailMath.kindLabel(kind)
-    }
-
-    /// "Front 9" → F9, "Back 9" → B9, "Total"/"Overall" → Total.
-    private static func boardShortLabel(_ board: SideGameLeaderboard) -> String {
-        let title = board.title.lowercased()
-        if title.contains("front") { return "F9" }
-        if title.contains("back") { return "B9" }
-        if title.contains("total") || title.contains("overall") { return "Total" }
-        return board.title
+        return out
     }
 
     var body: some View {
-        let tabs = marketTabs
-        let activeTab = tabs.first(where: { $0.id == selectedTabId }) ?? tabs[0]
+        let markets = availableMarkets
+        // Fall back to Win % if a refetch drops the selected series.
+        let active: GraphMarket = markets.contains(market) ? market : .win
 
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            if tabs.count > 1 {
+            if markets.count > 1 {
                 MarketChipFlow(spacing: 8, rowSpacing: 8) {
-                    ForEach(tabs) { tab in
-                        marketChip(tab, isActive: tab.id == activeTab.id)
+                    ForEach(markets) { m in
+                        marketChip(m, isActive: m == active)
                     }
                 }
             }
 
-            if let game = activeTab.game {
-                sideGameSection(game, board: activeTab.board)
-            } else {
-                winMarketBody
-            }
+            // Only the graph swaps with the picker — the player rows
+            // and the call market underneath are always Win %.
+            chartArea(for: active)
+
+            playerRows
+
+            Rectangle()
+                .fill(Color.sticksHairline.opacity(0.6))
+                .frame(height: 1)
+
+            callSection
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,23 +162,20 @@ struct MarketCard: View {
         }
     }
 
-    /// The Win % market: chart, per-player rows, and the call section.
+    /// The swappable graph: the win-probability chart (scrub tooltip,
+    /// pulsing dots) for Win %, a cumulative side-game line chart for
+    /// everything else.
     @ViewBuilder
-    private var winMarketBody: some View {
-        let lines = self.lines
-
-        if lines.contains(where: { $0.points.count >= 2 }) {
-            chart(lines)
-                .frame(height: 190)
+    private func chartArea(for market: GraphMarket) -> some View {
+        if market == .win {
+            let lines = self.lines
+            if lines.contains(where: { $0.points.count >= 2 }) {
+                chart(lines)
+                    .frame(height: 190)
+            }
+        } else if let rows = market.rows(sideGameSeries) {
+            SideGameLineChart(detail: detail, rows: rows, market: market)
         }
-
-        playerRows
-
-        Rectangle()
-            .fill(Color.sticksHairline.opacity(0.6))
-            .frame(height: 1)
-
-        callSection
     }
 
     // MARK: - Header
@@ -245,13 +206,13 @@ struct MarketCard: View {
 
     // MARK: - Market chips
 
-    private func marketChip(_ tab: MarketTab, isActive: Bool) -> some View {
+    private func marketChip(_ target: GraphMarket, isActive: Bool) -> some View {
         Button {
-            guard selectedTabId != tab.id else { return }
+            guard market != target else { return }
             UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation(.easeOut(duration: 0.15)) { selectedTabId = tab.id }
+            withAnimation(.easeOut(duration: 0.15)) { market = target }
         } label: {
-            Text(tab.label)
+            Text(target.label)
                 .font(SticksFont.mono(11))
                 .foregroundStyle(isActive ? Color.sticksGreen : Color.sticksMuted)
                 .padding(.horizontal, 11)
@@ -558,165 +519,6 @@ struct MarketCard: View {
             : String(format: "%.1f", handicap)
     }
 
-    // MARK: - Side-game markets
-
-    /// A side-game chip's content: that leaderboard (or all of the
-    /// game's boards when it only has one chip), rendered with the
-    /// same bordered player-row treatment as the Win % market.
-    @ViewBuilder
-    private func sideGameSection(_ game: SideGame, board: SideGameLeaderboard?) -> some View {
-        let boards: [SideGameLeaderboard] = board.map { [$0] } ?? game.leaderboards
-        let hasRows = boards.contains { !$0.rows.isEmpty }
-
-        if !hasRows {
-            sideGameEmptyState(game)
-        } else {
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(boards) { board in
-                    boardSection(board)
-                }
-            }
-        }
-    }
-
-    /// Friendly empty state — the boards fill in as scores land.
-    private func sideGameEmptyState(_ game: SideGame) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "chart.bar")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(Color.sticksFaint)
-
-            Text("No \(Self.marketGameLabel(game.kind)) results yet")
-                .font(SticksFont.sans(13, weight: .semibold))
-                .foregroundStyle(Color.sticksInk)
-
-            Text("Scores feed this board as the round goes.")
-                .font(SticksFont.sans(12))
-                .foregroundStyle(Color.sticksMuted)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 22)
-        .background(Color.sticksPanel2.opacity(0.25))
-        .clipShape(.rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.sticksHairline, lineWidth: 1)
-        )
-    }
-
-    private func boardSection(_ board: SideGameLeaderboard) -> some View {
-        // Bars are relative to the board's best positive score; boards
-        // with no positive numbers (all zeros / text-only values) show
-        // empty tracks so the rows still read like the Win % market.
-        let maxNumeric = board.rows.compactMap(\.numeric).map { max($0, 0) }.max() ?? 0
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(board.title)
-                    .font(SticksFont.sans(13, weight: .semibold))
-                    .foregroundStyle(Color.sticksInk)
-
-                Spacer(minLength: 12)
-
-                if let subtitle = board.subtitle, !subtitle.isEmpty {
-                    Text(subtitle.uppercased())
-                        .font(SticksFont.mono(10))
-                        .kerning(0.8)
-                        .foregroundStyle(Color.sticksMuted)
-                        .lineLimit(1)
-                }
-            }
-
-            if board.rows.isEmpty {
-                Text("No results yet — scores feed this board as the round goes.")
-                    .font(SticksFont.sans(12))
-                    .foregroundStyle(Color.sticksMuted)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(Array(board.rows.enumerated()), id: \.offset) { _, row in
-                        boardRow(row, maxNumeric: maxNumeric)
-                    }
-                }
-            }
-        }
-    }
-
-    /// One side-game row, styled like the Win % player rows — avatar,
-    /// name, LEAD chip, the server-formatted value, and a bar in the
-    /// player's market identity color.
-    private func boardRow(_ row: SideGameRow, maxNumeric: Double) -> some View {
-        // Match the row back to a seated player for the avatar + color.
-        let seatIndex = detail.players.firstIndex { $0.id == row.playerId }
-        let player = seatIndex.map { detail.players[$0] }
-        let color = seatIndex.map(marketColor) ?? Color.sticksMuted
-        let fraction: Double = {
-            guard maxNumeric > 0, let numeric = row.numeric else { return 0 }
-            return min(max(numeric / maxNumeric, 0), 1)
-        }()
-
-        return VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                if let player {
-                    MarketAvatar(player: player, fallback: color)
-                } else {
-                    MarketInitialsBubble(name: row.player, fill: color)
-                }
-
-                Text(row.player)
-                    .font(SticksFont.sans(13, weight: .semibold))
-                    .foregroundStyle(Color.sticksInk)
-                    .lineLimit(1)
-
-                if let handicap = player?.handicap {
-                    Text("hcp \(handicapText(handicap))")
-                        .font(SticksFont.mono(9))
-                        .foregroundStyle(Color.sticksMuted)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.sticksPanel2)
-                        .clipShape(.capsule)
-                        .overlay(
-                            Capsule().stroke(Color.sticksHairline, lineWidth: 1)
-                        )
-                }
-
-                if row.isLeader {
-                    MarketLeadChip()
-                }
-
-                Spacer(minLength: 8)
-
-                // Pre-formatted by the server — displayed verbatim.
-                Text(row.value)
-                    .font(SticksFont.display(16, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.sticksInk)
-                    .lineLimit(1)
-            }
-
-            // Relative standing bar in the player's identity color.
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.sticksPanel2)
-                    if fraction > 0 {
-                        Capsule()
-                            .fill(color)
-                            .frame(width: max(geo.size.width * fraction, 4))
-                            .animation(.easeOut(duration: 0.35), value: fraction)
-                    }
-                }
-            }
-            .frame(height: 6)
-        }
-        .padding(12)
-        .background(Color.sticksPanel2.opacity(0.25))
-        .clipShape(.rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(row.isLeader ? color.opacity(0.45) : Color.sticksHairline, lineWidth: 1)
-        )
-    }
-
     // MARK: - Place your call
 
     private var callSection: some View {
@@ -921,45 +723,6 @@ private struct MarketAvatar: View {
         let parts = player.displayName.split(separator: " ").prefix(2)
         let letters = parts.compactMap { $0.first.map(String.init) }
         return letters.isEmpty ? "?" : letters.joined().uppercased()
-    }
-}
-
-/// 18pt initials bubble for side-game rows whose player isn't seated
-/// in the match payload (name-only rows).
-private struct MarketInitialsBubble: View {
-    let name: String
-    let fill: Color
-
-    var body: some View {
-        Text(initials)
-            .font(SticksFont.label(7, weight: .bold))
-            .foregroundStyle(Color.sticksCream)
-            .frame(width: 18, height: 18)
-            .background(fill)
-            .clipShape(.circle)
-    }
-
-    private var initials: String {
-        let parts = name.split(separator: " ").prefix(2)
-        let letters = parts.compactMap { $0.first.map(String.init) }
-        return letters.isEmpty ? "?" : letters.joined().uppercased()
-    }
-}
-
-/// Gold "LEAD" chip on a side-game leaderboard's leading row.
-private struct MarketLeadChip: View {
-    var body: some View {
-        Text("LEAD")
-            .font(SticksFont.mono(8))
-            .kerning(0.8)
-            .foregroundStyle(Color.sticksGold)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(Color.sticksGold.opacity(0.1))
-            .clipShape(.capsule)
-            .overlay(
-                Capsule().stroke(Color.sticksGold.opacity(0.3), lineWidth: 1)
-            )
     }
 }
 

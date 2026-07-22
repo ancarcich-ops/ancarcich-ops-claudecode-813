@@ -96,7 +96,7 @@ struct MatchDetailView: View {
                                 MarketCard(
                                     detail: detail,
                                     odds: odds,
-                                    sideGames: viewModel.response?.sideGames ?? [],
+                                    sideGameSeries: viewModel.response?.sideGameSeries,
                                     viewModel: viewModel,
                                     session: session
                                 )
