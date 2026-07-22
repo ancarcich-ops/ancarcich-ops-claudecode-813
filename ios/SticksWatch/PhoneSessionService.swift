@@ -42,6 +42,10 @@ private nonisolated final class ResumeOnce: @unchecked Sendable {
 
 @Observable
 final class PhoneSessionService: NSObject, WCSessionDelegate {
+    /// Single instance shared by the scene and the app delegate — the
+    /// launch-for-workout path must see the same snapshot the UI does.
+    static let shared = PhoneSessionService()
+
     /// Latest round pushed from the phone — nil when no round is live.
     private(set) var snapshot: RoundSnapshot?
 

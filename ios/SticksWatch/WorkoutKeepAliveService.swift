@@ -20,6 +20,10 @@ import Observation
 
 @Observable
 final class WorkoutKeepAliveService: NSObject {
+    /// Single instance shared by the scene and the app delegate — start
+    /// and end must always guard against the same session.
+    static let shared = WorkoutKeepAliveService()
+
     /// True while the golf workout session is live.
     private(set) var isRunning = false
 

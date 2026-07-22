@@ -3,8 +3,9 @@ import WatchKit
 
 @main
 struct SticksWatchApp: App {
-    @State private var phoneSession = PhoneSessionService()
-    @State private var workoutKeepAlive = WorkoutKeepAliveService()
+    @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
+    private let phoneSession = PhoneSessionService.shared
+    private let workoutKeepAlive = WorkoutKeepAliveService.shared
 
     var body: some Scene {
         WindowGroup {

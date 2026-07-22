@@ -91,7 +91,13 @@ final class WatchSessionService: NSObject, WCSessionDelegate {
     // MARK: - WCSessionDelegate
 
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        Task { @MainActor in self.flush() }
+        Task { @MainActor in
+            self.flush()
+            // Cold launch: the session activates after the scene is already
+            // active, so this is the moment isPaired/isWatchAppInstalled
+            // become readable — auto-open the watch companion now.
+            WatchAppLaunchService.shared.launchCompanionAppIfPossible()
+        }
     }
 
     /// Watch → phone commands. Delegate callbacks arrive on a BACKGROUND
