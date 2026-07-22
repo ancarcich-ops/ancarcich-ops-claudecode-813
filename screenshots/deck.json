@@ -1,0 +1,34 @@
+{
+  "theme": {
+    "style": "A premium clubhouse-meets-trading-floor world: deep forest greens paired with ivory and warm brass accents, evoking fairway turf at dusk and old-money golf tradition. Lighting is soft and directional like early morning golf light, with subtle paper and felt textures underneath glassy modern gradients. The mood is confident, tactile, and quietly competitive — never loud, never cartoonish.",
+    "headlineFont": "'Fraunces', serif — import via @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&display=swap')",
+    "headlineFontSize": 124,
+    "mockupIds": {
+      "iphone": "deep-blue",
+      "ipad": "space-gray"
+    },
+    "palette": {
+      "primary": "#173B2C",
+      "secondary": "#F4EDE0",
+      "accent": "#C9A227"
+    }
+  },
+  "slides": [
+    {
+      "label": "Live Scorecard",
+      "backgroundPrompt": "Rich cinematic deep forest green environment, nearly solid with a faint vignette darkening toward the edges, a single soft diagonal shaft of warm ivory light sweeping across the lower half. Subtle felt-like texture grain throughout, with faint brass-toned particles drifting in the light beam, deep shadows pooling in the corners for dramatic depth. The upper 30% stays calm and dark for text overlay, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/633b1042-6481-4083-947f-471b71b816f8.png"
+    },
+    {
+      "label": "Win Percentage Market",
+      "backgroundPrompt": "Warm ivory cream environment with a fine, almost imperceptible textured grain like aged paper, softly lit from the upper right with a golden brass glow pooling in the lower third. Thin curling ribbons of muted forest green light drift diagonally across the frame, catching subtle highlights as they overlap. The top portion of the frame is lighter but softly diffused and uncluttered for text placement, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/813d232b-9414-43ea-8407-7d0a8912124b.png"
+    }
+  ],
+  "headlines": {
+    "en": {
+      "Live Scorecard": "Scores That<br>Keep Themselves",
+      "Win Percentage Market": "Odds Shift<br>Every Hole"
+    }
+  }
+}
