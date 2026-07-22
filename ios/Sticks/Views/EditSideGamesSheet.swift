@@ -93,6 +93,15 @@ struct EditSideGamesSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 24)
                     .padding(.top, 10)
+
+                Text("Sticks only keeps score — no money is collected, held, or paid through the app. Settle up among yourselves.")
+                    .font(SticksFont.mono(10))
+                    .kerning(0.3)
+                    .foregroundStyle(Color.sticksFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 6)
                     .padding(.bottom, 16)
             }
 

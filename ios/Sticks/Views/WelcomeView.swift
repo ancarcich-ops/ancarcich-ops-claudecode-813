@@ -172,7 +172,7 @@ struct WelcomeView: View {
                     featureCard(
                         icon: "chart.line.uptrend.xyaxis",
                         title: "A live betting market",
-                        line: "Win odds blend the model, the crowd, and live scores — tap Place your call to back who wins."
+                        line: "Win odds blend the model, the crowd, and live scores — tap Place your pick to back who wins."
                     )
                     featureCard(
                         icon: "flag.2.crossed",
@@ -278,7 +278,7 @@ struct WelcomeView: View {
 
                     legendRow(
                         title: "Win probability",
-                        line: "The live market — a blend of the model, the crowd's calls, and live scores. The arrow shows the last move (▲ rising, ▼ falling, • flat)."
+                        line: "The live market — a blend of the model, the crowd's picks, and live scores. The arrow shows the last move (▲ rising, ▼ falling, • flat)."
                     ) {
                         (
                             Text("▲ ").foregroundStyle(Color.sticksGreen)
@@ -288,10 +288,10 @@ struct WelcomeView: View {
                     }
 
                     legendRow(
-                        title: "+ Call button",
+                        title: "+ Pick button",
                         line: "Choose who you think will win the match. Two taps to confirm — switches to a ✓ Picked badge after."
                     ) {
-                        Text("+ Call")
+                        Text("+ Pick")
                             .font(SticksFont.mono(11))
                             .foregroundStyle(Color.sticksMuted)
                             .padding(.horizontal, 10)

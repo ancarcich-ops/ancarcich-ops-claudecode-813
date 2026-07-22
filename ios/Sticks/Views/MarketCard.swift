@@ -150,7 +150,7 @@ struct MarketCard: View {
                 .stroke(Color.sticksHairline, lineWidth: 1)
         )
         .alert(
-            "Couldn't place that call",
+            "Couldn't place that pick",
             isPresented: Binding(
                 get: { callError != nil },
                 set: { if !$0 { callError = nil } }
@@ -490,7 +490,7 @@ struct MarketCard: View {
             .frame(height: 6)
 
             HStack {
-                Text("\(wagers) \(wagers == 1 ? "wager" : "wagers")")
+                Text("\(wagers) \(wagers == 1 ? "pick" : "picks")")
                     .font(SticksFont.mono(10))
                     .foregroundStyle(Color.sticksMuted)
 
@@ -524,7 +524,7 @@ struct MarketCard: View {
     private var callSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Place your call")
+                Text("Place your pick")
                     .font(SticksFont.display(13, weight: .bold))
                     .foregroundStyle(Color.sticksInk)
 
@@ -552,8 +552,8 @@ struct MarketCard: View {
 
             if odds.open {
                 Text(odds.myCall == nil
-                    ? "Tap a player to call the winner — one call per person."
-                    : "Tap your pick again to withdraw your call.")
+                    ? "Tap a player to pick the winner — one pick per person."
+                    : "Tap your pick again to withdraw your pick.")
                     .font(SticksFont.sans(11))
                     .foregroundStyle(Color.sticksFaint)
             }
@@ -591,7 +591,7 @@ struct MarketCard: View {
                     .monospacedDigit()
                     .foregroundStyle(Color.sticksInk)
 
-                Text("\(calls) \(calls == 1 ? "call" : "calls")")
+                Text("\(calls) \(calls == 1 ? "pick" : "picks")")
                     .font(SticksFont.mono(10))
                     .foregroundStyle(Color.sticksMuted)
                     .frame(width: 52, alignment: .trailing)
@@ -609,7 +609,7 @@ struct MarketCard: View {
         .buttonStyle(.plain)
         .disabled(!odds.open || pendingCallId != nil)
         .opacity(odds.open ? 1 : 0.6)
-        .accessibilityLabel("\(isMine ? "Withdraw call on" : "Call") \(player.displayName)")
+        .accessibilityLabel("\(isMine ? "Withdraw pick on" : "Pick") \(player.displayName)")
         .accessibilityAddTraits(isMine ? [.isSelected] : [])
     }
 

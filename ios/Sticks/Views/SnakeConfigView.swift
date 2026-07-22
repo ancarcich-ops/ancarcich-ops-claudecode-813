@@ -150,6 +150,13 @@ struct SnakeConfigView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.sticksHairline, lineWidth: 1)
             )
+
+            Text("Sticks only keeps score — no money is collected, held, or paid through the app. Settle up among yourselves.")
+                .font(SticksFont.mono(10))
+                .kerning(0.3)
+                .foregroundStyle(Color.sticksFaint)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
         }
     }
 
