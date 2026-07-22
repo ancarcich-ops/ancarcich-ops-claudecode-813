@@ -2,9 +2,12 @@
 //  RoundGlanceView.swift
 //  SticksWatch
 //
-//  Interactive on-course readout: hole switching via chevrons flanking
-//  the hole label, live yardages, and the wearer's score entry — all
-//  proxied through the phone (the watch never talks to the network).
+//  Direction A — "Rangefinder". The purest read: no ring, no ornament.
+//  Course name · hole switcher pill · hero center yardage · flanks ·
+//  score pill · OVERALL to-par at the base. The Digital Crown scrubs
+//  holes (haptic detent per hole) alongside the chevrons; switching is
+//  optimistic and reverts on failure. In always-on wrist-down the chrome
+//  recedes and the yardage + to-par persist, dimmed.
 //
 
 import SwiftUI
@@ -14,10 +17,18 @@ struct RoundGlanceView: View {
     let snapshot: RoundSnapshot
 
     @Environment(PhoneSessionService.self) private var phoneSession
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
     /// Round index a hole switch is optimistically showing while the
     /// command is in flight — reverted on error/timeout, replaced by the
     /// reply snapshot on success.
     @State private var pendingHoleIndex: Int?
+    /// Crown position in round-index space; drives the same optimistic
+    /// switch path as the chevrons, debounced so scrubbing several holes
+    /// sends one command.
+    @State private var crownHole: Double = 0
+    @State private var commitTask: Task<Void, Never>?
+    @State private var commitGeneration = 0
     /// Brief command failure notice ("CAN'T REACH IPHONE") shown in the
     /// status line, auto-dismissed.
     @State private var transientError: String?
@@ -26,6 +37,8 @@ struct RoundGlanceView: View {
     /// Snapshots older than this are treated as stale — the yardage is no
     /// longer trustworthy and must not be presented as live.
     private static let staleAfter: TimeInterval = 3 * 60
+    /// How long the crown rests on a hole before the switch is committed.
+    private static let crownSettleDelay: Duration = .milliseconds(350)
 
     var body: some View {
         // TimelineView re-evaluates staleness as time passes, even when no
@@ -34,11 +47,35 @@ struct RoundGlanceView: View {
             let isStale = context.date.timeIntervalSince(snapshot.updatedAt) > Self.staleAfter
             content(isStale: isStale)
         }
+        .focusable()
+        .digitalCrownRotation(
+            $crownHole,
+            from: 0,
+            through: Double(max(snapshot.totalHoles - 1, 0)),
+            by: 1,
+            sensitivity: .low,
+            isContinuous: false,
+            isHapticFeedbackEnabled: true
+        )
+        .onChange(of: crownHole) { _, newValue in
+            crownMoved(to: newValue)
+        }
+        .onChange(of: snapshot.holeIndex) { _, newIndex in
+            // The phone settled the hole (reply or its own push) — resync
+            // the crown unless the wearer is mid-scrub.
+            if pendingHoleIndex == nil {
+                crownHole = Double(newIndex)
+            }
+        }
+        .onAppear {
+            crownHole = Double(snapshot.holeIndex)
+        }
         .sheet(isPresented: $showScoreEntry) {
             WatchScoreEntryView(
                 hole: snapshot.hole,
                 par: snapshot.par,
-                initialScore: snapshot.myScore
+                initialScore: snapshot.myScore,
+                overallToPar: snapshot.myToPar
             )
         }
     }
@@ -49,7 +86,7 @@ struct RoundGlanceView: View {
                 Text(snapshot.courseName.uppercased())
                     .font(.system(size: 11, weight: .semibold))
                     .kerning(1.1)
-                    .foregroundStyle(Color.sticksGreenBright)
+                    .foregroundStyle(isLuminanceReduced ? Color.white.opacity(0.35) : Color.sticksGreenBright)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
@@ -60,27 +97,32 @@ struct RoundGlanceView: View {
                     if pendingHoleIndex != nil {
                         ProgressView()
                             .tint(Color.sticksGreenBright)
-                            .frame(height: 58)
+                            .frame(height: 66)
                     } else {
                         Text(centerText)
-                            .font(.system(size: 52, weight: .semibold, design: .serif))
+                            .font(.system(size: 62, weight: .semibold, design: .serif))
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                             .contentTransition(.numericText())
-                            .opacity(isStale ? 0.35 : 1)
+                            .opacity(heroOpacity(isStale: isStale))
                     }
                 }
 
-                statusLine(isStale: isStale)
+                if !isLuminanceReduced {
+                    statusLine(isStale: isStale)
+                }
 
-                HStack(spacing: 18) {
+                HStack(spacing: 20) {
                     flank(label: "FRONT", yards: snapshot.frontYds)
                     flank(label: "BACK", yards: snapshot.backYds)
                 }
-                .padding(.top, 6)
-                .opacity(isStale || pendingHoleIndex != nil ? 0.35 : 1)
+                .padding(.top, 5)
+                .opacity(heroOpacity(isStale: isStale))
 
-                // Spectators (no seat) never see score entry.
-                if snapshot.isSeated {
+                // Spectators (no seat) never see score entry; wrist-down
+                // drops it too — chrome recedes in always-on.
+                if snapshot.isSeated && !isLuminanceReduced {
                     scoreButton
                         .padding(.top, 8)
                 }
@@ -94,19 +136,42 @@ struct RoundGlanceView: View {
         }
     }
 
+    /// Stale and pending both dim the live numbers; wrist-down dims them
+    /// further but keeps them readable — the whole point of always-on.
+    private func heroOpacity(isStale: Bool) -> Double {
+        if isStale || pendingHoleIndex != nil { return 0.35 }
+        return isLuminanceReduced ? 0.55 : 1
+    }
+
     // MARK: - Hole switcher
 
-    /// ‹ HOLE 7 › — chevrons switch the hole on the PHONE; the label
-    /// changes optimistically and the reply snapshot settles it.
+    /// ‹ HOLE 7 · PAR 4 › pill — chevrons switch the hole on the PHONE;
+    /// the label changes optimistically and the reply snapshot settles it.
+    /// Wrist-down the chevrons and pill chrome drop; the label persists.
+    @ViewBuilder
     private var holeSwitcher: some View {
-        HStack(spacing: 6) {
-            chevron("chevron.left", delta: -1)
+        if isLuminanceReduced {
             Text(holeLabel)
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
+                .kerning(0.5)
+                .foregroundStyle(.white.opacity(0.55))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity)
-            chevron("chevron.right", delta: 1)
+        } else {
+            HStack(spacing: 2) {
+                chevron("chevron.left", delta: -1)
+                Text(holeLabel)
+                    .font(.system(size: 13, weight: .bold))
+                    .kerning(0.5)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity)
+                chevron("chevron.right", delta: 1)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.08))
+            .clipShape(Capsule())
         }
     }
 
@@ -123,38 +188,64 @@ struct RoundGlanceView: View {
     }
 
     private func chevron(_ systemName: String, delta: Int) -> some View {
-        let target = snapshot.holeIndex + delta
-        let disabled = pendingHoleIndex != nil || target < 0 || target >= snapshot.totalHoles
+        let target = displayedHoleIndex + delta
+        let disabled = target < 0 || target >= snapshot.totalHoles
         return Button {
-            switchHole(to: target)
+            WKInterfaceDevice.current().play(.click)
+            crownHole = Double(target)
         } label: {
             Image(systemName: systemName)
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(.white.opacity(0.12))
-                .clipShape(Circle())
+                .frame(width: 30, height: 30)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.3 : 1)
     }
 
-    private func switchHole(to target: Int) {
-        guard pendingHoleIndex == nil,
-              target >= 0, target < snapshot.totalHoles else { return }
+    // MARK: - Hole switching (crown + chevrons share this path)
+
+    private var displayedHoleIndex: Int {
+        pendingHoleIndex ?? snapshot.holeIndex
+    }
+
+    /// Optimistic label immediately; the command fires once the crown
+    /// settles so scrubbing 7 holes sends one setHole, not seven.
+    private func crownMoved(to value: Double) {
+        let target = min(max(Int(value.rounded()), 0), max(snapshot.totalHoles - 1, 0))
+        guard target != displayedHoleIndex else { return }
         transientError = nil
         pendingHoleIndex = target
-        WKInterfaceDevice.current().play(.click)
-        Task {
-            do {
-                // Success merges the reply snapshot into phoneSession.
-                _ = try await phoneSession.setHole(index: target)
-            } catch {
-                // The optimistic label never survives a failed send.
+        commitTask?.cancel()
+        commitTask = Task {
+            try? await Task.sleep(for: Self.crownSettleDelay)
+            guard !Task.isCancelled else { return }
+            await commit(target)
+        }
+    }
+
+    private func commit(_ target: Int) async {
+        guard target != snapshot.holeIndex else {
+            pendingHoleIndex = nil
+            return
+        }
+        commitGeneration += 1
+        let generation = commitGeneration
+        do {
+            // Success merges the reply snapshot into phoneSession.
+            _ = try await phoneSession.setHole(index: target)
+            if generation == commitGeneration {
+                pendingHoleIndex = nil
+            }
+        } catch {
+            // The optimistic label never survives a failed send.
+            if generation == commitGeneration {
+                pendingHoleIndex = nil
+                crownHole = Double(snapshot.holeIndex)
                 showTransientError(for: error)
             }
-            pendingHoleIndex = nil
         }
     }
 
@@ -242,11 +333,11 @@ struct RoundGlanceView: View {
         snapshot.centerYds.map(String.init) ?? "—"
     }
 
-    /// "OVERALL SCORE" caption over the wearer's running to-par ("+3" /
-    /// "E" / "-1"), or an em dash before any hole is scored.
+    /// "OVERALL" caption over the wearer's running to-par ("+3" / "E" /
+    /// "-1"), gold, pinned to the base — desaturated wrist-down.
     private var overallScore: some View {
         VStack(spacing: 1) {
-            Text("OVERALL SCORE")
+            Text("OVERALL")
                 .font(.system(size: 9, weight: .semibold))
                 .kerning(1.2)
                 .foregroundStyle(.secondary)
@@ -254,7 +345,7 @@ struct RoundGlanceView: View {
                 .font(.system(size: 22, weight: .bold, design: .serif))
                 .monospacedDigit()
                 .contentTransition(.numericText())
-                .foregroundStyle(Color.sticksGold)
+                .foregroundStyle(isLuminanceReduced ? Color.sticksGold.opacity(0.55) : Color.sticksGold)
         }
     }
 
@@ -270,7 +361,7 @@ struct RoundGlanceView: View {
                 .kerning(1)
                 .foregroundStyle(.secondary)
             Text(yards.map(String.init) ?? "—")
-                .font(.system(size: 20, weight: .semibold, design: .serif))
+                .font(.system(size: 21, weight: .semibold, design: .serif))
                 .monospacedDigit()
         }
     }
