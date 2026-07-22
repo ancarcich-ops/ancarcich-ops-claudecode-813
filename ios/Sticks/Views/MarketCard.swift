@@ -11,6 +11,11 @@
 //  Slice 47: scrub tooltip (hole + per-player win %) with a vertical
 //  indicator, and a pulsing halo on the latest-hole dots — both drawn
 //  natively over Swift Charts via chartOverlay.
+//  Slice 71: web parity — blend line inline in the header, a wrapping
+//  market chip row (Win % + one chip per side-game leaderboard), the
+//  chart pinned to the full 1…18 hole domain with dotted gridlines
+//  and 25/50/75 axis labels, bordered per-player rows in web market
+//  colors (green/blue/gold/red by seat order) with "wagers" wording.
 //
 
 import SwiftUI
@@ -20,6 +25,9 @@ import UIKit
 struct MarketCard: View {
     let detail: MatchDetail
     let odds: MatchOdds
+    /// Side games with pre-computed leaderboards — each leaderboard
+    /// becomes a market chip next to Win %.
+    var sideGames: [SideGame] = []
     let viewModel: MatchDetailViewModel
     let session: SessionStore
 
@@ -32,6 +40,11 @@ struct MarketCard: View {
     /// True between touch-down and release — hides the latest-dot pulse.
     @State private var isScrubbing = false
 
+    /// Active market chip — `winTabId` shows the Win % market.
+    @State private var selectedTabId: String = MarketCard.winTabId
+
+    private static let winTabId = "win"
+
     /// One player's polyline through the series buckets.
     private struct PlayerLine: Identifiable {
         let id: String
@@ -40,25 +53,51 @@ struct MarketCard: View {
         let points: [(hole: Int, pct: Double)]
     }
 
-    /// Players ranked by blended win probability, best first.
+    /// One selectable market: Win % or a single side-game leaderboard.
+    private struct MarketTab: Identifiable {
+        let id: String
+        let label: String
+        let game: SideGame?
+        let board: SideGameLeaderboard?
+    }
+
+    /// Players ranked by blended win probability, best first — used by
+    /// the call section only; the market rows keep seat order like web.
     private var rankedPlayers: [MatchDetailPlayer] {
         detail.players.sorted {
             (odds.probabilities[$0.id] ?? 0) > (odds.probabilities[$1.id] ?? 0)
         }
     }
 
+    /// Web market identity colors, assigned by seat order.
+    private func marketColor(_ index: Int) -> Color {
+        switch index % 4 {
+        case 0: return .sticksGreen
+        case 1: return Color(red: 59 / 255, green: 130 / 255, blue: 246 / 255)
+        case 2: return .sticksGold
+        default: return .sticksError
+        }
+    }
+
+    /// Player index in seat order — drives the market color.
+    private func playerIndex(_ player: MatchDetailPlayer) -> Int {
+        detail.players.firstIndex(where: { $0.id == player.id }) ?? 0
+    }
+
     private var lines: [PlayerLine] {
         guard let series = odds.series else { return [] }
-        return detail.players.compactMap { player in
+        return detail.players.enumerated().compactMap { index, player in
+            // The chart domain starts at hole 1 — pre-round buckets
+            // (hole 0) are dropped like the web.
             let points: [(hole: Int, pct: Double)] = series.compactMap { row in
-                guard let probability = row.probabilities[player.id] else { return nil }
+                guard row.hole >= 1, let probability = row.probabilities[player.id] else { return nil }
                 return (row.hole, probability * 100)
             }
             guard !points.isEmpty else { return nil }
             return PlayerLine(
                 id: player.id,
                 name: player.displayName,
-                color: MatchCardMath.seatColor(player.seat),
+                color: marketColor(index),
                 points: points
             )
         }
@@ -74,25 +113,69 @@ struct MarketCard: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Win % plus one chip per side-game leaderboard. A multi-board
+    /// game (Nassau) fans out into "Nassau · F9 / B9 / Total".
+    private var marketTabs: [MarketTab] {
+        var tabs: [MarketTab] = [
+            MarketTab(id: Self.winTabId, label: "Win %", game: nil, board: nil)
+        ]
+        for game in sideGames {
+            let base = Self.marketGameLabel(game.kind)
+            if game.leaderboards.count > 1 {
+                for board in game.leaderboards {
+                    tabs.append(MarketTab(
+                        id: "\(game.kind)|\(board.id)",
+                        label: "\(base) · \(Self.boardShortLabel(board))",
+                        game: game,
+                        board: board
+                    ))
+                }
+            } else {
+                tabs.append(MarketTab(
+                    id: "\(game.kind)|all",
+                    label: base,
+                    game: game,
+                    board: game.leaderboards.first
+                ))
+            }
+        }
+        return tabs
+    }
+
+    /// Full chip label — the web spells out Stableford.
+    private static func marketGameLabel(_ kind: String) -> String {
+        kind == "STABLEFORD" ? "Stableford" : MatchDetailMath.kindLabel(kind)
+    }
+
+    /// "Front 9" → F9, "Back 9" → B9, "Total"/"Overall" → Total.
+    private static func boardShortLabel(_ board: SideGameLeaderboard) -> String {
+        let title = board.title.lowercased()
+        if title.contains("front") { return "F9" }
+        if title.contains("back") { return "B9" }
+        if title.contains("total") || title.contains("overall") { return "Total" }
+        return board.title
+    }
+
     var body: some View {
-        let lines = self.lines
+        let tabs = marketTabs
+        let activeTab = tabs.first(where: { $0.id == selectedTabId }) ?? tabs[0]
 
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            if lines.contains(where: { $0.points.count >= 2 }) {
-                chart(lines)
-                    .frame(height: 170)
-                legend(lines)
+            if tabs.count > 1 {
+                MarketChipFlow(spacing: 8, rowSpacing: 8) {
+                    ForEach(tabs) { tab in
+                        marketChip(tab, isActive: tab.id == activeTab.id)
+                    }
+                }
             }
 
-            playerRows
-
-            Rectangle()
-                .fill(Color.sticksHairline.opacity(0.6))
-                .frame(height: 1)
-
-            callSection
+            if let game = activeTab.game {
+                sideGameSection(game, board: activeTab.board)
+            } else {
+                winMarketBody
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,56 +198,101 @@ struct MarketCard: View {
         }
     }
 
+    /// The Win % market: chart, per-player rows, and the call section.
+    @ViewBuilder
+    private var winMarketBody: some View {
+        let lines = self.lines
+
+        if lines.contains(where: { $0.points.count >= 2 }) {
+            chart(lines)
+                .frame(height: 190)
+        }
+
+        playerRows
+
+        Rectangle()
+            .fill(Color.sticksHairline.opacity(0.6))
+            .frame(height: 1)
+
+        callSection
+    }
+
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Market")
-                    .font(SticksFont.display(13, weight: .bold))
-                    .foregroundStyle(Color.sticksInk)
+        HStack(alignment: .firstTextBaseline) {
+            Text("Market")
+                .font(SticksFont.display(13, weight: .bold))
+                .foregroundStyle(Color.sticksInk)
 
-                Spacer()
+            Spacer(minLength: 12)
 
-                if odds.open && detail.status == .inProgress {
-                    HStack(spacing: 5) {
-                        MarketRepricingDot()
-                        Text("REPRICING")
-                            .font(SticksFont.mono(10))
-                            .kerning(1)
-                    }
-                    .foregroundStyle(Color.sticksGreen)
-                } else if !odds.open {
-                    Text("CLOSED")
-                        .font(SticksFont.mono(10))
-                        .kerning(1)
-                        .foregroundStyle(Color.sticksMuted)
-                }
-            }
-
-            if let blendLine {
+            if !odds.open {
+                Text("CLOSED")
+                    .font(SticksFont.mono(10))
+                    .kerning(1)
+                    .foregroundStyle(Color.sticksMuted)
+            } else if let blendLine {
                 Text(blendLine)
                     .font(SticksFont.mono(10))
                     .kerning(0.5)
                     .foregroundStyle(Color.sticksMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
     }
 
+    // MARK: - Market chips
+
+    private func marketChip(_ tab: MarketTab, isActive: Bool) -> some View {
+        Button {
+            guard selectedTabId != tab.id else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.easeOut(duration: 0.15)) { selectedTabId = tab.id }
+        } label: {
+            Text(tab.label)
+                .font(SticksFont.mono(11))
+                .foregroundStyle(isActive ? Color.sticksGreen : Color.sticksMuted)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(isActive ? Color.sticksGreen.opacity(0.08) : Color.clear)
+                .clipShape(.capsule)
+                .overlay(
+                    Capsule().stroke(
+                        isActive ? Color.sticksGreen.opacity(0.55) : Color.clear,
+                        lineWidth: 1
+                    )
+                )
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+    }
+
     // MARK: - Chart (slice 34, upgraded)
+
+    /// X-axis tick holes — 1/6/12/18 for full rounds, 1/3/6/9 for nine.
+    private var xAxisTicks: [Int] {
+        let candidates = detail.holes <= 9 ? [1, 3, 6, 9] : [1, 6, 12, 18]
+        return candidates.filter { $0 <= max(detail.holes, 2) }
+    }
 
     private func chart(_ lines: [PlayerLine]) -> some View {
         // Every hole bucket that appears in any line, for scrub snapping.
         let allHoles: [Int] = Array(Set(lines.flatMap { $0.points.map(\.hole) })).sorted()
 
         return Chart {
-            // Faint dashed gridlines at 25/50/75 — the 50% even-odds
-            // line slightly stronger, like the web.
-            ForEach([25, 50, 75], id: \.self) { level in
+            // Faint dotted gridlines framing the plot at 0/25/75/100 —
+            // the 50% even-odds line dash-dotted and stronger, like web.
+            ForEach([0, 25, 75, 100], id: \.self) { level in
                 RuleMark(y: .value("Grid", level))
-                    .foregroundStyle(Color.sticksHairline.opacity(level == 50 ? 0.9 : 0.5))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .foregroundStyle(Color.sticksHairline.opacity(0.55))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 4]))
             }
+            RuleMark(y: .value("Grid", 50))
+                .foregroundStyle(Color.sticksMuted.opacity(0.45))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [8, 4, 2, 4]))
 
             ForEach(lines) { line in
                 ForEach(line.points, id: \.hole) { point in
@@ -224,9 +352,12 @@ struct MarketCard: View {
                 }
             }
         }
+        // Pinned to the full round like the web — the lines occupy only
+        // the played span, leaving the rest of the 18 holes open.
+        .chartXScale(domain: 1 ... max(detail.holes, 2))
         .chartYScale(domain: 0 ... 100)
         .chartYAxis {
-            AxisMarks(position: .leading, values: [0, 50, 100]) { value in
+            AxisMarks(position: .leading, values: [25, 50, 75]) { value in
                 AxisValueLabel {
                     if let pct = value.as(Int.self) {
                         Text("\(pct)%")
@@ -237,9 +368,7 @@ struct MarketCard: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 6)) { value in
-                AxisGridLine()
-                    .foregroundStyle(Color.sticksHairline.opacity(0.4))
+            AxisMarks(values: xAxisTicks) { value in
                 AxisValueLabel {
                     if let hole = value.as(Int.self) {
                         Text("\(hole)")
@@ -341,45 +470,25 @@ struct MarketCard: View {
         .sorted { $0.pct > $1.pct }
     }
 
-    private func legend(_ lines: [PlayerLine]) -> some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 110), alignment: .leading)],
-            alignment: .leading,
-            spacing: 6
-        ) {
-            ForEach(lines) { line in
-                HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(line.color)
-                        .frame(width: 14, height: 4)
-                    Text(line.name)
-                        .font(SticksFont.sans(11))
-                        .foregroundStyle(Color.sticksMuted)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
-
     // MARK: - Per-player rows
 
     private var playerRows: some View {
-        VStack(spacing: 14) {
-            ForEach(rankedPlayers) { player in
-                playerRow(player)
+        VStack(spacing: 10) {
+            // Seat order like the web, each row its own bordered card.
+            ForEach(Array(detail.players.enumerated()), id: \.element.id) { index, player in
+                playerRow(player, color: marketColor(index))
             }
         }
     }
 
-    private func playerRow(_ player: MatchDetailPlayer) -> some View {
+    private func playerRow(_ player: MatchDetailPlayer, color: Color) -> some View {
         let probability = odds.probabilities[player.id] ?? 0
-        let calls = odds.wagerCounts[player.id] ?? 0
+        let wagers = odds.wagerCounts[player.id] ?? 0
         let projNet = odds.projNet[player.id]
-        let color = MatchCardMath.seatColor(player.seat)
 
-        return VStack(spacing: 6) {
+        return VStack(spacing: 8) {
             HStack(spacing: 8) {
-                MarketAvatar(player: player)
+                MarketAvatar(player: player, fallback: color)
 
                 Text(player.displayName)
                     .font(SticksFont.sans(13, weight: .semibold))
@@ -420,7 +529,7 @@ struct MarketCard: View {
             .frame(height: 6)
 
             HStack {
-                Text("\(calls) \(calls == 1 ? "call" : "calls")")
+                Text("\(wagers) \(wagers == 1 ? "wager" : "wagers")")
                     .font(SticksFont.mono(10))
                     .foregroundStyle(Color.sticksMuted)
 
@@ -433,6 +542,13 @@ struct MarketCard: View {
                 }
             }
         }
+        .padding(12)
+        .background(Color.sticksPanel2.opacity(0.25))
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
     }
 
     /// "12" for whole-number handicaps, "8.4" otherwise.
@@ -440,6 +556,75 @@ struct MarketCard: View {
         handicap.truncatingRemainder(dividingBy: 1) == 0
             ? String(Int(handicap))
             : String(format: "%.1f", handicap)
+    }
+
+    // MARK: - Side-game markets
+
+    /// A side-game chip's content: that leaderboard (or all of the
+    /// game's boards when it only has one chip).
+    @ViewBuilder
+    private func sideGameSection(_ game: SideGame, board: SideGameLeaderboard?) -> some View {
+        let boards: [SideGameLeaderboard] = board.map { [$0] } ?? game.leaderboards
+
+        if boards.isEmpty {
+            Text("No results yet — scores feed this game as the round goes.")
+                .font(SticksFont.sans(12))
+                .foregroundStyle(Color.sticksMuted)
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(boards) { board in
+                    boardSection(board)
+                }
+            }
+        }
+    }
+
+    private func boardSection(_ board: SideGameLeaderboard) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(board.title)
+                    .font(SticksFont.sans(13, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
+                if let subtitle = board.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(SticksFont.sans(12))
+                        .foregroundStyle(Color.sticksMuted)
+                }
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(board.rows.enumerated()), id: \.offset) { position, row in
+                    if position > 0 {
+                        Rectangle()
+                            .fill(Color.sticksHairline)
+                            .frame(height: 1)
+                    }
+                    boardRow(row)
+                }
+            }
+        }
+    }
+
+    private func boardRow(_ row: SideGameRow) -> some View {
+        HStack(spacing: 8) {
+            Text(row.player)
+                .font(SticksFont.sans(13))
+                .foregroundStyle(Color.sticksInk)
+                .lineLimit(1)
+
+            if row.isLeader {
+                MarketLeadChip()
+            }
+
+            Spacer(minLength: 8)
+
+            // Pre-formatted by the server — displayed verbatim.
+            Text(row.value)
+                .font(SticksFont.mono(13))
+                .monospacedDigit()
+                .foregroundStyle(Color.sticksInk)
+        }
+        .padding(.vertical, 8)
     }
 
     // MARK: - Place your call
@@ -559,9 +744,60 @@ struct MarketCard: View {
 
 // MARK: - Pieces
 
-/// 18pt avatar — profile photo when set, else initials on the seat color.
+/// Left-aligned wrapping row for the market chips — pills flow onto
+/// the next line when they run out of width, like the web.
+nonisolated private struct MarketChipFlow: Layout {
+    var spacing: CGFloat = 8
+    var rowSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + rowSpacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            usedWidth = max(usedWidth, x - spacing)
+        }
+        return CGSize(
+            width: maxWidth == .infinity ? usedWidth : maxWidth,
+            height: y + rowHeight
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + rowSpacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+/// 18pt avatar — profile photo when set, else initials on the
+/// player's market color.
 private struct MarketAvatar: View {
     let player: MatchDetailPlayer
+    let fallback: Color
 
     var body: some View {
         Group {
@@ -588,13 +824,30 @@ private struct MarketAvatar: View {
             .font(SticksFont.label(7, weight: .bold))
             .foregroundStyle(Color.sticksCream)
             .frame(width: 18, height: 18)
-            .background(MatchCardMath.seatColor(player.seat))
+            .background(fallback)
     }
 
     private var initials: String {
         let parts = player.displayName.split(separator: " ").prefix(2)
         let letters = parts.compactMap { $0.first.map(String.init) }
         return letters.isEmpty ? "?" : letters.joined().uppercased()
+    }
+}
+
+/// Gold "LEAD" chip on a side-game leaderboard's leading row.
+private struct MarketLeadChip: View {
+    var body: some View {
+        Text("LEAD")
+            .font(SticksFont.mono(8))
+            .kerning(0.8)
+            .foregroundStyle(Color.sticksGold)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.sticksGold.opacity(0.1))
+            .clipShape(.capsule)
+            .overlay(
+                Capsule().stroke(Color.sticksGold.opacity(0.3), lineWidth: 1)
+            )
     }
 }
 
@@ -676,19 +929,5 @@ private struct MarketPulseHalo: View {
                 .frame(width: 7, height: 7)
         }
         .onAppear { isPulsing = true }
-    }
-}
-
-/// Pulsing accent dot for the REPRICING badge.
-private struct MarketRepricingDot: View {
-    @State private var isPulsing = false
-
-    var body: some View {
-        Circle()
-            .fill(Color.sticksGreen)
-            .frame(width: 5, height: 5)
-            .opacity(isPulsing ? 0.35 : 1)
-            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
-            .onAppear { isPulsing = true }
     }
 }
