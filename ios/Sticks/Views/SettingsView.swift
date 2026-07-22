@@ -41,6 +41,11 @@ struct SettingsView: View {
     @State private var showsSignOutConfirm = false
     @State private var saveError: String?
 
+    // Account deletion — confirm alert + in-flight state (guideline
+    // 5.1.1(v): in-app account deletion).
+    @State private var showsDeleteAccountConfirm = false
+    @State private var isDeletingAccount = false
+
     // Slice 68: searchable phone editing
     @State private var showsPhoneAlert = false
     @State private var phoneText = ""
@@ -184,6 +189,12 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Any active round session ends on this device.")
+        }
+        .alert("Delete your account?", isPresented: $showsDeleteAccountConfirm) {
+            Button("Delete account", role: .destructive) { deleteAccount() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your account — your profile, rounds, stats, groups, and follows. This can't be undone.")
         }
         .alert(
             "Couldn't save",
@@ -607,6 +618,53 @@ struct SettingsView: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(PressableButtonStyle())
+
+                hairline
+
+                Button {
+                    showsDeleteAccountConfirm = true
+                } label: {
+                    HStack(spacing: 8) {
+                        if isDeletingAccount {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(Color.sticksError)
+                        }
+
+                        Text(isDeletingAccount ? "DELETING…" : "DELETE ACCOUNT")
+                            .font(SticksFont.mono(12))
+                            .kerning(1.2)
+                            .foregroundStyle(Color.sticksError)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(isDeletingAccount)
+
+                Text("Permanently removes your account and data — rounds, stats, groups, and follows. This can't be undone.")
+                    .font(SticksFont.sans(12))
+                    .foregroundStyle(Color.sticksMuted)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
+        }
+    }
+
+    /// DELETE /me, then a full local sign-out. The biometric token is
+    /// cleared too — it must not offer Face ID sign-in into a deleted
+    /// account.
+    private func deleteAccount() {
+        isDeletingAccount = true
+        Task {
+            let error = await viewModel.deleteAccount(session: session)
+            isDeletingAccount = false
+            if let error {
+                saveError = error
+            } else {
+                session.disableBiometricSignIn()
+                session.signOut()
             }
         }
     }

@@ -773,6 +773,15 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// DELETE /me — permanently deletes the caller's account and its
+    /// data server-side. The token is invalidated; callers must sign
+    /// out locally on success. The response body shape is not relied
+    /// on — any 2xx counts as deleted.
+    func deleteAccount(token: String) async throws {
+        let request = makeRequest(path: "me", method: "DELETE", token: token)
+        try await performExpectingSuccess(request)
+    }
+
     /// DELETE /matches/:id — removes a round. 403 (non-creator) carries
     /// a server message shown verbatim.
     func deleteMatch(id: String, token: String) async throws {
@@ -889,6 +898,28 @@ nonisolated struct APIClient {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return request
+    }
+
+    /// Like `perform`, but treats any 2xx as success without decoding
+    /// the body — for endpoints whose response shape we don't depend on.
+    private func performExpectingSuccess(_ request: URLRequest) async throws {
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw APIError(message: "Can't reach Sticks. Check your connection and try again.", statusCode: -1)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError(message: "Unexpected response from the server.", statusCode: -1)
+        }
+
+        guard (200 ..< 300).contains(http.statusCode) else {
+            let message = (try? decoder.decode(ServerErrorBody.self, from: data))?.error
+                ?? "Something went wrong (\(http.statusCode))."
+            throw APIError(message: message, statusCode: http.statusCode)
+        }
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {

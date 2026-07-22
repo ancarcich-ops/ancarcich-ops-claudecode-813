@@ -208,6 +208,29 @@ final class SettingsViewModel {
         }
     }
 
+    /// DELETE /me — permanently deletes the account server-side.
+    /// Returns a user-facing error message, or nil on success (the
+    /// caller then signs out locally).
+    func deleteAccount(session: SessionStore) async -> String? {
+        guard let token = session.token else {
+            session.signOut()
+            return nil
+        }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await api.deleteAccount(token: token)
+            return nil
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            return nil
+        } catch let error as APIError {
+            return error.message
+        } catch {
+            return "Can't reach Sticks. Check your connection and try again."
+        }
+    }
+
     private func update(displayName: String?, ghinNumber: String?, session: SessionStore) async -> String? {
         guard let token = session.token else {
             session.signOut()
