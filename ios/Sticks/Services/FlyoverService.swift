@@ -19,10 +19,19 @@
 //    MESH TILE actually paints (not merely when the HTML loads), and
 //    "stalled"/"error" surface silent tile failures within ~6s so the
 //    GPS screen can drop to the 2D map instead of spinning.
+//  - Flyover fix: "stalled" is now SOFT — the embed fires it after only
+//    6s with zero tiles painted, which slow networks / cold WebViews hit
+//    routinely, and "ready" can still arrive right after it. Treating it
+//    as fatal made 3D fail on every first open for many users. Only a
+//    real "error" (e.g. Google rejected the tile request) or the 30s
+//    watchdog fails the load now. A `sticksFlyoverLog` handler + console
+//    capture script also surface the embed's JS errors in the app logs,
+//    so silent failures are diagnosable from `rork-agent logs runtime`.
 //
 
 import WebKit
 import Observation
+import os.log
 
 @Observable
 final class FlyoverService: NSObject {
@@ -42,6 +51,8 @@ final class FlyoverService: NSObject {
 
     private(set) var state: LoadState = .idle
     private(set) var currentURL: URL?
+
+    private static let log = Logger(subsystem: "app.rork.sticks", category: "Flyover")
 
     let webView: WKWebView
 
@@ -72,8 +83,43 @@ final class FlyoverService: NSObject {
         // { status: "ready" | "stalled" | "error" } — through this
         // handler. The content controller retains the service; that's
         // intentional, it's a process-lifetime singleton.
-        webView.configuration.userContentController.add(self, name: "sticksFlyover")
+        let controller = webView.configuration.userContentController
+        controller.add(self, name: "sticksFlyover")
+        // Diagnostics: pipe the embed's JS errors and console.error output
+        // into the native log so "3D didn't load" is never a black box.
+        controller.add(self, name: "sticksFlyoverLog")
+        controller.addUserScript(WKUserScript(
+            source: Self.consoleCaptureScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        #if DEBUG
+        if #available(iOS 16.4, *) { webView.isInspectable = true }
+        #endif
     }
+
+    /// Forwards window errors, unhandled promise rejections, and
+    /// console.error lines from the embed to `sticksFlyoverLog`.
+    private static let consoleCaptureScript = """
+    (function () {
+      function post(line) {
+        try {
+          window.webkit.messageHandlers.sticksFlyoverLog.postMessage({ line: String(line).slice(0, 500) });
+        } catch (_) {}
+      }
+      window.addEventListener('error', function (e) {
+        post('window.onerror: ' + (e.message || 'unknown') + ' @ ' + (e.filename || '?') + ':' + (e.lineno || 0));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        post('unhandledrejection: ' + (e.reason && (e.reason.message || e.reason)));
+      });
+      var origError = console.error;
+      console.error = function () {
+        post('console.error: ' + Array.prototype.map.call(arguments, String).join(' '));
+        return origError.apply(console, arguments);
+      };
+    })();
+    """
 
     /// Points the flyover at `url`. No-op when that page is already
     /// loading/loaded (so re-entering 3D mode never restarts a warm
@@ -93,6 +139,7 @@ final class FlyoverService: NSObject {
     private func load(_ url: URL) {
         generation += 1
         state = .loading
+        Self.log.info("Loading flyover: \(url.absoluteString, privacy: .public)")
         webView.stopLoading()
         webView.load(URLRequest(url: url, timeoutInterval: 30))
         startWatchdog(generation: generation)
@@ -105,6 +152,7 @@ final class FlyoverService: NSObject {
             guard !Task.isCancelled, let self,
                   self.generation == generation,
                   self.state == .loading || self.state == .pageLoaded else { return }
+            Self.log.error("Watchdog fired after \(Self.watchdogSeconds)s (state \(String(describing: self.state), privacy: .public)) — marking failed")
             self.state = .failed
         }
     }
@@ -113,22 +161,35 @@ final class FlyoverService: NSObject {
         // The HTML arriving is NOT "ready" — Google's tiles can still
         // silently stall. Wait for the embed's own status message; the
         // watchdog stays armed in case the page's JS never runs.
+        Self.log.info("Page HTML finished loading")
         if state == .loading { state = .pageLoaded }
     }
 
     /// Status posted by the embed's JS (slice 59).
     private func handleEmbedStatus(_ status: String) {
+        Self.log.info("Embed status: \(status, privacy: .public)")
         switch status {
         case "ready":
             watchdog?.cancel()
             state = .ready
-        case "stalled", "error":
+        case "error":
             guard state != .ready else { return }
             watchdog?.cancel()
             state = .failed
+        case "stalled":
+            // SOFT signal: the embed fires this after just 6s with no tile
+            // painted — routine on slow networks and cold WebViews, and
+            // "ready" often still arrives moments later. Keep waiting; the
+            // 30s watchdog remains armed for loads that truly die.
+            break
         default:
             break
         }
+    }
+
+    /// Diagnostic line forwarded from the embed's JS console.
+    private func handleEmbedLog(_ line: String) {
+        Self.log.error("[embed] \(line, privacy: .public)")
     }
 
     private func handleFailure(_ error: Error) {
@@ -136,6 +197,7 @@ final class FlyoverService: NSObject {
         // — not a real failure, the replacement load is already running.
         let nsError = error as NSError
         guard nsError.code != NSURLErrorCancelled else { return }
+        Self.log.error("Navigation failed: \(nsError.domain, privacy: .public) \(nsError.code) — \(nsError.localizedDescription, privacy: .public)")
         watchdog?.cancel()
         state = .failed
     }
@@ -143,6 +205,7 @@ final class FlyoverService: NSObject {
     /// WebGL-heavy pages can get their WebContent process killed by the
     /// system (the classic "spinner forever" case) — reload immediately.
     private func handleProcessTerminated() {
+        Self.log.error("WebContent process terminated — reloading")
         guard currentURL != nil else { return }
         retry()
     }
@@ -185,10 +248,20 @@ extension FlyoverService: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        guard message.name == "sticksFlyover",
-              let status = (message.body as? [String: Any])?["status"] as? String else { return }
-        Task { @MainActor in
-            FlyoverService.shared.handleEmbedStatus(status)
+        let body = message.body as? [String: Any]
+        switch message.name {
+        case "sticksFlyover":
+            guard let status = body?["status"] as? String else { return }
+            Task { @MainActor in
+                FlyoverService.shared.handleEmbedStatus(status)
+            }
+        case "sticksFlyoverLog":
+            guard let line = body?["line"] as? String else { return }
+            Task { @MainActor in
+                FlyoverService.shared.handleEmbedLog(line)
+            }
+        default:
+            break
         }
     }
 }

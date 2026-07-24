@@ -293,12 +293,26 @@ struct OnCourseGPSView: View {
         }
         // Belt-and-suspenders: status messages need the page's JS to run.
         // If the WebView never even loads the page, no message arrives —
-        // so give 3D ~8s after entry (or a hole change while in 3D) to
-        // report ready, then run the same fallback. The task is cancelled
-        // automatically on mode/hole change and on disappear.
+        // so this staged timer backs up the service's own watchdog. The
+        // old flat 8s cutoff killed 3D on every slow first load (Google's
+        // mesh routinely needs 10–20s to paint its first tile on cellular
+        // or a cold WebView). Now: bail at 10s only when the page HTML
+        // itself never arrived, otherwise give the tile stream a full 25s
+        // before dropping to 2D. Cancelled automatically on mode/hole
+        // change and on disappear.
         .task(id: "\(cameraMode.rawValue)-\(holeIndex)") {
             guard cameraMode == .threeD else { return }
-            try? await Task.sleep(for: .seconds(8))
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            let state = FlyoverService.shared.state
+            if state == .ready { return }
+            if state == .loading || state == .idle {
+                // Page never loaded — nothing is coming, fall back now.
+                fallBackTo2D()
+                return
+            }
+            // HTML is up and tiles are streaming — allow the slow path.
+            try? await Task.sleep(for: .seconds(15))
             guard !Task.isCancelled,
                   FlyoverService.shared.state != .ready else { return }
             fallBackTo2D()
