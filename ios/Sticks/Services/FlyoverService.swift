@@ -27,11 +27,20 @@
 //    watchdog fails the load now. A `sticksFlyoverLog` handler + console
 //    capture script also surface the embed's JS errors in the app logs,
 //    so silent failures are diagnosable from `rork-agent logs runtime`.
+//  - WebGL probe: the embed is pure WebGL (deck.gl + Google 3D Tiles).
+//    Environments whose WebView can't create a WebGL2 context (notably
+//    the cloud simulator, where IOSurface access is sandboxed away)
+//    render the empty sky gradient forever — no tiles, no error, no
+//    console output. An injected probe now reports WebGL support the
+//    moment the page loads: unsupported → `webglUnsupported` latches,
+//    the load fails IMMEDIATELY (no 25s spinner), and the GPS screen
+//    grays the 3D segment out for the rest of the session. Real devices
+//    are unaffected. Logging also moved from os.log to NSLog so the
+//    diagnostics actually appear in `rork-agent logs runtime`.
 //
 
 import WebKit
 import Observation
-import os.log
 
 @Observable
 final class FlyoverService: NSObject {
@@ -52,7 +61,17 @@ final class FlyoverService: NSObject {
     private(set) var state: LoadState = .idle
     private(set) var currentURL: URL?
 
-    private static let log = Logger(subsystem: "app.rork.sticks", category: "Flyover")
+    /// Latched true when the WebView reports it cannot create a WebGL2
+    /// context (e.g. the cloud simulator's sandbox blocks IOSurface).
+    /// The flyover can never work in that environment, so the GPS
+    /// screen disables the 3D segment instead of spinning and failing.
+    private(set) var webglUnsupported = false
+
+    /// NSLog (not os.log Logger) so lines show up in the captured
+    /// runtime logs — Logger output is invisible to the log pipe.
+    private static func log(_ message: String) {
+        NSLog("[Flyover] %@", message)
+    }
 
     let webView: WKWebView
 
@@ -93,6 +112,11 @@ final class FlyoverService: NSObject {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
+        controller.addUserScript(WKUserScript(
+            source: Self.webglProbeScript,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        ))
         #if DEBUG
         if #available(iOS 16.4, *) { webView.isInspectable = true }
         #endif
@@ -121,10 +145,39 @@ final class FlyoverService: NSObject {
     })();
     """
 
+    /// Reports whether this WebView can actually create a WebGL context.
+    /// The flyover is 100% WebGL — without it the page paints only its
+    /// CSS sky gradient and never errors, so the app must detect the
+    /// capability itself. Posts through the same status channel:
+    /// "webgl-ok" / "webgl-unavailable".
+    private static let webglProbeScript = """
+    (function () {
+      var status = 'webgl-unavailable';
+      try {
+        var canvas = document.createElement('canvas');
+        var gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+        if (gl) {
+          status = 'webgl-ok';
+          try {
+            var info = gl.getExtension('WEBGL_debug_renderer_info');
+            var renderer = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+            window.webkit.messageHandlers.sticksFlyoverLog.postMessage({ line: 'webgl renderer: ' + renderer });
+          } catch (_) {}
+          var lose = gl.getExtension('WEBGL_lose_context');
+          if (lose) { lose.loseContext(); }
+        }
+      } catch (_) {}
+      try {
+        window.webkit.messageHandlers.sticksFlyover.postMessage({ status: status });
+      } catch (_) {}
+    })();
+    """
+
     /// Points the flyover at `url`. No-op when that page is already
     /// loading/loaded (so re-entering 3D mode never restarts a warm
     /// scene); a previously failed load is retried.
     func prepare(url: URL) {
+        guard !webglUnsupported else { return }
         guard url != currentURL || state == .failed || state == .idle else { return }
         currentURL = url
         load(url)
@@ -139,7 +192,7 @@ final class FlyoverService: NSObject {
     private func load(_ url: URL) {
         generation += 1
         state = .loading
-        Self.log.info("Loading flyover: \(url.absoluteString, privacy: .public)")
+        Self.log("Loading flyover: \(url.absoluteString)")
         webView.stopLoading()
         webView.load(URLRequest(url: url, timeoutInterval: 30))
         startWatchdog(generation: generation)
@@ -152,7 +205,7 @@ final class FlyoverService: NSObject {
             guard !Task.isCancelled, let self,
                   self.generation == generation,
                   self.state == .loading || self.state == .pageLoaded else { return }
-            Self.log.error("Watchdog fired after \(Self.watchdogSeconds)s (state \(String(describing: self.state), privacy: .public)) — marking failed")
+            Self.log("Watchdog fired after \(Self.watchdogSeconds)s (state \(String(describing: self.state))) — marking failed")
             self.state = .failed
         }
     }
@@ -161,13 +214,14 @@ final class FlyoverService: NSObject {
         // The HTML arriving is NOT "ready" — Google's tiles can still
         // silently stall. Wait for the embed's own status message; the
         // watchdog stays armed in case the page's JS never runs.
-        Self.log.info("Page HTML finished loading")
+        Self.log("Page HTML finished loading")
         if state == .loading { state = .pageLoaded }
     }
 
-    /// Status posted by the embed's JS (slice 59).
+    /// Status posted by the embed's JS (slice 59) or the injected
+    /// WebGL probe.
     private func handleEmbedStatus(_ status: String) {
-        Self.log.info("Embed status: \(status, privacy: .public)")
+        Self.log("Embed status: \(status)")
         switch status {
         case "ready":
             watchdog?.cancel()
@@ -176,6 +230,17 @@ final class FlyoverService: NSObject {
             guard state != .ready else { return }
             watchdog?.cancel()
             state = .failed
+        case "webgl-unavailable":
+            // This WebView cannot render the flyover AT ALL (typical in
+            // the cloud simulator, whose sandbox denies the IOSurface
+            // access WebGL compositing needs). Latch it: fail now, stop
+            // retrying, and let the GPS screen gray out the 3D segment.
+            Self.log("WebGL unavailable in this environment — disabling 3D flyover")
+            webglUnsupported = true
+            watchdog?.cancel()
+            state = .failed
+        case "webgl-ok":
+            Self.log("WebGL context OK — tiles should stream")
         case "stalled":
             // SOFT signal: the embed fires this after just 6s with no tile
             // painted — routine on slow networks and cold WebViews, and
@@ -189,7 +254,7 @@ final class FlyoverService: NSObject {
 
     /// Diagnostic line forwarded from the embed's JS console.
     private func handleEmbedLog(_ line: String) {
-        Self.log.error("[embed] \(line, privacy: .public)")
+        Self.log("[embed] \(line)")
     }
 
     private func handleFailure(_ error: Error) {
@@ -197,7 +262,7 @@ final class FlyoverService: NSObject {
         // — not a real failure, the replacement load is already running.
         let nsError = error as NSError
         guard nsError.code != NSURLErrorCancelled else { return }
-        Self.log.error("Navigation failed: \(nsError.domain, privacy: .public) \(nsError.code) — \(nsError.localizedDescription, privacy: .public)")
+        Self.log("Navigation failed: \(nsError.domain) \(nsError.code) — \(nsError.localizedDescription)")
         watchdog?.cancel()
         state = .failed
     }
@@ -205,7 +270,7 @@ final class FlyoverService: NSObject {
     /// WebGL-heavy pages can get their WebContent process killed by the
     /// system (the classic "spinner forever" case) — reload immediately.
     private func handleProcessTerminated() {
-        Self.log.error("WebContent process terminated — reloading")
+        Self.log("WebContent process terminated — reloading")
         guard currentURL != nil else { return }
         retry()
     }

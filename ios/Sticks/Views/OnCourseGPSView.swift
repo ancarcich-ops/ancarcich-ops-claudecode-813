@@ -597,7 +597,12 @@ struct OnCourseGPSView: View {
         case .tee: geo?.teeCoordinate != nil
         case .green: geo?.greenCoordinate != nil
         case .hole: geo?.teeCoordinate != nil || geo?.greenCoordinate != nil
-        case .threeD: geo?.teeCoordinate != nil && geo?.greenCoordinate != nil
+        case .threeD:
+            // The flyover is pure WebGL — once the WebView reports it
+            // can't create a context (cloud simulator), the segment is
+            // grayed out instead of spinning and falling back every tap.
+            geo?.teeCoordinate != nil && geo?.greenCoordinate != nil
+                && !FlyoverService.shared.webglUnsupported
         }
     }
 
