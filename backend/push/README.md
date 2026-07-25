@@ -11,7 +11,9 @@ ES256 JWT via `node:http2` / `node:crypto`); the only package needed is `pg`
    - `api/mobile/me/*` → your `api/mobile/me/` (Vercel file-based routes)
    - `lib/*` → e.g. `lib/push/` (fix the relative imports in `api/` if you
      nest them differently)
-2. Run `migrations/001_push.sql` against the database.
+2. Run `migrations/001_push.sql` and `migrations/002_round_alerts.sql` against
+   the database. Also copy `api/mobile/matches/[id]/alerts.js` into your
+   `api/mobile/matches/[id]/` folder.
 3. `npm i pg` (only if you keep the default `lib/db.js`).
 4. Vercel env vars:
    - `APNS_KEY` — full contents of the `.p8` (paste as-is; `\n` escapes OK)
@@ -76,6 +78,9 @@ Notes:
   safe.
 - Audience rules (never the actor, never seated players, prefs, the 24h
   abandoned-round rule, follower∪group dedupe) are enforced inside the senders.
+- Per-round overrides (`push_round_alerts`) are applied automatically: `all`
+  pulls a user into the audience and bypasses their category toggles for that
+  round; `mute` removes them even if they follow a seated player.
 - Dead tokens (410 / `BadDeviceToken`) are pruned automatically after each send.
 - All senders are fail-soft — they log and never throw into the request path.
 
@@ -85,6 +90,8 @@ Notes:
 - `DELETE /api/mobile/me/push-token/:token` — idempotent sign-out cleanup
 - `GET    /api/mobile/me/push-prefs` — defaults to all-true when no row
 - `POST   /api/mobile/me/push-prefs` — full replace
+- `GET    /api/mobile/matches/:id/alerts` — caller's per-round override
+- `POST   /api/mobile/matches/:id/alerts` — set `default` | `all` | `mute`
 
 All use the standard Bearer auth + `{ "error": string }` error shape.
 

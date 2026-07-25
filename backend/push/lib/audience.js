@@ -8,6 +8,7 @@
 //   follows(follower_id, followee_id, state)   -- state 'accepted' | 'pending'
 //   group_members(group_id, user_id)
 //   push_tokens / push_prefs / push_events_sent (see migrations/001_push.sql)
+//   push_round_alerts (see migrations/002_round_alerts.sql)
 
 import { query } from "./db.js";
 
@@ -24,7 +25,12 @@ const PREF_COLUMNS = {
  * Audience for round events (spec §5):
  * (accepted followers of each seated, account-linked player)
  * ∪ (members of the round's group, if any)
- * − seated players − the actor.
+ * ∪ (users who turned alerts ON for this specific round — mode 'all')
+ * − seated players − the actor − users who MUTED this round.
+ *
+ * The per-round opt-in (push_round_alerts.mode = 'all') is what lets
+ * someone follow one important match without following its players or
+ * un-muting a whole group.
  *
  * @returns {Promise<string[]>} deduped recipient user ids
  */
@@ -47,10 +53,25 @@ export async function roundEventAudience(matchId, actorUserId) {
       FROM group_members gm
       JOIN matches m ON m.group_id = gm.group_id
       WHERE m.id = $1
+    ),
+    opted_in AS (
+      SELECT user_id
+      FROM push_round_alerts
+      WHERE match_id = $1 AND mode = 'all'
+    ),
+    muted AS (
+      SELECT user_id
+      FROM push_round_alerts
+      WHERE match_id = $1 AND mode = 'mute'
     )
     SELECT DISTINCT user_id
-    FROM (SELECT user_id FROM followers UNION SELECT user_id FROM group_audience) a
+    FROM (
+      SELECT user_id FROM followers
+      UNION SELECT user_id FROM group_audience
+      UNION SELECT user_id FROM opted_in
+    ) a
     WHERE user_id NOT IN (SELECT user_id FROM seated)
+      AND user_id NOT IN (SELECT user_id FROM muted)
       AND user_id <> $2
     `,
     [matchId, actorUserId]
@@ -79,26 +100,82 @@ export async function matchIsPushable(matchId) {
  * Loads token rows for recipients who have the given pref enabled.
  * A missing push_prefs row counts as "everything on".
  *
+ * When `matchId` is given, anyone who explicitly turned alerts ON for
+ * that round (mode 'all') bypasses their category toggles — an explicit
+ * per-round opt-in outranks the account-wide default.
+ *
  * @param {string[]} userIds
  * @param {keyof typeof PREF_COLUMNS} prefKey
+ * @param {string} [matchId] round context, for per-round overrides
  * @returns {Promise<Array<{ token: string, environment: string, user_id: string }>>}
  */
-export async function tokensForUsers(userIds, prefKey) {
+export async function tokensForUsers(userIds, prefKey, matchId) {
   const column = PREF_COLUMNS[prefKey];
   if (!column) throw new Error(`Unknown pref key: ${prefKey}`);
   if (userIds.length === 0) return [];
+
+  if (!matchId) {
+    const { rows } = await query(
+      `
+      SELECT t.token, t.environment, t.user_id
+      FROM push_tokens t
+      LEFT JOIN push_prefs p ON p.user_id = t.user_id
+      WHERE t.user_id = ANY($1)
+        AND COALESCE(p.${column}, true)
+      `,
+      [userIds]
+    );
+    return rows;
+  }
 
   const { rows } = await query(
     `
     SELECT t.token, t.environment, t.user_id
     FROM push_tokens t
     LEFT JOIN push_prefs p ON p.user_id = t.user_id
+    LEFT JOIN push_round_alerts a
+           ON a.user_id = t.user_id AND a.match_id = $2
     WHERE t.user_id = ANY($1)
-      AND COALESCE(p.${column}, true)
+      AND a.mode IS DISTINCT FROM 'mute'
+      AND (a.mode = 'all' OR COALESCE(p.${column}, true))
     `,
-    [userIds]
+    [userIds, matchId]
   );
   return rows;
+}
+
+/**
+ * The caller's alert override for one round: 'default' | 'all' | 'mute'.
+ */
+export async function roundAlertMode(matchId, userId) {
+  const { rows } = await query(
+    `SELECT mode FROM push_round_alerts WHERE match_id = $1 AND user_id = $2`,
+    [matchId, userId]
+  );
+  return rows[0]?.mode ?? "default";
+}
+
+/**
+ * Stores (or clears, for 'default') a per-round alert override.
+ */
+export async function setRoundAlertMode(matchId, userId, mode) {
+  if (mode === "default") {
+    await query(`DELETE FROM push_round_alerts WHERE match_id = $1 AND user_id = $2`, [
+      matchId,
+      userId,
+    ]);
+    return;
+  }
+  await query(
+    `
+    INSERT INTO push_round_alerts (match_id, user_id, mode, updated_at)
+    VALUES ($1, $2, $3, now())
+    ON CONFLICT (match_id, user_id) DO UPDATE SET
+      mode = EXCLUDED.mode,
+      updated_at = now()
+    `,
+    [matchId, userId, mode]
+  );
 }
 
 /** Deletes token rows APNs reported dead (410 / BadDeviceToken). */

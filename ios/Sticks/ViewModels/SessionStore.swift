@@ -102,6 +102,8 @@ final class SessionStore {
         if let token = KeychainService.loadToken() {
             PushNotificationService.shared.unregisterForSignOut(authToken: token)
         }
+        // Slice 72: per-round alert overrides belong to the account.
+        RoundAlertsStore.shared.clearAll()
         RoundSessionService.shared.endRound()
         KeychainService.deleteToken()
         phase = .signedOut

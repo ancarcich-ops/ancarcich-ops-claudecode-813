@@ -440,6 +440,27 @@ nonisolated struct PushPrefsResponse: Decodable {
     }
 }
 
+/// Body for POST /matches/:id/alerts — the caller's per-round alert
+/// override ("default" | "all" | "mute").
+nonisolated struct RoundAlertModeRequest: Encodable {
+    let mode: String
+}
+
+/// Response for GET/POST /matches/:id/alerts. A missing/unknown mode
+/// decodes as `.standard` (no override).
+nonisolated struct RoundAlertModeResponse: Decodable {
+    let mode: RoundAlertMode
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = (try? container.decodeIfPresent(RoundAlertMode.self, forKey: .mode)) ?? .standard
+    }
+}
+
 nonisolated struct APIClient {
     static let shared = APIClient()
 
@@ -937,6 +958,21 @@ nonisolated struct APIClient {
     func setPushPrefs(_ prefs: PushPrefs, token: String) async throws {
         var request = makeRequest(path: "me/push-prefs", method: "POST", token: token)
         request.httpBody = try encoder.encode(prefs)
+        let _: OkResponse = try await perform(request)
+    }
+
+    /// GET /matches/:id/alerts — the caller's per-round alert override.
+    func roundAlertMode(matchId: String, token: String) async throws -> RoundAlertMode {
+        let request = makeRequest(path: "matches/\(matchId)/alerts", method: "GET", token: token)
+        let response: RoundAlertModeResponse = try await perform(request)
+        return response.mode
+    }
+
+    /// POST /matches/:id/alerts — turns alerts for one round on
+    /// ("all"), off ("mute"), or back to the account default.
+    func setRoundAlertMode(_ mode: RoundAlertMode, matchId: String, token: String) async throws {
+        var request = makeRequest(path: "matches/\(matchId)/alerts", method: "POST", token: token)
+        request.httpBody = try encoder.encode(RoundAlertModeRequest(mode: mode.rawValue))
         let _: OkResponse = try await perform(request)
     }
 

@@ -654,6 +654,12 @@ struct MatchDetailView: View {
                 currentHoleIndex: currentHoleIndex(detail)
             )
         }
+        // Slice 72: per-round alert override — the "I want to follow
+        // THIS match" switch. Spectators only (seated players never get
+        // pushes for their own round) and never on finished rounds.
+        if detail.myMatchPlayerId == nil, detail.status != .completed {
+            RoundAlertsCard(matchId: match.id)
+        }
         scorecardCard(detail)
         // Slice 65: Standings also renders on completed rounds (final
         // odds, winner at 100%). The inner onRecordEvents/onOpenSettings

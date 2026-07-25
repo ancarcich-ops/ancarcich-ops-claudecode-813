@@ -50,6 +50,15 @@ device, account switch) — always reassign.
 `round_starts`, `birdies_and_better`, `front_nine_scores`,
 `final_scores`, `follow_requests`.
 
+`push_round_alerts` — per-round overrides (slice 72), PK `(match_id, user_id)`:
+- `mode` (text, `"all" | "mute"`)
+- `updated_at`
+
+No row means "default" (normal rules). `all` = this user gets every
+round event for that match, ignoring their category toggles AND their
+follow/group relationship. `mute` = nothing for that match, even from
+players they follow. See `backend/push/migrations/002_round_alerts.sql`.
+
 ## 3. New endpoints (Bearer auth like all `/api/mobile` routes)
 
 ### POST /api/mobile/me/push-token
@@ -66,6 +75,16 @@ Called at sign-out so a signed-out device never receives pushes.
 
 ### POST /api/mobile/me/push-prefs
 Body: the full prefs object (same shape). Replace and return `{ "ok": true }`.
+
+### GET /api/mobile/matches/:id/alerts
+→ `{ "mode": "default" | "all" | "mute" }` — the caller's override for
+that round (`default` when no row exists).
+
+### POST /api/mobile/matches/:id/alerts
+Body: `{ "mode": "default" | "all" | "mute" }`. Upsert on
+`(match_id, user_id)`; `default` deletes the row. → `{ "ok": true, "mode": … }`
+Requires the caller to be able to see the round (404 otherwise). The app
+fails soft and retries, so shipping order doesn't matter.
 
 ## 4. Notification payload contract (what the app expects)
 
@@ -102,9 +121,13 @@ General rules for every event:
 - Respect the recipient's pref for that category, and skip users with
   no registered tokens.
 - Audience for round events = (accepted followers of each seated,
-  account-linked player) ∪ (members of the round's group, if any),
-  minus seated players. Respect the abandoned-round rule: no pushes for
-  rounds live > 24h past tee time.
+  account-linked player) ∪ (members of the round's group, if any) ∪
+  (users with `push_round_alerts.mode = 'all'` for that match), minus
+  seated players and minus users with `mode = 'mute'`. Respect the
+  abandoned-round rule: no pushes for rounds live > 24h past tee time.
+- A `mode = 'all'` recipient bypasses their per-category toggles for
+  that round only — the point of the feature is "alert me on THIS
+  match even though I'm quiet by default".
 - Send one push per recipient per event (dedupe when someone is both a
   follower and a group member).
 
@@ -169,5 +192,9 @@ Trigger: action=accept, or an auto-accepted request.
   for TestFlight/App Store.
 - Foreground pushes show a banner and refresh the feeds; taps deep-link
   (cold launch included).
+- Slice 72: the match page shows an "ALERTS FOR THIS ROUND" card for
+  spectators on live/upcoming rounds — DEFAULT / ALL ALERTS / MUTE.
+  The choice is stored locally for instant UI and mirrored to
+  `POST /matches/:id/alerts` (retried on the next visit if it fails).
 - Until the endpoints above exist, the app fails soft (logs, retries
   next launch) — safe to ship in either order.

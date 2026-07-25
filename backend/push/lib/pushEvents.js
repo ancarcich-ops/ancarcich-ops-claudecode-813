@@ -36,9 +36,15 @@ function buildPayload({ title, body, matchId, type, userId, badge, threadId }) {
   return payload;
 }
 
-/** Shared fanout tail: load tokens, send, prune dead rows. */
+/**
+ * Shared fanout tail: load tokens, send, prune dead rows.
+ *
+ * `payload.matchId` (when present) scopes the token query to that round
+ * so per-round overrides apply — an explicit "alerts on for this round"
+ * bypasses the recipient's category toggles, a mute drops them.
+ */
 async function deliver(userIds, prefKey, payload, collapseId) {
-  const tokenRows = await tokensForUsers(userIds, prefKey);
+  const tokenRows = await tokensForUsers(userIds, prefKey, payload.matchId);
   if (tokenRows.length === 0) return;
   const { sent, badTokens } = await sendToTokens(tokenRows, payload, { collapseId });
   if (badTokens.length > 0) await deleteTokens(badTokens);
