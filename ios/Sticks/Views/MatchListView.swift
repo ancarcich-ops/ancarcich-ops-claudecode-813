@@ -18,6 +18,11 @@ struct MatchListView: View {
     @State private var path = NavigationPath()
     @State private var showsCreate = false
 
+    /// The stale round currently shown in the "needs your attention"
+    /// alert — nil when no alert is up.
+    @State private var attentionMatch: MatchSummary?
+    @State private var endRoundError: String?
+
     private var groupFilter: GroupFilterStore { .shared }
 
     var body: some View {
@@ -100,6 +105,75 @@ struct MatchListView: View {
         // wizard, exactly like + New round in the header.
         .onReceive(NotificationCenter.default.publisher(for: .sticksStartNewRound)) { _ in
             showsCreate = true
+        }
+        // A round the user created has sat live for >24h — alert them
+        // once per session so they can continue or end it.
+        .onChange(of: viewModel.attentionMatches) { _, pending in
+            guard attentionMatch == nil, let next = pending.first else { return }
+            attentionMatch = next
+        }
+        .alert(
+            "Round needs your attention",
+            isPresented: attentionAlertPresented,
+            presenting: attentionMatch
+        ) { match in
+            Button("Continue round") {
+                viewModel.markAttentionHandled(match.id)
+                path.append(match)
+            }
+            Button("End round") {
+                viewModel.markAttentionHandled(match.id)
+                Task { await endRound(match) }
+            }
+            Button("Not now", role: .cancel) {
+                viewModel.markAttentionHandled(match.id)
+            }
+        } message: { match in
+            Text("Your round at \(match.courseName) has been live for over a day, so it's hidden from your groups and the public feed. Keep playing to finish it, or end it now to post the scores.")
+        }
+        .alert(
+            "Couldn't end the round",
+            isPresented: Binding(
+                get: { endRoundError != nil },
+                set: { if !$0 { endRoundError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(endRoundError ?? "")
+        }
+    }
+
+    /// Presentation binding for the attention alert — dismissing clears
+    /// the current match, then the next pending one (if any) surfaces
+    /// after a short beat so back-to-back alerts don't collide.
+    private var attentionAlertPresented: Binding<Bool> {
+        Binding(
+            get: { attentionMatch != nil },
+            set: { presented in
+                guard !presented else { return }
+                attentionMatch = nil
+                Task {
+                    try? await Task.sleep(for: .seconds(0.7))
+                    if attentionMatch == nil {
+                        attentionMatch = viewModel.attentionMatches.first
+                    }
+                }
+            }
+        )
+    }
+
+    /// Marks the stale round finished server-side, then refreshes every
+    /// feed. Failures surface in a follow-up alert.
+    private func endRound(_ match: MatchSummary) async {
+        guard let token = session.token else { return }
+        do {
+            try await APIClient.shared.postComplete(matchId: match.id, token: token)
+            NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
+        } catch let error as APIError {
+            endRoundError = error.message
+        } catch {
+            endRoundError = "Can't reach Sticks. Check your connection and try again."
         }
     }
 

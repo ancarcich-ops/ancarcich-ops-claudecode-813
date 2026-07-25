@@ -111,6 +111,23 @@ nonisolated struct MatchSummary: Identifiable, Hashable {
     }
 }
 
+extension MatchSummary {
+    /// How long a live round may sit past its tee time before it's
+    /// treated as abandoned (hidden from non-players, owner alerted).
+    static let staleAfter: TimeInterval = 24 * 60 * 60
+
+    /// True when the round is still IN_PROGRESS more than 24 hours
+    /// after its tee time — almost certainly an error or an abandoned
+    /// round. Such rounds stay visible to their seated players and
+    /// creator but are hidden from the rest of the feed.
+    var isStaleLive: Bool {
+        status == .inProgress && Date().timeIntervalSince(scheduledAt) > Self.staleAfter
+    }
+
+    /// True when the caller holds a seat in this round.
+    var isSeatedPlayer: Bool { myMatchPlayerId != nil }
+}
+
 extension MatchSummary: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, completedAt, status, holes
