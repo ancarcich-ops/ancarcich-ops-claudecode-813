@@ -105,6 +105,23 @@ struct MainTabView: View {
             // Slice 69: seed the header's follow-request badge once the
             // signed-in root appears (briefly cached in the store).
             await FollowBadgeStore.shared.refresh(session: session)
+            // Slice 71: push — auto-prompt once (post-welcome), re-register
+            // when already authorized, then consume any cold-launch tap.
+            if welcomed {
+                await PushNotificationService.shared.syncOnSignedInLaunch()
+            }
+            routePendingPushDeepLink()
+        }
+        // Slice 71: finishing the welcome flow is the moment to ask about
+        // notifications — never over the welcome screen itself.
+        .onChange(of: welcomed) { _, isWelcomed in
+            guard isWelcomed else { return }
+            Task { await PushNotificationService.shared.syncOnSignedInLaunch() }
+        }
+        // Slice 71: a notification tap while the app is up (foreground or
+        // resumed from background) routes immediately.
+        .onReceive(NotificationCenter.default.publisher(for: .sticksPushDeepLink)) { _ in
+            routePendingPushDeepLink()
         }
         .onReceive(NotificationCenter.default.publisher(for: .sticksMatchesDidChange)) { _ in
             Task { await GroupFilterStore.shared.load(session: session) }
@@ -128,6 +145,24 @@ struct MainTabView: View {
         // Groups; GroupsView pushes the tournaments list itself.
         .onReceive(NotificationCenter.default.publisher(for: .sticksOpenTournaments)) { _ in
             selection = .groups
+        }
+    }
+
+    /// Sends a tapped notification where it points: a round push lands
+    /// on that match's detail (Home owns the reload-and-push flow), a
+    /// follow push lands on the People screen.
+    private func routePendingPushDeepLink() {
+        guard let link = PushNotificationService.shared.consumePendingDeepLink() else { return }
+        switch link {
+        case .match(let id):
+            NotificationCenter.default.post(
+                name: .sticksOpenMatch,
+                object: nil,
+                userInfo: ["matchId": id]
+            )
+        case .people:
+            selection = .settings
+            NotificationCenter.default.post(name: .sticksOpenPeople, object: nil)
         }
     }
 }

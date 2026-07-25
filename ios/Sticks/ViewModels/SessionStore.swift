@@ -96,6 +96,12 @@ final class SessionStore {
     /// The biometric-protected token deliberately SURVIVES sign-out so
     /// Face ID sign-in still works next launch.
     func signOut() {
+        // Slice 71: pull this device's push token off the server FIRST
+        // (fire-and-forget, with the auth token captured before it's
+        // cleared) — a signed-out device must never buzz.
+        if let token = KeychainService.loadToken() {
+            PushNotificationService.shared.unregisterForSignOut(authToken: token)
+        }
         RoundSessionService.shared.endRound()
         KeychainService.deleteToken()
         phase = .signedOut

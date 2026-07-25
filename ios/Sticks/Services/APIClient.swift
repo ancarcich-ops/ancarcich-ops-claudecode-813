@@ -417,6 +417,29 @@ nonisolated struct FollowActionResponse: Decodable {
     }
 }
 
+// MARK: - Remote push (slice 71)
+
+/// Body for POST /me/push-token — upserts this device's APNs token.
+nonisolated struct PushTokenRequest: Encodable {
+    let token: String
+    let platform: String
+    let environment: String
+    let appVersion: String?
+}
+
+nonisolated struct PushPrefsResponse: Decodable {
+    let prefs: PushPrefs
+
+    private enum CodingKeys: String, CodingKey {
+        case prefs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        prefs = try container.decodeIfPresent(PushPrefs.self, forKey: .prefs) ?? PushPrefs()
+    }
+}
+
 nonisolated struct APIClient {
     static let shared = APIClient()
 
@@ -874,6 +897,47 @@ nonisolated struct APIClient {
         var request = makeRequest(path: "matches/\(id)", method: "PATCH", token: token)
         request.httpBody = try encoder.encode(body)
         return try await perform(request)
+    }
+
+    // MARK: - Remote push (slice 71)
+
+    /// POST /me/push-token — registers (or re-registers) this device's
+    /// APNs token for the signed-in user. Idempotent upsert keyed on
+    /// the token value.
+    func registerPushToken(deviceToken: String, environment: String, appVersion: String?, token: String) async throws {
+        var request = makeRequest(path: "me/push-token", method: "POST", token: token)
+        request.httpBody = try encoder.encode(
+            PushTokenRequest(
+                token: deviceToken,
+                platform: "ios",
+                environment: environment,
+                appVersion: appVersion
+            )
+        )
+        let _: OkResponse = try await perform(request)
+    }
+
+    /// DELETE /me/push-token/:token — removes this device's token on
+    /// sign-out so a signed-out device never gets someone's pushes.
+    func unregisterPushToken(deviceToken: String, token: String) async throws {
+        let request = makeRequest(path: "me/push-token/\(deviceToken)", method: "DELETE", token: token)
+        let _: OkResponse = try await perform(request)
+    }
+
+    /// GET /me/push-prefs — the caller's server-side notification
+    /// category toggles (the server uses these to gate fanout).
+    func pushPrefs(token: String) async throws -> PushPrefs {
+        let request = makeRequest(path: "me/push-prefs", method: "GET", token: token)
+        let response: PushPrefsResponse = try await perform(request)
+        return response.prefs
+    }
+
+    /// POST /me/push-prefs — replaces the caller's notification
+    /// category toggles with the full desired set.
+    func setPushPrefs(_ prefs: PushPrefs, token: String) async throws {
+        var request = makeRequest(path: "me/push-prefs", method: "POST", token: token)
+        request.httpBody = try encoder.encode(prefs)
+        let _: OkResponse = try await perform(request)
     }
 
     // MARK: - Plumbing
