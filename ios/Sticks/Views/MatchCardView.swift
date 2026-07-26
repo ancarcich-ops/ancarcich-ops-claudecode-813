@@ -32,7 +32,11 @@ struct MatchCardView: View {
             case .inProgress:
                 livePlayerBlocks
             case .upcoming:
-                compactRows(showsToPar: false)
+                if showsUpcomingOdds {
+                    upcomingOddsRows
+                } else {
+                    compactRows(showsToPar: false)
+                }
             case .completed:
                 finalBody
             }
@@ -167,6 +171,27 @@ struct MatchCardView: View {
         }
     }
 
+    // MARK: - UPCOMING odds rows
+
+    /// Priced upcoming round: the server sent win probabilities for a
+    /// field of two or more, so the card mirrors the web's pre-round
+    /// market — % plus a player-colored win bar per row.
+    private var showsUpcomingOdds: Bool {
+        !match.probabilities.isEmpty && match.players.count > 1
+    }
+
+    private var upcomingOddsRows: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(match.players.enumerated()), id: \.element.id) { index, player in
+                UpcomingOddsRow(
+                    player: player,
+                    probability: match.probabilities[player.id],
+                    color: MarketPalette.color(index)
+                )
+            }
+        }
+    }
+
     // MARK: - Compact rows (upcoming + final)
 
     private func compactRows(showsToPar: Bool) -> some View {
@@ -238,6 +263,84 @@ struct MatchCardView: View {
         .font(SticksFont.mono(10))
         .kerning(0.8)
         .foregroundStyle(Color.sticksMuted)
+    }
+}
+
+// MARK: - Upcoming odds row
+
+/// One player on a priced UPCOMING card: identity line with the win %
+/// right-aligned, and a full-width win bar in the player's market color
+/// that fills in on appear.
+private struct UpcomingOddsRow: View {
+    let player: MatchPlayerSummary
+    /// 0..1 win probability — nil renders an em dash and an empty track.
+    let probability: Double?
+    let color: Color
+
+    @State private var hasAppeared = false
+
+    private var fraction: Double {
+        min(max(probability ?? 0, 0), 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                PlayerAvatar(player: player, size: 26, ringWidth: 2)
+
+                Text(player.displayName)
+                    .font(SticksFont.sans(14, weight: .medium))
+                    .foregroundStyle(Color.sticksInk)
+                    .lineLimit(1)
+
+                if let handicap = player.handicap {
+                    Text("hcp \(MatchCardMath.handicapText(handicap))")
+                        .font(SticksFont.mono(10))
+                        .foregroundStyle(Color.sticksMuted)
+                        .layoutPriority(-1)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 6)
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 5, height: 5)
+                    Text(percentText)
+                        .font(SticksFont.display(17, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sticksInk)
+                }
+                .fixedSize()
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.sticksPanel2)
+                    Capsule()
+                        .fill(color)
+                        .frame(
+                            width: probability == nil
+                                ? 0
+                                : max(geo.size.width * (hasAppeared ? fraction : 0), 4)
+                        )
+                }
+            }
+            .frame(height: 5)
+            .animation(.easeOut(duration: 0.55), value: hasAppeared)
+            .animation(.easeOut(duration: 0.35), value: fraction)
+            .onAppear { hasAppeared = true }
+            .accessibilityElement()
+            .accessibilityLabel("\(player.displayName) win chance")
+            .accessibilityValue(percentText)
+        }
+    }
+
+    private var percentText: String {
+        guard let probability else { return "—" }
+        return "\(Int((probability * 100).rounded()))%"
     }
 }
 
@@ -787,6 +890,13 @@ nonisolated enum MatchCardMath {
     static func strokes(for player: MatchPlayerSummary, holes: ClosedRange<Int>) -> Int? {
         let scored = holes.compactMap { player.scoresByHole[$0] }
         return scored.isEmpty ? nil : scored.reduce(0, +)
+    }
+
+    /// "12" for whole-number handicaps, "8.4" otherwise.
+    static func handicapText(_ handicap: Double) -> String {
+        handicap.truncatingRemainder(dividingBy: 1) == 0
+            ? String(Int(handicap))
+            : String(format: "%.1f", handicap)
     }
 
     /// "-2" / "+3" / "E" / "—".
