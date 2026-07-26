@@ -31,9 +31,19 @@ struct EsriHoleMapView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
+        let mapView = HoleMapKitView()
         mapView.delegate = context.coordinator
         context.coordinator.mapView = mapView
+        // The camera is framed against the FULL bounds (our math already
+        // reserves the top rail / bottom panel bands), and it is re-applied
+        // once the view reaches its real size — the first updateUIView runs
+        // before SwiftUI has laid the map out, so a camera set then would
+        // otherwise stay mis-centered for the whole hole.
+        mapView.insetsLayoutMarginsFromSafeArea = false
+        mapView.layoutMargins = .zero
+        mapView.onSizeChange = { [weak coordinator = context.coordinator] _ in
+            coordinator?.reapplyCamera()
+        }
         // Apple imagery underneath = the automatic fallback wherever an
         // Esri tile is missing or fails (canReplaceMapContent is false).
         mapView.mapType = .satellite
@@ -62,9 +72,10 @@ struct EsriHoleMapView: UIViewRepresentable {
             coordinator.reconcileContent(on: mapView)
         }
 
-        // Reframe on mode/hole change AND when the geo's key coordinates
-        // arrive from the fetch (tee/green presence flips false → true).
-        let cameraKey = "\(cameraMode.rawValue)-\(holeIndex)-\(geo?.teeCoordinate != nil)-\(geo?.greenCoordinate != nil)"
+        // Reframe on mode/hole change AND whenever the geometry the framing
+        // depends on changes — the coordinates themselves, not just their
+        // presence, so a late fetch or a FIX TEE edit re-frames too.
+        let cameraKey = cameraFingerprint
         if coordinator.lastCameraKey != cameraKey {
             let animated = coordinator.lastCameraKey != nil
             coordinator.lastCameraKey = cameraKey
@@ -88,6 +99,24 @@ struct EsriHoleMapView: UIViewRepresentable {
         return hasher.finalize()
     }
 
+    /// Change signature for the camera framing: the mode, the hole, and
+    /// every coordinate the framing math consumes.
+    private var cameraFingerprint: Int {
+        var hasher = Hasher()
+        hasher.combine(cameraMode)
+        hasher.combine(holeIndex)
+        hasher.combine(geo?.teeCoordinate?.latitude)
+        hasher.combine(geo?.teeCoordinate?.longitude)
+        hasher.combine(geo?.greenCoordinate?.latitude)
+        hasher.combine(geo?.greenCoordinate?.longitude)
+        hasher.combine(geo?.greenPolygonCoordinates.count)
+        for hazard in hazards {
+            hasher.combine(hazard.lat)
+            hasher.combine(hazard.lng)
+        }
+        return hasher.finalize()
+    }
+
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, MKMapViewDelegate {
@@ -95,12 +124,13 @@ struct EsriHoleMapView: UIViewRepresentable {
         weak var mapView: MKMapView?
 
         var lastContentKey: Int?
-        var lastCameraKey: String?
+        var lastCameraKey: Int?
 
         private var greenPolygon: MKPolygon?
         private var anchorAimLine: MKPolyline?
         private var aimGreenLine: MKPolyline?
         private var markerAnnotations: [EsriMarkerAnnotation] = []
+        private var appliedCamera: MKMapCamera?
 
         init(parent: EsriHoleMapView) {
             self.parent = parent
@@ -192,7 +222,19 @@ struct EsriHoleMapView: UIViewRepresentable {
             guard let geo = parent.geo,
                   let camera = Self.camera(mode: parent.cameraMode, geo: geo, hazards: parent.hazards)
             else { return }
+            // A camera applied to a zero/placeholder-sized map view resolves
+            // to a different visible region than the same camera on the laid
+            // out view, so remember it and re-apply after layout.
+            appliedCamera = camera
             mapView.setCamera(camera, animated: animated)
+        }
+
+        /// Re-applies the framing after the map view's size settles (first
+        /// layout, rotation). Never animated and never fired by a user
+        /// gesture, so a manual pan/zoom is not clobbered.
+        func reapplyCamera() {
+            guard let mapView, let camera = appliedCamera else { return }
+            mapView.setCamera(camera, animated: false)
         }
 
         // MARK: MKMapViewDelegate
@@ -355,6 +397,38 @@ struct EsriHoleMapView: UIViewRepresentable {
             guard distance.isFinite, distance > 0 else { return nil }
             return MKMapCamera(lookingAtCenter: green, fromDistance: distance, pitch: 0, heading: heading)
         }
+    }
+}
+
+// MARK: - Map view
+
+/// MKMapView subclass with two fixes for mis-framed holes:
+///
+/// 1. `safeAreaInsets` is forced to zero. This view sits under SwiftUI
+///    `safeAreaInset` panels (the hole rail on top, the ~30%-tall readout
+///    panel on the bottom), so UIKit hands it large insets. MapKit centers
+///    a camera inside its inset region, which pushed the whole hole roughly
+///    an eighth of the screen off — tee and green landing under the rail or
+///    below the panel. Our framing math already reserves those bands, so the
+///    camera must be centered in the FULL bounds.
+///
+/// 2. `onSizeChange` fires when the view first gets a real size (and on
+///    rotation), so the camera can be re-applied. Cameras applied to an
+///    unlaid-out map view resolve against the wrong viewport, which is why
+///    a pinch or any interaction "fixed" the framing before.
+final class HoleMapKitView: MKMapView {
+    var onSizeChange: ((CGSize) -> Void)?
+
+    private var lastReportedSize: CGSize = .zero
+
+    override var safeAreaInsets: UIEdgeInsets { .zero }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let size = bounds.size
+        guard size.width > 1, size.height > 1, size != lastReportedSize else { return }
+        lastReportedSize = size
+        onSizeChange?(size)
     }
 }
 
