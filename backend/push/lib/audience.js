@@ -24,9 +24,14 @@ const PREF_COLUMNS = {
 /**
  * Audience for round events (spec §5):
  * (accepted followers of each seated, account-linked player)
+ * ∪ (users who share ANY group with a seated player — groupmates)
  * ∪ (members of the round's group, if any)
  * ∪ (users who turned alerts ON for this specific round — mode 'all')
  * − seated players − the actor − users who MUTED this round.
+ *
+ * The groupmate rule is relationship-based, not round-based: if you're in
+ * a group with someone, you hear about every round they play — personal,
+ * public, or attached to a different group.
  *
  * The per-round opt-in (push_round_alerts.mode = 'all') is what lets
  * someone follow one important match without following its players or
@@ -48,6 +53,14 @@ export async function roundEventAudience(matchId, actorUserId) {
       JOIN seated s ON s.user_id = f.followee_id
       WHERE f.state = 'accepted'
     ),
+    -- Anyone sharing at least one group with a seated player, regardless of
+    -- which group (if any) this round belongs to.
+    groupmates AS (
+      SELECT DISTINCT mine.user_id
+      FROM group_members theirs
+      JOIN seated s ON s.user_id = theirs.user_id
+      JOIN group_members mine ON mine.group_id = theirs.group_id
+    ),
     group_audience AS (
       SELECT gm.user_id
       FROM group_members gm
@@ -67,6 +80,7 @@ export async function roundEventAudience(matchId, actorUserId) {
     SELECT DISTINCT user_id
     FROM (
       SELECT user_id FROM followers
+      UNION SELECT user_id FROM groupmates
       UNION SELECT user_id FROM group_audience
       UNION SELECT user_id FROM opted_in
     ) a

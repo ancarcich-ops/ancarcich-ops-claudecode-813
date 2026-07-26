@@ -77,7 +77,9 @@ Notes:
   fire-once guards (`push_events_sent`), so calling them on every score post is
   safe.
 - Audience rules (never the actor, never seated players, prefs, the 24h
-  abandoned-round rule, follower∪group dedupe) are enforced inside the senders.
+  abandoned-round rule, follower ∪ groupmate ∪ round-group dedupe) are enforced
+  inside the senders. "Groupmate" = shares any group with a seated player, so a
+  personal/public round still reaches the players' groupmates.
 - Per-round overrides (`push_round_alerts`) are applied automatically: `all`
   pulls a user into the audience and bypasses their category toggles for that
   round; `mute` removes them even if they follow a seated player.

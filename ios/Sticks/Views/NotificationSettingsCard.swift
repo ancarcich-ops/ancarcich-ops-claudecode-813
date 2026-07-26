@@ -28,7 +28,7 @@ struct NotificationSettingsCard: View {
 
                 toggleRow(
                     label: "ROUND STARTS",
-                    caption: "When someone you follow tees off.",
+                    caption: "When someone you follow or share a group with tees off.",
                     keyPath: \.roundStarts
                 )
                 hairline
@@ -56,7 +56,7 @@ struct NotificationSettingsCard: View {
                     keyPath: \.followRequests
                 )
 
-                Text("Round alerts come from people you follow and your groups — never your own scores.")
+                Text("Round alerts cover everyone you follow and everyone you share a group with — any round they play, never your own scores.")
                     .font(SticksFont.sans(12))
                     .foregroundStyle(Color.sticksMuted)
                     .padding(.horizontal, 16)

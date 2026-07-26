@@ -121,10 +121,16 @@ General rules for every event:
 - Respect the recipient's pref for that category, and skip users with
   no registered tokens.
 - Audience for round events = (accepted followers of each seated,
-  account-linked player) ∪ (members of the round's group, if any) ∪
+  account-linked player) ∪ (**groupmates**: users who share at least one
+  group with a seated player, no matter which group — or none — the round
+  itself belongs to) ∪ (members of the round's group, if any) ∪
   (users with `push_round_alerts.mode = 'all'` for that match), minus
   seated players and minus users with `mode = 'mute'`. Respect the
   abandoned-round rule: no pushes for rounds live > 24h past tee time.
+- The groupmate rule is deliberately relationship-based: being in a group
+  with someone means you hear about every round they play (personal,
+  public, or another group's), not just rounds attached to your shared
+  group. Per-round `mute` is the escape hatch.
 - A `mode = 'all'` recipient bypasses their per-category toggles for
   that round only — the point of the feature is "alert me on THIS
   match even though I'm quiet by default".
