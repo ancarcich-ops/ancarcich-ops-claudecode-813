@@ -415,7 +415,10 @@ struct TournamentDetailView: View {
             myMatchPlayerId: nil,
             groupId: nil,
             players: [],
-            tickerItems: []
+            tickerItems: [],
+            myCall: nil,
+            wagerCounts: [:],
+            hasCallData: false
         )
     }
 

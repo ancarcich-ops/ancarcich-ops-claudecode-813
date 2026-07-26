@@ -13,9 +13,19 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MatchCardView: View {
     let match: MatchSummary
+    /// Home feed only: live rows get a tappable "+ PICK" chip that places
+    /// the caller's crowd pick without leaving the card. Off elsewhere,
+    /// where the whole card is a NavigationLink and nested taps wouldn't
+    /// land.
+    var showsPicks: Bool = false
+
+    private var pickStore: RoundPickStore { .shared }
+
+    @State private var pickError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -54,6 +64,21 @@ struct MatchCardView: View {
                     lineWidth: 1
                 )
         )
+        // Adopt the server's market state whenever a payload carries it,
+        // so a pick placed on another device (or the match page) shows.
+        .onAppear { pickStore.adopt(from: match) }
+        .onChange(of: match) { _, updated in pickStore.adopt(from: updated) }
+        .alert(
+            "Couldn't place that pick",
+            isPresented: Binding(
+                get: { pickError != nil },
+                set: { if !$0 { pickError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(pickError ?? "")
+        }
     }
 
     // MARK: - Header
@@ -166,7 +191,13 @@ struct MatchCardView: View {
                         .fill(Color.sticksHairline)
                         .frame(height: 1)
                 }
-                LivePlayerBlock(match: match, player: player, showsWin: showsWin)
+                LivePlayerBlock(
+                    match: match,
+                    player: player,
+                    showsWin: showsWin,
+                    showsPick: showsPicks && match.isMarketOpen && match.players.count > 1,
+                    pickError: $pickError
+                )
             }
         }
     }
@@ -350,6 +381,8 @@ private struct LivePlayerBlock: View {
     let match: MatchSummary
     let player: MatchPlayerSummary
     let showsWin: Bool
+    var showsPick: Bool = false
+    @Binding var pickError: String?
 
     var body: some View {
         let holesPlayed = player.scoresByHole.count
@@ -373,12 +406,18 @@ private struct LivePlayerBlock: View {
                 .lineLimit(1)
 
             if let handicap = player.handicap {
-                Text("HCP \(handicap, specifier: "%.1f")")
+                Text("hcp \(MatchCardMath.handicapText(handicap))")
                     .font(SticksFont.mono(10))
                     .foregroundStyle(Color.sticksMuted)
+                    .layoutPriority(-1)
+                    .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
+            if showsPick {
+                PickChip(match: match, player: player, pickError: $pickError)
+            }
+
+            Spacer(minLength: 6)
 
             statPair(label: "TO PAR") {
                 ToParText(diff: MatchCardMath.grossToPar(for: player, in: match), size: 14)
@@ -443,6 +482,84 @@ private struct LivePlayerBlock: View {
                     )
             }
         }
+    }
+}
+
+// MARK: - Pick chip
+
+/// "+ PICK" on a live home card — places the caller's crowd pick for this
+/// player without opening the match, and reads "PICKED" once it's theirs
+/// (tap again to withdraw). Optimistic: the chip flips instantly and the
+/// store reverts it if the server refuses.
+private struct PickChip: View {
+    let match: MatchSummary
+    let player: MatchPlayerSummary
+    @Binding var pickError: String?
+
+    private var store: RoundPickStore { .shared }
+
+    private var isMine: Bool { store.pick(for: match.id) == player.id }
+    private var isPending: Bool { store.isPending(matchId: match.id, playerId: player.id) }
+
+    var body: some View {
+        Button(action: place) {
+            HStack(spacing: 4) {
+                if isPending {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(isMine ? Color.sticksGreen : Color.sticksMuted)
+                } else {
+                    Image(systemName: isMine ? "checkmark" : "plus")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                Text(isMine ? "PICKED" : "PICK")
+            }
+            .font(SticksFont.mono(9))
+            .kerning(0.8)
+            .foregroundStyle(isMine ? Color.sticksGreen : Color.sticksMuted)
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(isMine ? Color.sticksGreen.opacity(0.1) : Color.sticksPanel2)
+            .clipShape(.capsule)
+            .overlay(
+                Capsule().stroke(
+                    isMine ? Color.sticksGreen.opacity(0.55) : Color.sticksHairline,
+                    lineWidth: 1
+                )
+            )
+            .contentShape(.capsule)
+        }
+        .buttonStyle(PickChipButtonStyle())
+        .disabled(store.isBusy(matchId: match.id))
+        .animation(.easeOut(duration: 0.18), value: isMine)
+        .accessibilityLabel(
+            isMine
+                ? "Withdraw your pick on \(player.displayName)"
+                : "Pick \(player.displayName) to win"
+        )
+        .accessibilityAddTraits(isMine ? [.isSelected] : [])
+    }
+
+    private func place() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task {
+            do {
+                try await store.toggle(playerId: player.id, matchId: match.id)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch let error as APIError {
+                pickError = error.message
+            } catch {
+                pickError = "Can't reach Sticks. Check your connection and try again."
+            }
+        }
+    }
+}
+
+private struct PickChipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

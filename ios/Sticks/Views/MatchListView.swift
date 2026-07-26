@@ -307,10 +307,21 @@ struct MatchListView: View {
             .padding(.leading, 4)
 
             ForEach(matches) { match in
-                NavigationLink(value: match) {
-                    MatchCardView(match: match)
+                // Live cards carry "+ PICK" chips, so the card can't be a
+                // NavigationLink (the link would swallow the chip taps) —
+                // a container tap gesture pushes the detail instead, and
+                // the deeper chip Buttons win their own taps.
+                if match.status == .inProgress {
+                    MatchCardView(match: match, showsPicks: true)
+                        .contentShape(.rect)
+                        .onTapGesture { path.append(match) }
+                        .accessibilityAddTraits(.isButton)
+                } else {
+                    NavigationLink(value: match) {
+                        MatchCardView(match: match)
+                    }
+                    .buttonStyle(MatchCardButtonStyle())
                 }
-                .buttonStyle(MatchCardButtonStyle())
             }
         }
     }

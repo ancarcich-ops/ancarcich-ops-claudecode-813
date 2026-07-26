@@ -83,6 +83,14 @@ nonisolated struct MatchSummary: Identifiable, Hashable {
     /// Server-provided marquee strings for the home-card ticker
     /// ("SEUSS.MD 74%", "LEADER -1 THRU 9", …). Empty when absent.
     let tickerItems: [String]
+    /// The caller's crowd pick (matchPlayerId) when the list payload
+    /// carries the market — nil means no pick, or no market data.
+    let myCall: String?
+    /// matchPlayerId → number of crowd picks. May be empty.
+    let wagerCounts: [String: Int]
+    /// True when the payload actually included market/call fields, so the
+    /// client can tell "no pick" apart from "server didn't say".
+    let hasCallData: Bool
 
     /// Absolute hole number for round index `index`, honoring startingHole
     /// with wraparound past 18 (shotgun/back-nine starts).
@@ -126,6 +134,10 @@ extension MatchSummary {
 
     /// True when the caller holds a seat in this round.
     var isSeatedPlayer: Bool { myMatchPlayerId != nil }
+
+    /// The crowd market accepts picks while a round is live or upcoming —
+    /// it closes when the round goes final (matching the web/detail rule).
+    var isMarketOpen: Bool { status != .completed }
 }
 
 extension MatchSummary: Decodable {
@@ -133,6 +145,7 @@ extension MatchSummary: Decodable {
         case id, courseName, scheduledAt, completedAt, status, holes
         case startingHole, scoringMode, format, pars, probabilities
         case myMatchPlayerId, groupId, players, tickerItems
+        case myCall, wagerCounts
     }
 
     init(from decoder: Decoder) throws {
@@ -152,6 +165,9 @@ extension MatchSummary: Decodable {
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         players = try container.decodeIfPresent([MatchPlayerSummary].self, forKey: .players) ?? []
         tickerItems = try container.decodeIfPresent([String].self, forKey: .tickerItems) ?? []
+        myCall = try? container.decodeIfPresent(String.self, forKey: .myCall)
+        wagerCounts = (try? container.decode([String: Int].self, forKey: .wagerCounts)) ?? [:]
+        hasCallData = container.contains(.myCall) || container.contains(.wagerCounts)
     }
 }
 
