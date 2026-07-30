@@ -516,6 +516,10 @@ struct OnCourseGPSView: View {
 
             statusRow(detail: detail, anchor: anchor)
 
+            if isRoundSessionLive(detail) {
+                roundServicesRow
+            }
+
             if canFinishRound(detail) {
                 if let finishError {
                     Text(finishError)
@@ -692,6 +696,71 @@ struct OnCourseGPSView: View {
                 fixTeeButton
             }
         }
+    }
+
+    // MARK: - In-round disclosure
+
+    /// True while this match owns the live round session — i.e. while
+    /// background GPS is running and (with a paired watch) the Health
+    /// golf workout is recording.
+    private func isRoundSessionLive(_ detail: MatchDetail) -> Bool {
+        RoundSessionService.shared.activeMatchId == detail.id
+    }
+
+    /// Names the two background services a live round runs, right on the
+    /// screen where the round is played: continuous GPS (which is why the
+    /// lock screen and watch keep live yardages) and the Apple Watch
+    /// Health golf workout. Both are the features behind the `location`
+    /// background mode and the HealthKit entitlement, so they're stated
+    /// in plain language rather than left implicit.
+    private var roundServicesRow: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                servicePill(
+                    icon: "location.fill",
+                    text: "GPS LIVE IN BACKGROUND",
+                    isActive: true
+                )
+                servicePill(
+                    icon: "heart.fill",
+                    text: watchWorkoutActive ? "HEALTH: GOLF WORKOUT" : "NO WATCH PAIRED",
+                    isActive: watchWorkoutActive
+                )
+            }
+
+            Text(watchWorkoutActive
+                ? "Distances keep updating with your phone pocketed, and your Apple Watch is recording this round to Health as a golf workout. Both stop when you finish."
+                : "Distances keep updating with your phone pocketed. This stops when you finish the round.")
+                .font(SticksFont.sans(11))
+                .foregroundStyle(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// A paired watch with the Sticks app installed is what runs the
+    /// HKWorkoutSession — without one, say so instead of claiming it.
+    private var watchWorkoutActive: Bool {
+        WatchPairingState.current().isReady
+    }
+
+    private func servicePill(icon: String, text: String, isActive: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(text)
+                .font(SticksFont.label(9, weight: .bold))
+                .kerning(1)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .foregroundStyle(isActive ? .white.opacity(0.9) : .white.opacity(0.45))
+        .padding(.horizontal, 9)
+        .frame(height: 24)
+        .frame(maxWidth: .infinity)
+        .background(.white.opacity(isActive ? 0.14 : 0.07))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(.white.opacity(isActive ? 0.22 : 0.1), lineWidth: 1))
     }
 
     /// FINISH ROUND appears only for seated players (never spectators) and

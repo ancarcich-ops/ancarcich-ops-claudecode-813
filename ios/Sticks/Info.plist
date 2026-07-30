@@ -13,9 +13,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Sticks uses your location to show live GPS distances to the green while you play, and to keep those distances live on your lock screen and Apple Watch during a round.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Sticks works with Health to launch its Apple Watch companion automatically and record your rounds as golf workouts.</string>
+	<string>Sticks connects to Health so it can start the Sticks app on your Apple Watch when a round begins — the watch records that round as a golf workout.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Sticks saves your rounds to Health as golf workouts from your Apple Watch.</string>
+	<string>Sticks saves each round to Health as a golf workout from your Apple Watch, so it counts toward your Activity rings.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Newsreader-Medium.ttf</string>

@@ -129,6 +129,11 @@ struct RoundGlanceView: View {
 
                 overallScore
                     .padding(.top, 8)
+
+                if !isLuminanceReduced {
+                    healthWorkoutBadge
+                        .padding(.top, 8)
+                }
             }
             .frame(maxWidth: .infinity)
             .animation(.easeInOut(duration: 0.3), value: isStale)
@@ -352,6 +357,33 @@ struct RoundGlanceView: View {
     private var overallScoreText: String {
         guard let toPar = snapshot.myToPar else { return "—" }
         return toPar == 0 ? "E" : (toPar > 0 ? "+\(toPar)" : "\(toPar)")
+    }
+
+    // MARK: - Health workout badge
+
+    /// Identifies the HealthKit feature where it actually happens: while
+    /// the round is live, this watch is recording a Golf workout that
+    /// saves to Health (and is what keeps Sticks on the wrist). Shown
+    /// only while the HKWorkoutSession is genuinely running.
+    @ViewBuilder
+    private var healthWorkoutBadge: some View {
+        if WorkoutKeepAliveService.shared.isRunning {
+            HStack(spacing: 4) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 8, weight: .bold))
+                Text("GOLF WORKOUT · HEALTH")
+                    .font(.system(size: 9, weight: .bold))
+                    .kerning(0.8)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(Color.sticksDanger.opacity(0.85))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.white.opacity(0.08))
+            .clipShape(Capsule())
+            .accessibilityLabel("Recording this round as a golf workout in Health")
+        }
     }
 
     private func flank(label: String, yards: Int?) -> some View {

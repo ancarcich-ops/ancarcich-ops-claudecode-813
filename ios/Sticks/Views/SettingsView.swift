@@ -83,6 +83,7 @@ struct SettingsView: View {
                         handicapCard
                         peopleCard
                         NotificationSettingsCard()
+                        WatchHealthCard()
                         mapCard
                         accountCard
                     }
