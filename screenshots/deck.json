@@ -4,8 +4,7 @@
     "headlineFont": "'Plus Jakarta Sans', sans-serif — import via @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap')",
     "headlineFontSize": 124,
     "mockupIds": {
-      "iphone": "deep-blue",
-      "ipad": "space-gray"
+      "iphone": "deep-blue"
     },
     "palette": {
       "primary": "#123524",
