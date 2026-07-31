@@ -17,6 +17,7 @@
 import Foundation
 import HealthKit
 import Observation
+import os
 
 @Observable
 final class WorkoutKeepAliveService: NSObject {
@@ -26,6 +27,13 @@ final class WorkoutKeepAliveService: NSObject {
 
     /// True while the golf workout session is live.
     private(set) var isRunning = false
+
+    /// Set once a workout has been written to Health this launch — the
+    /// round screen and Settings copy both claim ring credit, so a failed
+    /// save must be visible rather than silent.
+    private(set) var didSaveLastWorkout = false
+
+    private static let log = Logger(subsystem: "com.sticks.watch", category: "workout")
 
     private let store = HKHealthStore()
     private var session: HKWorkoutSession?
@@ -80,6 +88,8 @@ final class WorkoutKeepAliveService: NSObject {
             let start = Date()
             newSession.startActivity(with: start)
             try await newBuilder.beginCollection(at: start)
+            didSaveLastWorkout = false
+            Self.log.info("Golf workout started")
             // Brand the saved workout so it reads as "Sticks" in Health.
             try? await newBuilder.addMetadata([HKMetadataKeyWorkoutBrandName: "Sticks"])
             isRunning = true
@@ -95,11 +105,44 @@ final class WorkoutKeepAliveService: NSObject {
             return
         }
         let end = Date()
+
+        // Order matters. `endCollection` on a session that is still
+        // running throws, `finishWorkout` then returns nil, and the round
+        // is silently never written to Health. So: stop the activity, ask
+        // the session to end, wait for it to actually reach `.ended`, and
+        // only then close the builder.
         session.stopActivity(with: end)
-        try? await builder.endCollection(at: end)
-        _ = try? await builder.finishWorkout()
         session.end()
+        await waitForSessionEnd(session)
+
+        do {
+            try await builder.endCollection(at: end)
+            let workout = try await builder.finishWorkout()
+            didSaveLastWorkout = workout != nil
+            if let workout {
+                Self.log.info("Golf workout saved to Health, duration \(Int(workout.duration))s")
+            } else {
+                Self.log.error("finishWorkout returned no workout — nothing saved to Health")
+            }
+        } catch {
+            didSaveLastWorkout = false
+            Self.log.error("Failed to save golf workout: \(error.localizedDescription, privacy: .public)")
+        }
+
         teardown()
+    }
+
+    /// Polls up to 5s for the session to leave the running/stopped states.
+    /// The delegate callback can arrive on any queue, and a hung session
+    /// must never block the save forever.
+    private func waitForSessionEnd(_ session: HKWorkoutSession) async {
+        let deadline = Date().addingTimeInterval(5)
+        while session.state != .ended, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if session.state != .ended {
+            Self.log.error("Workout session did not reach .ended in time; saving anyway")
+        }
     }
 
     private func teardown() {
