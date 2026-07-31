@@ -6,8 +6,9 @@
 //  phone app opens (or a round starts) it calls HealthKit's
 //  `startWatchApp(with:)`, which launches this app and delivers the golf
 //  workout configuration here. If a round is actually live, the
-//  keep-alive workout starts immediately so Sticks lands frontmost on the
-//  wrist; with no round we skip the workout — no phantom golf workouts
+//  keep-alive workout is offered — started outright only if the wearer
+//  has already chosen "Always track", otherwise the round screen asks
+//  first. With no round we skip it entirely — no phantom golf workouts
 //  in Health from just browsing the phone app.
 //
 
@@ -22,8 +23,8 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
             // Pull any context delivered while the app was closed so the
             // live-round check below sees the current state.
             session.activate()
-            if session.snapshot != nil {
-                WorkoutKeepAliveService.shared.start()
+            if let snapshot = session.snapshot {
+                WorkoutConsentStore.shared.roundBecameLive(key: snapshot.courseName)
             }
         }
     }

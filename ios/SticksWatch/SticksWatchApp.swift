@@ -6,6 +6,7 @@ struct SticksWatchApp: App {
     @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
     private let phoneSession = PhoneSessionService.shared
     private let workoutKeepAlive = WorkoutKeepAliveService.shared
+    private let workoutConsent = WorkoutConsentStore.shared
 
     var body: some Scene {
         WindowGroup {
@@ -19,13 +20,16 @@ struct SticksWatchApp: App {
                     WKExtension.shared().isFrontmostTimeoutExtended = true
                     phoneSession.activate()
                 }
-                // A live round on the phone runs a golf workout session on
-                // the watch, which keeps Sticks frontmost — wrist-raise
-                // returns here instead of the clock face, all round long.
-                .onChange(of: phoneSession.snapshot != nil, initial: true) { _, hasRound in
-                    if hasRound {
-                        workoutKeepAlive.start()
+                // A live round can run a golf workout session on the
+                // watch, which records to Health and keeps Sticks
+                // frontmost — but only with the wearer's say-so, so this
+                // asks (or honors their saved choice) rather than
+                // starting on its own.
+                .onChange(of: phoneSession.snapshot?.courseName, initial: true) { _, courseName in
+                    if let courseName {
+                        workoutConsent.roundBecameLive(key: courseName)
                     } else {
+                        workoutConsent.roundEnded()
                         workoutKeepAlive.end()
                     }
                 }

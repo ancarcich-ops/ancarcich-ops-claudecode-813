@@ -105,12 +105,12 @@ struct WatchHealthCard: View {
                 }
             }
 
-            Text("When you start a round, the Sticks app on your Apple Watch starts a **Golf workout** in Health. That workout reads your heart rate, active energy, and walking distance while you play, saves the finished round to Health so it counts toward your Activity rings, and is what keeps Sticks on your wrist — a raised wrist comes straight back to your yardages instead of the watch face.")
+            Text("When you start a round, the Sticks app on your Apple Watch asks whether to record it as a **Golf workout** in Health. That workout reads your heart rate, active energy, and walking distance while you play, saves the finished round to Health so it counts toward your Activity rings, and is what keeps Sticks on your wrist — a raised wrist comes straight back to your yardages instead of the watch face.")
                 .font(SticksFont.sans(12))
                 .foregroundStyle(Color.sticksMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Your Apple Watch asks for Health permission the first time you start a round. Nothing is read or saved without it, and the round still scores normally if you decline.")
+            Text("Nothing is recorded unless you say yes on your watch — tap **Start Workout** on the prompt, or the Health badge on the watch round screen at any point. Choose **Always track** or **Never track** there to stop being asked. Your watch also asks for Health permission the first time, and the round still scores normally if you decline either one.")
                 .font(SticksFont.sans(12))
                 .foregroundStyle(Color.sticksMuted)
                 .fixedSize(horizontal: false, vertical: true)

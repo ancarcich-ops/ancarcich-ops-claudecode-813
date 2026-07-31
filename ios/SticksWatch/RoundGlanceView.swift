@@ -33,6 +33,9 @@ struct RoundGlanceView: View {
     /// status line, auto-dismissed.
     @State private var transientError: String?
     @State private var showScoreEntry = false
+    /// Health badge tapped — start/stop the golf workout, or change what
+    /// happens automatically at the start of a round.
+    @State private var showWorkoutOptions = false
 
     /// Snapshots older than this are treated as stale — the yardage is no
     /// longer trustworthy and must not be presented as live.
@@ -77,6 +80,9 @@ struct RoundGlanceView: View {
                 initialScore: snapshot.myScore,
                 overallToPar: snapshot.myToPar
             )
+        }
+        .sheet(isPresented: $showWorkoutOptions) {
+            WorkoutConsentView(mode: .manage)
         }
     }
 
@@ -361,29 +367,38 @@ struct RoundGlanceView: View {
 
     // MARK: - Health workout badge
 
-    /// Identifies the HealthKit feature where it actually happens: while
-    /// the round is live, this watch is recording a Golf workout that
-    /// saves to Health (and is what keeps Sticks on the wrist). Shown
-    /// only while the HKWorkoutSession is genuinely running.
-    @ViewBuilder
+    /// Identifies the HealthKit feature where it actually happens, and
+    /// is the wearer's control for it: tap to start, stop, or change what
+    /// happens at the start of a round. Reads RECORDING while the
+    /// HKWorkoutSession is genuinely running, and offers to start it when
+    /// it isn't.
     private var healthWorkoutBadge: some View {
-        if WorkoutKeepAliveService.shared.isRunning {
+        let isRecording = WorkoutKeepAliveService.shared.isRunning
+        return Button {
+            WKInterfaceDevice.current().play(.click)
+            showWorkoutOptions = true
+        } label: {
             HStack(spacing: 4) {
-                Image(systemName: "heart.fill")
+                Image(systemName: isRecording ? "heart.fill" : "heart")
                     .font(.system(size: 8, weight: .bold))
-                Text("GOLF WORKOUT · HEALTH")
+                Text(isRecording ? "GOLF WORKOUT · HEALTH" : "TRACK IN HEALTH")
                     .font(.system(size: 9, weight: .bold))
                     .kerning(0.8)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .foregroundStyle(Color.sticksDanger.opacity(0.85))
+            .foregroundStyle(isRecording ? Color.sticksDanger.opacity(0.85) : Color.white.opacity(0.5))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(.white.opacity(0.08))
             .clipShape(Capsule())
-            .accessibilityLabel("Recording this round as a golf workout in Health")
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            isRecording
+                ? "Recording this round as a golf workout in Health. Tap for options."
+                : "Track this round as a golf workout in Health"
+        )
     }
 
     private func flank(label: String, yards: Int?) -> some View {

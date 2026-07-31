@@ -11,6 +11,8 @@ import SwiftUI
 struct ContentView: View {
     @Environment(PhoneSessionService.self) private var phoneSession
 
+    private var consent: WorkoutConsentStore { WorkoutConsentStore.shared }
+
     var body: some View {
         Group {
             if let snapshot = phoneSession.snapshot {
@@ -19,6 +21,23 @@ struct ContentView: View {
                 noRound
             }
         }
+        // Asked once per round, before any Health recording begins.
+        .sheet(isPresented: askingBinding) {
+            WorkoutConsentView(mode: .prompt)
+        }
+    }
+
+    private var askingBinding: Binding<Bool> {
+        Binding(
+            get: { WorkoutConsentStore.shared.isAsking },
+            set: { isPresented in
+                // Swiped away without choosing — treat as "not now" for
+                // this round, without changing the saved default.
+                if !isPresented, WorkoutConsentStore.shared.isAsking {
+                    WorkoutConsentStore.shared.decline(remember: false)
+                }
+            }
+        )
     }
 
     private var noRound: some View {
