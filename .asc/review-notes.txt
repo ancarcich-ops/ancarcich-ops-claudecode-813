@@ -1,28 +1,28 @@
-Sticks is an iPhone + Apple Watch product (iPhone-only build; iPad support removed). The two flagged features cannot work on iPad or in a stationary indoor test, so please review on an iPhone.
+Sticks is an iPhone + Apple Watch product (iPhone-only build; iPad support removed). Neither flagged feature can work in a stationary indoor test, so please review on an iPhone.
 
 SIGN-IN IS REQUIRED. Demo account: user123 / user1234 (welcome screen).
-Account deletion is available in-app at Settings > Delete account.
+Account deletion is in-app at Settings > Delete account.
 
 RE 2.5.4 - BACKGROUND LOCATION
-Persistent location is required by the live round. With a round active, Sticks keeps updating distance-to-green while the phone is locked and pocketed, so (a) the Lock Screen / Dynamic Island Live Activity shows live yardage to the front/center/back of the green and (b) the paired Apple Watch shows the same yardage on the wrist. Significant-change and region monitoring cannot do this: yardage must update continuously as the golfer walks, at meter-level accuracy. Background updates run only for the duration of a round and stop when it ends.
-Where to see it: Start Round > play a hole > lock the phone; the Live Activity yardage keeps updating as you move. Disclosed in-app on the round screen and in Settings > Apple Watch & Health.
+Persistent location is required by the live round. With a round active, Sticks keeps updating distance-to-green while the phone is locked and pocketed, so (a) the Lock Screen / Dynamic Island Live Activity shows live yardage to the front/center/back of the green and (b) the paired Apple Watch shows the same yardage on the wrist. Significant-change and region monitoring cannot do this: yardage must update continuously as the golfer walks, at meter accuracy. Background updates run only for the duration of a round and stop when it ends.
+Where to see it: Start Round > play a hole > lock the phone; the Live Activity yardage keeps updating as you move. Disclosed on the round screen and in Settings > Apple Watch & Health.
 Evidence: PART 1 of the attached recording (sticks_review_evidence.mp4), filmed outdoors on a physical iPhone.
 0:03-0:46 - round screen at 157y to center; the phone is locked with Sticks backgrounded and the Lock Screen Live Activity updates 148y > 141y > 136y as the tester walks. Only a live location stream can move those numbers with the app backgrounded.
-0:46-0:51 - Control Center during that round: the blue location arrow with "Sticks" (shown as "Rivian & Sticks").
+0:46-0:51 - Control Center during that round: the blue location arrow naming Sticks (shown as "Rivian & Sticks").
 0:51-0:56 - the Privacy panel: "Sticks - Location", meaning currently active, versus "Location, recently" for an app that has stopped.
-Note: iOS does not draw the indicator on the Lock Screen, and on a Dynamic Island iPhone it is not visible in the Home Screen status bar - Control Center is where it can be seen.
+Note: iOS does not draw the indicator on the Lock Screen, and on a Dynamic Island iPhone it is not in the Home Screen status bar - Control Center is where it shows.
 
 RE 2.5.1 - HEALTHKIT
 The golf round is saved as a real workout: an HKWorkoutSession / HKLiveWorkoutBuilder on the Apple Watch collects heart rate and active energy and saves the finished round to Health, crediting Activity rings.
 Identified in the UI on both devices:
 1) Watch - starting a round shows a sheet, "Track this round as a Golf workout?", stating that it records heart rate, energy and distance to Health and credits Activity rings. Nothing is recorded and no Health prompt appears until "Start Workout" is tapped. "Not Now" declines; "Remember my choice" sets the default. Shipped default is "Ask each round".
-2) Watch round screen - a Health chip sits in the top row next to the course name, visible without scrolling for the whole round: "HEALTH" when idle, "REC - HEALTH" in red while recording. Tap it to start, to stop and save, or to change the default. When no round is active the watch home screen shows the same "GOLF WORKOUT - HEALTH" chip.
+2) Watch round screen - a Health chip sits in the top row next to the course name, visible without scrolling for the whole round: "HEALTH" when idle, "REC - HEALTH" in red while recording. Tap it to start, to stop and save, or to change the default. With no round active the watch home screen shows a "GOLF WORKOUT - HEALTH" chip.
 3) iPhone - Settings > "Apple Watch & Health" explains the same. The iPhone never reads or writes Health data; its only HealthKit call is HKHealthStore.startWatchApp(with:).
 Evidence: PART 2 of the same recording (0:56-2:24), on a physical iPhone with a paired Apple Watch Ultra.
 0:59-1:06 - the Watch showing the live round.
-1:07-1:29 - the workout starts and iOS presents Health Access for "SticksWatch": Review, then Read Access and Write Access, then Allow. This clip joins a round already in progress on a Watch that had a saved preference, so the per-round sheet in item 1 is not on screen here; a fresh install shows that sheet first.
-1:29-2:13 - the round continues with the workout recording.
-2:13-2:24 - the Health app: the saved workout, Source "Sticks", Device "Apple Watch", with Total Active Energy and Average Heart Rate.
+1:07-1:29 - the workout starts and iOS presents Health Access for "SticksWatch": Review, then Read and Write Access, then Allow. This clip joins a round already in progress on a Watch with a saved preference, so the per-round sheet in item 1 is not on screen; a fresh install shows it first.
+1:29-2:13 - the round continues, workout recording.
+2:13-2:24 - the Health app: the saved workout, Source "Sticks", Device "Apple Watch", with Active Energy and Average Heart Rate.
 
 APP OVERVIEW
-Start Round creates a scorecard; enter scores per hole and view the live leaderboard. The GPS tab shows hole yardages (grant location when prompted). The Picks/Win % market is friendly play-money picks between players in the same group only - no real money, no deposits, no cash prizes, no gambling. Side games (Nassau, Skins, Snake) are score-tracking only, with the same disclaimer shown in-app.
+Start Round creates a scorecard; enter scores per hole and view the live leaderboard. The GPS tab shows hole yardages (grant location when prompted). The Picks/Win % market is friendly play-money picks between players in the same group only - no real money, no deposits, no cash prizes, no gambling. Side games (Nassau, Skins, Snake) are score-tracking only, with the same in-app disclaimer.
