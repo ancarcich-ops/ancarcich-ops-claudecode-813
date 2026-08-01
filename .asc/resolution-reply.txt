@@ -1,0 +1,33 @@
+Hello, and thank you for the detailed feedback.
+
+Both items are addressed in build 47 (version 1.0.0), which is now attached to this version. A screen recording filmed on physical devices is attached in App Store Information > App Review Information (sticks_review_evidence.mp4, 2:52). Neither feature can be observed in a stationary indoor test, so please review on an iPhone that is moving outdoors.
+
+Sign-in is required. Demo account: user123 / user1234 (welcome screen).
+
+One note on the review environment: the app was reviewed on iPad Air 11-inch. Sticks is now iPhone + Apple Watch only; iPad support has been removed from the current build.
+
+GUIDELINE 2.5.4 - BACKGROUND LOCATION
+
+Persistent location is required by the live round. While a round is active, Sticks continuously recalculates distance to the front, center and back of the green as the golfer walks, and pushes those yardages to the Lock Screen / Dynamic Island Live Activity and to the paired Apple Watch while the phone is locked and pocketed. This is the primary way the app is used: the phone stays in a pocket between shots. Significant-change and region monitoring cannot serve this, because the yardage must update continuously at meter-level accuracy over distances of a few yards, not on a several-hundred-meter significant-change threshold. Location updates start when a round starts and stop when the round ends.
+
+In the attachment, PART 1:
+- 0:03-0:46 - round screen shows 157y to center; the phone is then locked with Sticks backgrounded and the Lock Screen Live Activity updates 148y > 141y > 136y as the tester walks. Only a live location stream can move those numbers with the app in the background.
+- 0:46-0:51 - Control Center during that round, showing the blue location arrow naming Sticks.
+- 0:51-0:56 - the Privacy panel showing "Sticks - Location" as active.
+
+To reproduce: sign in > Start Round > play a hole > lock the phone > walk. The yardage on the Lock Screen keeps updating.
+
+GUIDELINE 2.5.1 - HEALTHKIT
+
+HealthKit is used to save each round as a real workout: an HKWorkoutSession / HKLiveWorkoutBuilder on the Apple Watch collects heart rate and active energy and writes the round to Health, crediting Activity rings. Core Motion is not used for this. The functionality is identified in the user interface on both devices, and this identification has been made more prominent in build 47:
+
+1) Apple Watch, home screen - a "GOLF WORKOUT - HEALTH" chip is shown even with no round active, before any consent exists.
+2) Apple Watch, starting a round - a sheet titled "Track this round as a Golf workout?" states that heart rate, energy and distance are recorded to Health and that Activity rings are credited. Nothing is recorded and no system Health prompt appears until "Start Workout" is tapped. The decline option reads "Not Now", or "Never Track" when "Remember my choice" is enabled. The default is "Ask each round".
+3) Apple Watch, round screen - a Health chip now sits in the top row next to the course name and requires no scrolling: "HEALTH" when idle, "REC - HEALTH" in red while recording. Tapping it starts the workout, stops and saves it, or changes the default.
+4) iPhone - Settings > "Apple Watch & Health" explains the same behavior. The iPhone itself never reads or writes Health data; its only HealthKit call is startWatchApp(with:).
+
+In the attachment:
+- PART 2 (0:56-2:24) - the Watch during a live round; at 1:07-1:29 iOS presents Health Access for "SticksWatch" (Review, Read Access, Write Access, Allow); at 2:13-2:24 the Health app shows the saved workout with Source "Sticks", Device "Apple Watch", Active Energy and Average Heart Rate.
+- PART 3 (2:24-2:52) - the consent flow on a fresh install: the Watch idle with the "GOLF WORKOUT - HEALTH" chip, then the consent sheet from item 2 filmed close-up so the text is readable, then the round screen with the red "REC - HEALTH" chip in the top row.
+
+Please let us know if anything further would be helpful.
