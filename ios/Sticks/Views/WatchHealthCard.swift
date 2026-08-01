@@ -110,7 +110,7 @@ struct WatchHealthCard: View {
                 .foregroundStyle(Color.sticksMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Nothing is recorded unless you say yes on your watch — tap **Start Workout** on the prompt, or the Health badge on the watch round screen at any point. Choose **Always track** or **Never track** there to stop being asked. Your watch also asks for Health permission the first time, and the round still scores normally if you decline either one.")
+            Text("Nothing is recorded unless you say yes on your watch — tap **Start Workout** on the prompt, or the **HEALTH** chip at the top of the watch round screen at any point. Choose **Always track** or **Never track** there to stop being asked. Your watch also asks for Health permission the first time, and the round still scores normally if you decline either one.")
                 .font(SticksFont.sans(12))
                 .foregroundStyle(Color.sticksMuted)
                 .fixedSize(horizontal: false, vertical: true)

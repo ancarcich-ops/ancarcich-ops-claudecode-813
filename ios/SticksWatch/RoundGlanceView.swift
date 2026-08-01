@@ -89,12 +89,21 @@ struct RoundGlanceView: View {
     private func content(isStale: Bool) -> some View {
         ScrollView {
             VStack(spacing: 2) {
-                Text(snapshot.courseName.uppercased())
-                    .font(.system(size: 11, weight: .semibold))
-                    .kerning(1.1)
-                    .foregroundStyle(isLuminanceReduced ? Color.white.opacity(0.35) : Color.sticksGreenBright)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                // Course name and the Health chip share the header row so
+                // the HealthKit feature is on screen the moment the round
+                // screen appears — no scrolling, no wrist-down exception.
+                HStack(spacing: 6) {
+                    Text(snapshot.courseName.uppercased())
+                        .font(.system(size: 11, weight: .semibold))
+                        .kerning(1.1)
+                        .foregroundStyle(isLuminanceReduced ? Color.white.opacity(0.35) : Color.sticksGreenBright)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    healthWorkoutBadge
+                        .layoutPriority(1)
+                }
 
                 holeSwitcher
                     .padding(.top, 2)
@@ -135,11 +144,6 @@ struct RoundGlanceView: View {
 
                 overallScore
                     .padding(.top, 8)
-
-                if !isLuminanceReduced {
-                    healthWorkoutBadge
-                        .padding(.top, 8)
-                }
             }
             .frame(maxWidth: .infinity)
             .animation(.easeInOut(duration: 0.3), value: isStale)
@@ -367,38 +371,51 @@ struct RoundGlanceView: View {
 
     // MARK: - Health workout badge
 
-    /// Identifies the HealthKit feature where it actually happens, and
-    /// is the wearer's control for it: tap to start, stop, or change what
-    /// happens at the start of a round. Reads RECORDING while the
-    /// HKWorkoutSession is genuinely running, and offers to start it when
-    /// it isn't.
+    /// Identifies the HealthKit feature where it actually happens, and is
+    /// the wearer's control for it: tap to start, stop, or change what
+    /// happens at the start of a round. Lives in the header row so it is
+    /// visible without scrolling for the whole round; wrist-down it stays
+    /// on screen, dimmed with the rest of the chrome, but stops being a
+    /// control.
+    @ViewBuilder
     private var healthWorkoutBadge: some View {
         let isRecording = WorkoutKeepAliveService.shared.isRunning
-        return Button {
-            WKInterfaceDevice.current().play(.click)
-            showWorkoutOptions = true
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: isRecording ? "heart.fill" : "heart")
-                    .font(.system(size: 8, weight: .bold))
-                Text(isRecording ? "GOLF WORKOUT · HEALTH" : "TRACK IN HEALTH")
-                    .font(.system(size: 9, weight: .bold))
-                    .kerning(0.8)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+        if isLuminanceReduced {
+            healthChip(isRecording: isRecording)
+                .opacity(0.5)
+                .accessibilityHidden(true)
+        } else {
+            Button {
+                WKInterfaceDevice.current().play(.click)
+                showWorkoutOptions = true
+            } label: {
+                healthChip(isRecording: isRecording)
             }
-            .foregroundStyle(isRecording ? Color.sticksDanger.opacity(0.85) : Color.white.opacity(0.5))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.white.opacity(0.08))
-            .clipShape(Capsule())
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                isRecording
+                    ? "Recording this round as a golf workout in Health. Tap for options."
+                    : "Track this round as a golf workout in Health"
+            )
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            isRecording
-                ? "Recording this round as a golf workout in Health. Tap for options."
-                : "Track this round as a golf workout in Health"
-        )
+    }
+
+    private func healthChip(isRecording: Bool) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: isRecording ? "heart.fill" : "heart")
+                .font(.system(size: 8, weight: .bold))
+                .symbolEffect(.pulse, isActive: isRecording && !isLuminanceReduced)
+            Text(isRecording ? "REC · HEALTH" : "HEALTH")
+                .font(.system(size: 9, weight: .bold))
+                .kerning(0.6)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .foregroundStyle(isRecording ? Color.sticksDanger : Color.white.opacity(0.55))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(isRecording ? Color.sticksDanger.opacity(0.18) : Color.white.opacity(0.08))
+        .clipShape(Capsule())
     }
 
     private func flank(label: String, yards: Int?) -> some View {

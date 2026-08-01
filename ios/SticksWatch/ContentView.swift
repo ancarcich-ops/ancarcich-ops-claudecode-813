@@ -51,6 +51,21 @@ struct ContentView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            // HealthKit stays identified even before a round exists.
+            HStack(spacing: 4) {
+                Image(systemName: "heart")
+                    .font(.system(size: 8, weight: .bold))
+                Text("GOLF WORKOUT · HEALTH")
+                    .font(.system(size: 9, weight: .bold))
+                    .kerning(0.6)
+            }
+            .foregroundStyle(.white.opacity(0.55))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.08))
+            .clipShape(Capsule())
+            .accessibilityLabel("Rounds can be recorded as a golf workout in Health")
         }
         .padding(.horizontal, 8)
     }

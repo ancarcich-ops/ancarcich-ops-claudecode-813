@@ -16,7 +16,7 @@ RE 2.5.1 - HEALTHKIT
 The golf round is saved as a real workout: an HKWorkoutSession / HKLiveWorkoutBuilder on the Apple Watch collects heart rate and active energy and saves the finished round to Health, crediting Activity rings.
 Identified in the UI on both devices:
 1) Watch - starting a round shows a sheet, "Track this round as a Golf workout?", stating that it records heart rate, energy and distance to Health and credits Activity rings. Nothing is recorded and no Health prompt appears until "Start Workout" is tapped. "Not Now" declines; "Remember my choice" sets the default. Shipped default is "Ask each round".
-2) Watch round screen - a Health badge under the yardage identifies the feature at all times: "TRACK IN HEALTH" when idle, "GOLF WORKOUT - HEALTH" while recording. Tap it to start, to stop and save, or to change the default.
+2) Watch round screen - a Health chip sits in the top row next to the course name, visible without scrolling for the whole round: "HEALTH" when idle, "REC - HEALTH" in red while recording. Tap it to start, to stop and save, or to change the default. When no round is active the watch home screen shows the same "GOLF WORKOUT - HEALTH" chip.
 3) iPhone - Settings > "Apple Watch & Health" explains the same. The iPhone never reads or writes Health data; its only HealthKit call is HKHealthStore.startWatchApp(with:).
 Evidence: PART 2 of the same recording (0:56-2:24), on a physical iPhone with a paired Apple Watch Ultra.
 0:59-1:06 - the Watch showing the live round.
