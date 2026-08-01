@@ -30,10 +30,20 @@ four things that the App Privacy answers — and the App Store description — n
 
 ---
 
-# Ready-to-paste replacement text
+# Ready-to-paste text — all of it goes on https://sticks-golf.app/privacy
 
-Keep the existing intro, SMS, Sharing, Retention, Choices, and Contact sections as they
-are. Replace the "Information we collect" list and add the two new sections below it.
+One URL is all Apple needs. No second page, no separate health page. Placement against the
+live page, top to bottom:
+
+- Keep the intro paragraph as-is.
+- **Replace** the four bullets under "Information we collect" with the block below.
+- **Insert** the new "Apple Health" section immediately after "How we use information"
+  (before "SMS / text messaging").
+- Keep "SMS / text messaging" as-is.
+- **Append** the service-providers sentence to the end of the existing "Sharing" section.
+- Keep "Data retention & security" as-is.
+- **Insert** "Deleting your account" after "Your choices", before "Contact".
+- Keep "Contact" as-is. Bump "Last updated" to the date you publish.
 
 ## Information we collect
 
