@@ -1,0 +1,23 @@
+Hello, and thank you for the follow-up. Answers below.
+
+Q: Does your app allow HealthKit user data to be uploaded to your servers?
+A: No. No HealthKit data of any kind is uploaded to our servers, or to any server. All HealthKit data stays on the user's Apple Watch and in the Health app on their device.
+
+Q: Does this app share HealthKit user data with third parties?
+A: No. HealthKit data is never shared with third parties. The app contains no analytics, advertising or attribution SDKs of any kind, and no third-party frameworks are linked. HealthKit data is never used for advertising, marketing, or data mining.
+
+TECHNICAL DETAIL
+
+HealthKit is used in exactly two places in the binary, and neither one moves data off the device:
+
+1) SticksWatch (Apple Watch) - WorkoutKeepAliveService creates an HKWorkoutSession with an HKLiveWorkoutBuilder for a golf workout while a round is live. Its HKLiveWorkoutDataSource collects heart rate, active energy and walking distance, and on finishing the round it writes a single HKWorkout back to HealthKit. Authorization requested: share = HKWorkoutType only; read = heart rate, active energy burned, distance walking/running - all consumed only by the on-screen round UI and the workout save. The values are never serialized, never persisted outside HealthKit, and never sent anywhere.
+
+2) Sticks (iPhone) - WatchAppLaunchService calls HKHealthStore.startWatchApp(with:) with a golf HKWorkoutConfiguration. This is only used to launch the companion Watch app. The iPhone app requests no HealthKit read or share authorization, performs no queries, and never receives HealthKit data.
+
+The Watch app has no networking code at all - no URLSession, no authentication, no API client. Its only outbound channel is WatchConnectivity to the paired iPhone, and the only payloads on that channel are: a round snapshot from phone to watch (course name, hole number, par, yardages to front/center/back, holes scored, score to par, the wearer's score) and two commands from watch to phone (change hole, submit a stroke count). No health, heart rate, energy, distance or workout data crosses that channel.
+
+On the iPhone side, the only network destination for user data is our own backend at sticks-golf.vercel.app/api/mobile. No request body or query parameter in the app carries health, workout, heart rate, energy or fitness data. Map imagery tiles are fetched from Esri/ArcGIS, which receive no user data.
+
+Our App Privacy answers reflect this: no Health or Fitness data types are declared as collected, because none is collected or transmitted. Our privacy policy at https://sticks-golf.app/privacy states that Apple Health data remains on the user's device, is not transmitted to our servers or any third party, and is not used for advertising or data mining.
+
+Please let us know if any further detail would help.
