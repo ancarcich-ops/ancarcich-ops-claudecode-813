@@ -41,15 +41,47 @@ nonisolated enum MatchDetailMath {
             .count
     }
 
-    /// NET = round1( gross − handicap × (holesPlayed / totalHoles) ) —
-    /// one decimal. nil when the player has no scores.
+    /// Strokes received on the hole at 0-based round position `index`.
+    /// Allocates against the course stroke index when we have a complete
+    /// one, otherwise spreads evenly with the remainder on the opening
+    /// holes. Mirrors strokesGivenForHole on the server exactly.
+    static func strokesReceived(
+        handicap: Double,
+        at index: Int,
+        holes: Int,
+        strokeIndex: [Int]
+    ) -> Int {
+        guard handicap > 0, holes > 0 else { return 0 }
+        let base = (handicap / Double(holes)).rounded(.down)
+        let extra = handicap - base * Double(holes)
+
+        if strokeIndex.count == holes, strokeIndex.indices.contains(index) {
+            let si = strokeIndex[index]
+            if si >= 1 && si <= holes {
+                return Int(base) + (Double(si) <= extra ? 1 : 0)
+            }
+        }
+        return Int(base) + (Double(index) < extra ? 1 : 0)
+    }
+
+    /// NET = gross-to-par minus the strokes actually received on the holes
+    /// played so far. Matches the web, which sums per-hole allocations
+    /// rather than pro-rating the handicap.
     static func netToPar(for player: MatchDetailPlayer, in detail: MatchDetail) -> Double? {
         guard detail.holes > 0,
               let gross = grossToPar(for: player, in: detail) else { return nil }
-        let played = holesPlayed(for: player, in: detail)
         let handicap = player.handicap ?? 0
-        let raw = Double(gross) - handicap * Double(played) / Double(detail.holes)
-        return (raw * 10).rounded() / 10
+        var received = 0
+        for index in 0 ..< detail.holes
+        where player.scoresByHole[detail.holeNumber(at: index)] != nil {
+            received += strokesReceived(
+                handicap: handicap,
+                at: index,
+                holes: detail.holes,
+                strokeIndex: detail.strokeIndex
+            )
+        }
+        return Double(gross - received)
     }
 
     /// Ranking metric — net in net modes, gross otherwise; players with
@@ -88,11 +120,12 @@ nonisolated enum MatchDetailMath {
         return diff > 0 ? "+\(diff)" : "\(diff)"
     }
 
-    /// "-0.6" / "+1.2" / "E" / "—" — one decimal, signed.
+    /// "-2" / "+3" / "E" / "—" — net is a whole number now that it sums
+    /// per-hole received strokes (slice 77), so no decimal.
     static func netLabel(_ net: Double?) -> String {
         guard let net else { return "—" }
         if abs(net) < 0.05 { return "E" }
-        return String(format: "%+.1f", net)
+        return String(format: "%+d", Int(net.rounded()))
     }
 
     /// "st" / "nd" / "rd" / "th" (11–13 are always "th").

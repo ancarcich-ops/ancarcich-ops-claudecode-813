@@ -1048,17 +1048,24 @@ nonisolated enum MatchCardMath {
         match.scoringMode.uppercased() != "GROSS"
     }
 
-    /// NET = gross − handicap × (holesPlayed / totalHoles), one decimal —
-    /// the same proration as MatchDetailMath.netToPar.
+    /// NET = gross-to-par minus the strokes actually received on the
+    /// holes played so far — the same per-hole allocation sum as
+    /// MatchDetailMath.netToPar (slice 77), via the shared helper.
     static func netToPar(for player: MatchPlayerSummary, in match: MatchSummary) -> Double? {
         guard match.holes > 0,
               let gross = grossToPar(for: player, in: match) else { return nil }
-        let played = (0 ..< match.holes)
-            .filter { player.scoresByHole[match.holeNumber(at: $0)] != nil }
-            .count
         let handicap = player.handicap ?? 0
-        let raw = Double(gross) - handicap * Double(played) / Double(match.holes)
-        return (raw * 10).rounded() / 10
+        var received = 0
+        for index in 0 ..< match.holes
+        where player.scoresByHole[match.holeNumber(at: index)] != nil {
+            received += MatchDetailMath.strokesReceived(
+                handicap: handicap,
+                at: index,
+                holes: match.holes,
+                strokeIndex: match.strokeIndex
+            )
+        }
+        return Double(gross - received)
     }
 
     /// Ranking metric — net in net modes, gross otherwise; no scores

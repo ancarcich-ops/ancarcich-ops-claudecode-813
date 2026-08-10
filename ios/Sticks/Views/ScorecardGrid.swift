@@ -126,26 +126,15 @@ struct ScorecardGrid: View {
     }
 
     /// Strokes the player receives on the hole at 0-based round position
-    /// `index`. Mirrors the server exactly: allocate against the course
-    /// stroke index when we have a complete one, otherwise spread evenly
-    /// with the remainder on the opening holes.
+    /// `index` — delegates to the shared allocation in MatchDetailMath
+    /// (slice 77) so scorecard, standings, and feed card agree.
     private func strokesReceived(for player: MatchDetailPlayer, at index: Int) -> Int {
-        let handicap = player.handicap ?? 0
-        guard handicap > 0, detail.holes > 0 else { return 0 }
-        let base = (handicap / Double(detail.holes)).rounded(.down)
-        let extra = handicap - base * Double(detail.holes)
-
-        // Guard the data as well as its presence — a partial or malformed
-        // index would silently mis-allocate.
-        if detail.strokeIndex.count == detail.holes,
-           detail.strokeIndex.indices.contains(index) {
-            let si = detail.strokeIndex[index]
-            if si >= 1 && si <= detail.holes {
-                // Hardest holes take the remainder: SI 1...extra get the shot.
-                return Int(base) + (Double(si) <= extra ? 1 : 0)
-            }
-        }
-        return Int(base) + (Double(index) < extra ? 1 : 0)
+        MatchDetailMath.strokesReceived(
+            handicap: player.handicap ?? 0,
+            at: index,
+            holes: detail.holes,
+            strokeIndex: detail.strokeIndex
+        )
     }
 
     /// "FRONT · +2 THRU 4" — the to-par part in accent, bold.

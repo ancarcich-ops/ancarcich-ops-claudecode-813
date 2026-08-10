@@ -412,6 +412,7 @@ struct TournamentDetailView: View {
             scoringMode: tournament.scoringMode,
             format: "INDIVIDUAL",
             pars: [],
+            strokeIndex: [],
             probabilities: [:],
             myMatchPlayerId: nil,
             groupId: nil,

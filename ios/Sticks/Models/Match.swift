@@ -74,6 +74,9 @@ nonisolated struct MatchSummary: Identifiable, Hashable {
     let format: String
     /// Exactly `holes` entries, index = round order.
     let pars: [Int]
+    /// Course hole handicaps, 1 = hardest. Empty when the server has no
+    /// real scorecard for this course — fall back to the even spread.
+    let strokeIndex: [Int]
     /// matchPlayerId → win probability 0..1. May be empty.
     let probabilities: [String: Double]
     let myMatchPlayerId: String?
@@ -143,7 +146,7 @@ extension MatchSummary {
 extension MatchSummary: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, completedAt, status, holes
-        case startingHole, scoringMode, format, pars, probabilities
+        case startingHole, scoringMode, format, pars, strokeIndex, probabilities
         case myMatchPlayerId, groupId, players, tickerItems
         case myCall, wagerCounts
     }
@@ -160,6 +163,7 @@ extension MatchSummary: Decodable {
         scoringMode = try container.decode(String.self, forKey: .scoringMode)
         format = try container.decode(String.self, forKey: .format)
         pars = try container.decodeIfPresent([Int].self, forKey: .pars) ?? []
+        strokeIndex = (try? container.decodeIfPresent([Int].self, forKey: .strokeIndex)) ?? []
         probabilities = try container.decodeIfPresent([String: Double].self, forKey: .probabilities) ?? [:]
         myMatchPlayerId = try container.decodeIfPresent(String.self, forKey: .myMatchPlayerId)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
