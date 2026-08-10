@@ -130,6 +130,9 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     /// Decoded tolerantly; older payloads default to false.
     let canClaimSeat: Bool
     let pars: [Int]
+    /// Course hole handicaps, 1 = hardest. Empty when the server has no
+    /// real scorecard for this course — fall back to the even spread.
+    let strokeIndex: [Int]
     var players: [MatchDetailPlayer]
     /// Slice 63 tweaks: the creator's Sticks handle + display name for
     /// the header's "created by" tap-through — nil when the payload
@@ -140,7 +143,7 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, status, holes, startingHole
         case scoringMode, format, isCreator, myMatchPlayerId, canClaimSeat
-        case pars, players
+        case pars, strokeIndex, players
         case createdByUsername, createdBy, creator
     }
 
@@ -164,6 +167,7 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
         myMatchPlayerId = try container.decodeIfPresent(String.self, forKey: .myMatchPlayerId)
         canClaimSeat = (try? container.decode(Bool.self, forKey: .canClaimSeat)) ?? false
         pars = try container.decodeIfPresent([Int].self, forKey: .pars) ?? []
+        strokeIndex = (try? container.decodeIfPresent([Int].self, forKey: .strokeIndex)) ?? []
         players = try container.decodeIfPresent([MatchDetailPlayer].self, forKey: .players) ?? []
 
         // Creator handle, decoded tolerantly across payload shapes: a
