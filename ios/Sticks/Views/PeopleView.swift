@@ -51,6 +51,7 @@ struct PeopleView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .swipeBackEnabled()
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { backChip }
         }
