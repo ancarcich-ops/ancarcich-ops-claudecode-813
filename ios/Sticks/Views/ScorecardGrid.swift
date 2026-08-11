@@ -405,16 +405,20 @@ struct ScorecardGrid: View {
         let gross = (0 ..< detail.holes)
             .compactMap { player.scoresByHole[detail.holeNumber(at: $0)] }
             .reduce(0, +)
-        // Net total = gross − full handicap, matching the web's Net column.
-        let net = Double(gross) - (player.handicap ?? 0)
+        // Net total = gross − round playing allowance (slice 78), so the
+        // total always equals the sum of the per-hole net cells exactly.
+        let net = gross - MatchDetailMath.playingAllowance(
+            handicap: player.handicap ?? 0,
+            holes: detail.holes
+        )
         return Group {
             if gross > 0 {
                 VStack(spacing: 1) {
-                    Text(showsNet ? formatNetTotal(net) : "\(gross)")
+                    Text(showsNet ? "\(net)" : "\(gross)")
                         .font(SticksFont.display(14, weight: .bold).monospacedDigit())
                         .foregroundStyle(Color.sticksInk)
                     if showsToggle {
-                        Text(showsNet ? "G \(gross)" : "N \(formatNetTotal(net))")
+                        Text(showsNet ? "G \(gross)" : "N \(net)")
                             .font(SticksFont.mono(8))
                             .foregroundStyle(Color.sticksMuted.opacity(0.75))
                     }
@@ -426,14 +430,6 @@ struct ScorecardGrid: View {
             }
         }
         .frame(width: totWidth, height: rowHeight)
-    }
-
-    /// "73" for whole nets, "72.6" for fractional handicaps.
-    private func formatNetTotal(_ value: Double) -> String {
-        if value == value.rounded() {
-            return "\(Int(value))"
-        }
-        return String(format: "%.1f", value)
     }
 
     // MARK: - Helpers

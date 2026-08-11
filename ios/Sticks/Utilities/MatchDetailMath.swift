@@ -41,27 +41,46 @@ nonisolated enum MatchDetailMath {
             .count
     }
 
+    /// The whole number of strokes a player receives over a round of
+    /// `holes`, from their 18-hole handicap.
+    ///
+    /// A handicap is an 18-hole figure: play nine and you get half of it.
+    /// Rounding to a whole stroke matters too — you cannot receive 0.6 of a
+    /// shot on a hole, and a fraction left the card disagreeing with the
+    /// total. Half-strokes round up, per WHS.
+    ///
+    /// Mirrors playingAllowance on the server exactly.
+    static func playingAllowance(handicap: Double, holes: Int) -> Int {
+        guard handicap > 0, holes > 0, handicap.isFinite else { return 0 }
+        return Int((handicap * Double(holes) / 18.0).rounded())
+    }
+
     /// Strokes received on the hole at 0-based round position `index`.
-    /// Allocates against the course stroke index when we have a complete
-    /// one, otherwise spreads evenly with the remainder on the opening
-    /// holes. Mirrors strokesGivenForHole on the server exactly.
+    /// Allocates the round allowance against the course stroke index when we
+    /// have a complete one, otherwise spreads it evenly with the remainder on
+    /// the opening holes. Summed over the round this returns exactly the
+    /// allowance — which is what lets a net total be computed as
+    /// `gross - playingAllowance(...)` and still agree with the cells.
+    ///
+    /// Mirrors strokesGivenForHole on the server exactly.
     static func strokesReceived(
         handicap: Double,
         at index: Int,
         holes: Int,
         strokeIndex: [Int]
     ) -> Int {
-        guard handicap > 0, holes > 0 else { return 0 }
-        let base = (handicap / Double(holes)).rounded(.down)
-        let extra = handicap - base * Double(holes)
+        let allowance = playingAllowance(handicap: handicap, holes: holes)
+        guard allowance > 0, holes > 0 else { return 0 }
+        let base = allowance / holes           // integer division
+        let extra = allowance - base * holes
 
         if strokeIndex.count == holes, strokeIndex.indices.contains(index) {
             let si = strokeIndex[index]
             if si >= 1 && si <= holes {
-                return Int(base) + (Double(si) <= extra ? 1 : 0)
+                return base + (si <= extra ? 1 : 0)
             }
         }
-        return Int(base) + (Double(index) < extra ? 1 : 0)
+        return base + (index < extra ? 1 : 0)
     }
 
     /// NET = gross-to-par minus the strokes actually received on the holes
@@ -121,7 +140,7 @@ nonisolated enum MatchDetailMath {
     }
 
     /// "-2" / "+3" / "E" / "—" — net is a whole number now that it sums
-    /// per-hole received strokes (slice 77), so no decimal.
+    /// per-hole received strokes (slices 77/78), so no decimal.
     static func netLabel(_ net: Double?) -> String {
         guard let net else { return "—" }
         if abs(net) < 0.05 { return "E" }
