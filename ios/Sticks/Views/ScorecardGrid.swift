@@ -313,9 +313,9 @@ struct ScorecardGrid: View {
         let hole = detail.holeNumber(at: index)
         let par = detail.par(at: index)
         let gross = player.scoresByHole[hole]
-        // Pops show on net rounds in BOTH lenses (like the dots printed on
-        // a paper card); the displayed number only shifts in the net lens.
-        let strokes = showsToggle ? strokesReceived(for: player, at: index) : 0
+        // Pop dots and the shifted number both belong to the net lens —
+        // switching back to gross hides them.
+        let strokes = showsNet ? strokesReceived(for: player, at: index) : 0
         let display = showsNet ? gross.map { $0 - strokes } : gross
 
         return Button {
@@ -401,9 +401,9 @@ struct ScorecardGrid: View {
         }
     }
 
-    /// Legend shows only when a net round actually allocates pops.
+    /// Legend shows only in the net lens, when pops are actually allocated.
     private var showsPopLegend: Bool {
-        showsToggle && players.contains {
+        showsNet && players.contains {
             MatchDetailMath.playingAllowance(handicap: $0.handicap ?? 0, holes: detail.holes) > 0
         }
     }
