@@ -63,6 +63,9 @@ struct ScorecardGrid: View {
         VStack(alignment: .leading, spacing: 12) {
             headerRow
             splitGrid
+            if showsPopLegend {
+                popLegend
+            }
         }
     }
 
@@ -310,13 +313,15 @@ struct ScorecardGrid: View {
         let hole = detail.holeNumber(at: index)
         let par = detail.par(at: index)
         let gross = player.scoresByHole[hole]
-        let strokes = showsNet ? strokesReceived(for: player, at: index) : 0
+        // Pops show on net rounds in BOTH lenses (like the dots printed on
+        // a paper card); the displayed number only shifts in the net lens.
+        let strokes = showsToggle ? strokesReceived(for: player, at: index) : 0
         let display = showsNet ? gross.map { $0 - strokes } : gross
 
         return Button {
             onSelect(ScoreCellSelection(player: player, hole: hole, par: par))
         } label: {
-            cellBody(score: display, par: par, isCurrent: isCurrent, hasStroke: strokes > 0)
+            cellBody(score: display, par: par, isCurrent: isCurrent, strokes: strokes)
                 .frame(width: holeWidth, height: rowHeight)
                 .contentShape(.rect)
         }
@@ -325,7 +330,7 @@ struct ScorecardGrid: View {
     }
 
     @ViewBuilder
-    private func cellBody(score: Int?, par: Int, isCurrent: Bool, hasStroke: Bool) -> some View {
+    private func cellBody(score: Int?, par: Int, isCurrent: Bool, strokes: Int) -> some View {
         let shape = RoundedRectangle(cornerRadius: 8)
 
         if isCurrent, let score {
@@ -334,7 +339,7 @@ struct ScorecardGrid: View {
                 .frame(width: cellSize.width, height: cellSize.height)
                 .background(Color.sticksBg, in: shape)
                 .overlay(shape.stroke(Color.sticksGreen, lineWidth: 1.5))
-                .overlay(alignment: .topTrailing) { strokeDot(hasStroke) }
+                .overlay(alignment: .topTrailing) { strokeDots(strokes) }
         } else if isCurrent {
             // Current hole, unscored: "+" prompt, 1.5px dashed accent.
             Text("+")
@@ -348,6 +353,7 @@ struct ScorecardGrid: View {
                         style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
                     )
                 )
+                .overlay(alignment: .topTrailing) { strokeDots(strokes) }
         } else if let score {
             let diff = score - par
             let text: Color = diff < 0 ? .sticksGreen : (diff > 0 ? .sticksError : .sticksInk)
@@ -361,7 +367,7 @@ struct ScorecardGrid: View {
                 .frame(width: cellSize.width, height: cellSize.height)
                 .background(fill, in: shape)
                 .overlay(shape.stroke(border, lineWidth: 1))
-                .overlay(alignment: .topTrailing) { strokeDot(hasStroke) }
+                .overlay(alignment: .topTrailing) { strokeDots(strokes) }
         } else {
             // Unplayed (past or future): dashed outline, faint em-dash.
             Text("–")
@@ -374,19 +380,43 @@ struct ScorecardGrid: View {
                         style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
                     )
                 )
-                .overlay(alignment: .topTrailing) { strokeDot(hasStroke) }
+                .overlay(alignment: .topTrailing) { strokeDots(strokes) }
         }
     }
 
-    /// Net-mode marker: a single subtle dot on holes where the player
-    /// receives at least one stroke (capped at one dot).
+    /// Pop marker — one gold dot per handicap stroke received on the hole
+    /// (capped at three), the paper-scorecard convention. Gold so it never
+    /// blends into the birdie-green or bogey-red cell states.
     @ViewBuilder
-    private func strokeDot(_ show: Bool) -> some View {
-        if show {
+    private func strokeDots(_ count: Int) -> some View {
+        if count > 0 {
+            HStack(spacing: 2) {
+                ForEach(0 ..< min(count, 3), id: \.self) { _ in
+                    Circle()
+                        .fill(Color.sticksGold)
+                        .frame(width: 4, height: 4)
+                }
+            }
+            .padding(3.5)
+        }
+    }
+
+    /// Legend shows only when a net round actually allocates pops.
+    private var showsPopLegend: Bool {
+        showsToggle && players.contains {
+            MatchDetailMath.playingAllowance(handicap: $0.handicap ?? 0, holes: detail.holes) > 0
+        }
+    }
+
+    private var popLegend: some View {
+        HStack(spacing: 5) {
             Circle()
-                .fill(Color.sticksGreen.opacity(0.7))
-                .frame(width: 3.5, height: 3.5)
-                .padding(3)
+                .fill(Color.sticksGold)
+                .frame(width: 4, height: 4)
+            Text("= POP · HANDICAP STROKE ON THAT HOLE")
+                .font(SticksFont.mono(8.5))
+                .kerning(0.5)
+                .foregroundStyle(Color.sticksMuted.opacity(0.85))
         }
     }
 

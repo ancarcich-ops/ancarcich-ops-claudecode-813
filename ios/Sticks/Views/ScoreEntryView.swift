@@ -57,6 +57,21 @@ struct ScoreEntryView: View {
         currentPlayer?.scoresByHole[hole]
     }
 
+    /// Handicap strokes ("pops") the current player receives on this hole
+    /// — net rounds only; 0 hides the badge.
+    private var popCount: Int {
+        guard let detail = viewModel.detail,
+              MatchDetailMath.isNetMode(detail),
+              let index = (0 ..< detail.holes).first(where: { detail.holeNumber(at: $0) == hole })
+        else { return 0 }
+        return MatchDetailMath.strokesReceived(
+            handicap: currentPlayer?.handicap ?? 0,
+            at: index,
+            holes: detail.holes,
+            strokeIndex: detail.strokeIndex
+        )
+    }
+
     var body: some View {
         VStack(spacing: 18) {
             header
@@ -108,7 +123,42 @@ struct ScoreEntryView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: currentPlayerId)
+
+            if popCount > 0 {
+                popBadge
+                    .padding(.top, 2)
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: popCount)
+    }
+
+    /// "● POPPING · 1 STROKE HERE" — gold, the same marker the scorecard
+    /// dots use, so a golfer entering a score knows a pop applies.
+    private var popBadge: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 2.5) {
+                ForEach(0 ..< min(popCount, 3), id: \.self) { _ in
+                    Circle()
+                        .fill(Color.sticksGold)
+                        .frame(width: 5, height: 5)
+                }
+            }
+            Text(popCount == 1 ? "POPPING · 1 STROKE HERE" : "POPPING · \(popCount) STROKES HERE")
+                .font(SticksFont.label(9, weight: .heavy))
+                .kerning(1)
+                .foregroundStyle(Color.sticksGold)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.sticksGold.opacity(0.12))
+        .clipShape(.capsule)
+        .overlay(Capsule().stroke(Color.sticksGold.opacity(0.35), lineWidth: 1))
+        .accessibilityLabel(
+            popCount == 1
+                ? "Receives one handicap stroke on this hole"
+                : "Receives \(popCount) handicap strokes on this hole"
+        )
     }
 
     // MARK: - Player cycle row

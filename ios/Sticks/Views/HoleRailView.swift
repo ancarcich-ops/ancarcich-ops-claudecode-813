@@ -73,11 +73,26 @@ struct HoleRailView: View {
         }
     }
 
+    /// Handicap strokes ("pops") the seated caller receives on this hole
+    /// — net rounds only, so the rail marks stroke holes before tee-off.
+    private func popCount(at index: Int) -> Int {
+        guard MatchDetailMath.isNetMode(detail),
+              let me = detail.players.first(where: { $0.id == detail.myMatchPlayerId })
+        else { return 0 }
+        return MatchDetailMath.strokesReceived(
+            handicap: me.handicap ?? 0,
+            at: index,
+            holes: detail.holes,
+            strokeIndex: detail.strokeIndex
+        )
+    }
+
     private func chip(index: Int) -> some View {
         let hole = detail.holeNumber(at: index)
         let par = detail.par(at: index)
         let score = scores[hole]
         let isSelected = index == selectedIndex
+        let pops = popCount(at: index)
 
         return Button {
             selectedIndex = index
@@ -100,8 +115,36 @@ struct HoleRailView: View {
                 RoundedRectangle(cornerRadius: 11)
                     .stroke(isSelected ? Color.sticksCream.opacity(0.5) : .white.opacity(0.18), lineWidth: 1)
             )
+            .overlay(alignment: .topTrailing) { popDots(pops) }
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(popAccessibilityLabel(hole: hole, par: par, pops: pops))
+    }
+
+    /// Gold pop dots (one per stroke, capped at three) — same marker the
+    /// scorecard uses, tucked in the chip's top-right corner.
+    @ViewBuilder
+    private func popDots(_ count: Int) -> some View {
+        if count > 0 {
+            HStack(spacing: 2) {
+                ForEach(0 ..< min(count, 3), id: \.self) { _ in
+                    Circle()
+                        .fill(Color.sticksGold)
+                        .frame(width: 4.5, height: 4.5)
+                }
+            }
+            .padding(4.5)
+        }
+    }
+
+    private func popAccessibilityLabel(hole: Int, par: Int, pops: Int) -> String {
+        var label = "Hole \(hole), par \(par)"
+        if pops == 1 {
+            label += ", you receive one handicap stroke"
+        } else if pops > 1 {
+            label += ", you receive \(pops) handicap strokes"
+        }
+        return label
     }
 
     /// The player's score as a tiny score-state badge (web palette): the
