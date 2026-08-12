@@ -34,8 +34,10 @@ struct WolfEditorView: View {
         viewModel.detail?.status == .completed
     }
 
+    /// Rotation edits need a seated creator — spectators and unseated
+    /// creators get a read-only view of the picks.
     private var isCreator: Bool {
-        viewModel.detail?.isCreator == true
+        viewModel.detail?.canManageRound == true
     }
 
     private var savedConfig: WolfConfig? {

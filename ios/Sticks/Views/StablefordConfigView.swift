@@ -31,7 +31,7 @@ struct StablefordConfigView: View {
     }
 
     private var isReadOnly: Bool {
-        viewModel.detail?.status == .completed || viewModel.detail?.isCreator != true
+        viewModel.detail?.status == .completed || viewModel.detail?.canManageRound != true
     }
 
     var body: some View {
@@ -111,8 +111,8 @@ struct StablefordConfigView: View {
         if viewModel.detail?.status == .completed {
             return "Round is final — settings are read-only."
         }
-        if viewModel.detail?.isCreator != true {
-            return "Only the round's creator can change Stableford settings."
+        if viewModel.detail?.canManageRound != true {
+            return "Only the round's creator, playing in the round, can change Stableford settings."
         }
         return isModified
             ? "Points per result vs par; negatives allowed."

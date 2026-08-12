@@ -40,7 +40,7 @@ struct TargetsConfigView: View {
     }
 
     private var isReadOnly: Bool {
-        viewModel.detail?.status == .completed || viewModel.detail?.isCreator != true
+        viewModel.detail?.status == .completed || viewModel.detail?.canManageRound != true
     }
 
     var body: some View {
@@ -120,8 +120,8 @@ struct TargetsConfigView: View {
         if viewModel.detail?.status == .completed {
             return "Round is final — settings are read-only."
         }
-        if viewModel.detail?.isCreator != true {
-            return "Only the round's creator can change Targets settings."
+        if viewModel.detail?.canManageRound != true {
+            return "Only the round's creator, playing in the round, can change Targets settings."
         }
         return "Pick the stat to chase and how many holes to hit it — progress comes straight from the scorecard."
     }

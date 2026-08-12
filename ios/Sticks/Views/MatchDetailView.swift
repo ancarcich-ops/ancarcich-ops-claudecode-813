@@ -242,24 +242,27 @@ struct MatchDetailView: View {
 
     // MARK: - Actions menu (slice 27)
 
-    /// Edit only while the round is untouched — creator, UPCOMING, and
-    /// not a single score logged (the server 400s otherwise).
+    /// Edit only while the round is untouched — seated creator, UPCOMING,
+    /// and not a single score logged (the server 400s otherwise).
     private var canEditDetails: Bool {
         guard let detail = viewModel.detail else { return false }
-        return detail.isCreator
+        return detail.canManageRound
             && detail.status == .upcoming
             && detail.players.allSatisfy { $0.scoresByHole.isEmpty }
     }
 
+    /// Only golfers seated in the round can mark it final — spectators
+    /// and unseated creators never lock someone else's scores.
     private var canMarkFinal: Bool {
-        viewModel.detail?.status == .inProgress
+        guard let detail = viewModel.detail else { return false }
+        return detail.isSeated && detail.status == .inProgress
     }
 
-    /// Reopen a finished round — creator-only, COMPLETED only. The server
-    /// reverts it to IN_PROGRESS (or UPCOMING if it had no scores).
+    /// Reopen a finished round — seated creator, COMPLETED only. The
+    /// server reverts it to IN_PROGRESS (or UPCOMING if it had no scores).
     private var canReopen: Bool {
         guard let detail = viewModel.detail else { return false }
-        return detail.isCreator && detail.status == .completed
+        return detail.canManageRound && detail.status == .completed
     }
 
     private var canDelete: Bool {
@@ -672,7 +675,7 @@ struct MatchDetailView: View {
                 onRecordEvents: detail.canEnterScores && detail.status != .completed
                     ? { game in eventEditorGame = game }
                     : nil,
-                onOpenSettings: detail.isCreator && detail.status != .completed
+                onOpenSettings: detail.canManageRound && detail.status != .completed
                     ? { kind in configEditorKind = SideGameConfigKind(rawValue: kind) }
                     : nil
             )
@@ -705,7 +708,7 @@ struct MatchDetailView: View {
             ShareRoundCard(viewModel: viewModel, session: session)
         }
         if !detail.canEnterScores {
-            Text("You're viewing as a spectator — only seated players or the match creator can enter scores.")
+            Text("You're viewing as a spectator — only golfers in this round can enter scores.")
                 .font(SticksFont.sans(12))
                 .foregroundStyle(Color.sticksMuted)
                 .padding(.horizontal, 4)
@@ -723,11 +726,15 @@ struct MatchDetailView: View {
                 detail: detail,
                 players: viewModel.sortedPlayers,
                 currentHoleIndex: currentHoleIndex(detail),
-                onSelect: { cell in selectedCell = cell }
+                // Score cells only respond for golfers seated in the
+                // round — spectators get a read-only scorecard.
+                onSelect: { cell in
+                    if detail.canEnterScores { selectedCell = cell }
+                }
             )
 
-            // Slice 29: compact creator-only par editing, any status.
-            if detail.isCreator {
+            // Slice 29: compact par editing, any status — seated creator only.
+            if detail.canManageRound {
                 Rectangle()
                     .fill(Color.sticksHairline.opacity(0.6))
                     .frame(height: 1)
@@ -945,7 +952,7 @@ struct MatchDetailView: View {
         (viewModel.response?.sideGames ?? []).filter { game in
             guard MatchDetailMath.hasNativeEditor(game.kind) else { return false }
             if MatchDetailMath.eventGameKey(game.kind) == "TARGETS" {
-                return viewModel.detail?.isCreator == true
+                return viewModel.detail?.canManageRound == true
             }
             return true
         }
@@ -977,7 +984,7 @@ struct MatchDetailView: View {
     /// editor on their score card (Snake stake, BBB points). Stableford
     /// has no score card — its entry lives on the Standings tab.
     private func settingsAction(for game: SideGame) -> (() -> Void)? {
-        guard viewModel.detail?.isCreator == true else { return nil }
+        guard viewModel.detail?.canManageRound == true else { return nil }
         switch MatchDetailMath.eventGameKey(game.kind) {
         case "SNAKE": return { configEditorKind = .snake }
         case "BBB": return { configEditorKind = .bbb }
@@ -997,7 +1004,7 @@ struct MatchDetailView: View {
     /// round is completed.
     private var canEditSideGames: Bool {
         guard let detail = viewModel.detail else { return false }
-        return detail.isCreator && detail.status != .completed
+        return detail.canManageRound && detail.status != .completed
     }
 
     private var editSideGamesButton: some View {

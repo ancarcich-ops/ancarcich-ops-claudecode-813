@@ -192,8 +192,17 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
         createdByDisplayName = (creatorDisplayName?.isEmpty ?? true) ? nil : creatorDisplayName
     }
 
-    /// Score entry is allowed if the caller is seated or created the match.
-    var canEnterScores: Bool { myMatchPlayerId != nil || isCreator }
+    /// True when the caller holds a seat in this round — i.e. they're one
+    /// of the golfers actually playing it.
+    var isSeated: Bool { myMatchPlayerId != nil }
+
+    /// Score entry is allowed only for golfers seated in the round —
+    /// creating a round without playing in it doesn't grant scoring.
+    var canEnterScores: Bool { isSeated }
+
+    /// Round management (edit details, pars, side-game settings, reopen)
+    /// requires being the creator AND seated in the round.
+    var canManageRound: Bool { isCreator && isSeated }
 
     /// Absolute hole number for scorecard column `index`, honoring
     /// startingHole with wraparound past 18 (shotgun/back-nine starts).

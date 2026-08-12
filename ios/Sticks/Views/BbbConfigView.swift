@@ -32,7 +32,7 @@ struct BbbConfigView: View {
     }
 
     private var isReadOnly: Bool {
-        viewModel.detail?.status == .completed || viewModel.detail?.isCreator != true
+        viewModel.detail?.status == .completed || viewModel.detail?.canManageRound != true
     }
 
     var body: some View {
@@ -111,8 +111,8 @@ struct BbbConfigView: View {
         if viewModel.detail?.status == .completed {
             return "Round is final — settings are read-only."
         }
-        if viewModel.detail?.isCreator != true {
-            return "Only the round's creator can change BBB settings."
+        if viewModel.detail?.canManageRound != true {
+            return "Only the round's creator, playing in the round, can change BBB settings."
         }
         return "First on the green, closest once on, first in the hole. Default 1 each."
     }

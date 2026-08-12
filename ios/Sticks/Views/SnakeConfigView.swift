@@ -38,7 +38,7 @@ struct SnakeConfigView: View {
     }
 
     private var isReadOnly: Bool {
-        viewModel.detail?.status == .completed || viewModel.detail?.isCreator != true
+        viewModel.detail?.status == .completed || viewModel.detail?.canManageRound != true
     }
 
     var body: some View {
@@ -117,8 +117,8 @@ struct SnakeConfigView: View {
         if viewModel.detail?.status == .completed {
             return "Round is final — settings are read-only."
         }
-        if viewModel.detail?.isCreator != true {
-            return "Only the round's creator can change Snake settings."
+        if viewModel.detail?.canManageRound != true {
+            return "Only the round's creator, playing in the round, can change Snake settings."
         }
         return "Last player to 3-putt holds the snake and owes the pot."
     }
