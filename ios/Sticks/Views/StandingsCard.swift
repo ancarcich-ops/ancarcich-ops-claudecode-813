@@ -181,7 +181,23 @@ struct StandingsCard: View {
         )
     }
 
+    /// Linked seats push the member's read-only profile; unlinked guest
+    /// seats render the plain row.
+    @ViewBuilder
     private func overallRow(_ player: MatchDetailPlayer, isLeader: Bool) -> some View {
+        if let destination = player.profileDestination {
+            NavigationLink(value: destination) {
+                overallRowBody(player, isLeader: isLeader)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(player.displayName). Opens their profile")
+        } else {
+            overallRowBody(player, isLeader: isLeader)
+        }
+    }
+
+    private func overallRowBody(_ player: MatchDetailPlayer, isLeader: Bool) -> some View {
         let isMe = player.id == detail.myMatchPlayerId
         let toPar = MatchDetailMath.grossToPar(for: player, in: detail)
         let probability = probabilities[player.id]
@@ -395,7 +411,28 @@ struct StandingsCard: View {
         }
     }
 
+    /// Rows whose playerId resolves to a linked seat push the member's
+    /// profile — team/press rows (no playerId) stay plain.
+    @ViewBuilder
     private func leaderboardRow(_ row: SideGameRow) -> some View {
+        if let destination = seatedPlayer(for: row)?.profileDestination {
+            NavigationLink(value: destination) {
+                leaderboardRowBody(row)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(row.player). Opens their profile")
+        } else {
+            leaderboardRowBody(row)
+        }
+    }
+
+    private func seatedPlayer(for row: SideGameRow) -> MatchDetailPlayer? {
+        guard !row.playerId.isEmpty else { return nil }
+        return detail.players.first { $0.id == row.playerId }
+    }
+
+    private func leaderboardRowBody(_ row: SideGameRow) -> some View {
         HStack(spacing: 8) {
             Text(row.player)
                 .font(SticksFont.sans(13))

@@ -68,6 +68,10 @@ nonisolated struct HoleGeo: Codable, Hashable {
 nonisolated struct MatchDetailPlayer: Identifiable, Hashable {
     let id: String
     let userId: String?
+    /// The member's Sticks handle — decoded tolerantly (older payloads
+    /// omit it; linked seats then fall back to displayName, which the
+    /// server fills with the handle when no custom name is set).
+    let username: String?
     let displayName: String
     let handicap: Double?
     let seat: Int?
@@ -81,13 +85,14 @@ nonisolated struct MatchDetailPlayer: Identifiable, Hashable {
 
 extension MatchDetailPlayer: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case id, userId, displayName, handicap, seat, team, avatarUrl, scoresByHole
+        case id, userId, username, displayName, handicap, seat, team, avatarUrl, scoresByHole
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        username = (try? container.decodeIfPresent(String.self, forKey: .username)) ?? nil
         displayName = try container.decode(String.self, forKey: .displayName)
         handicap = try container.decodeIfPresent(Double.self, forKey: .handicap)
         seat = try container.decodeIfPresent(Int.self, forKey: .seat)

@@ -233,7 +233,23 @@ struct ScorecardGrid: View {
         .frame(width: nameWidth)
     }
 
+    /// Linked seats push the member's read-only profile; unlinked guest
+    /// seats render the plain label.
+    @ViewBuilder
     private func nameCell(for player: MatchDetailPlayer) -> some View {
+        if let destination = player.profileDestination {
+            NavigationLink(value: destination) {
+                nameCellBody(for: player)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(player.displayName). Opens their profile")
+        } else {
+            nameCellBody(for: player)
+        }
+    }
+
+    private func nameCellBody(for player: MatchDetailPlayer) -> some View {
         HStack(spacing: 6) {
             avatarBubble(for: player)
             Text(player.displayName)

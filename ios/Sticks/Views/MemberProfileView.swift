@@ -20,6 +20,19 @@ struct MemberProfileDestination: Hashable {
     let displayName: String
 }
 
+extension MatchDetailPlayer {
+    /// Profile tap-through destination — only linked seats (userId set)
+    /// have one. Prefers the payload's username; falls back to
+    /// displayName, which the server fills with the handle for linked
+    /// users without a custom display name.
+    var profileDestination: MemberProfileDestination? {
+        guard userId != nil else { return nil }
+        let handle = username ?? displayName
+        guard !handle.isEmpty else { return nil }
+        return MemberProfileDestination(username: handle, displayName: displayName)
+    }
+}
+
 struct MemberProfileView: View {
     let username: String
     /// Fallback title until the payload's displayName arrives.
