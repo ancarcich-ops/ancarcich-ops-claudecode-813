@@ -157,7 +157,8 @@ struct ScorecardGrid: View {
         .textCase(.uppercase)
     }
 
-    /// FRONT/BACK from the hole the round is at (or last played).
+    /// FRONT/BACK from the hole the round is at (or last played — in play
+    /// order, so a back-nine start reads its own last hole).
     private var nineLabel: String {
         let index = currentHoleIndex ?? lastPlayedIndex ?? 0
         return detail.holeNumber(at: index) <= 9 ? "FRONT" : "BACK"
@@ -187,10 +188,13 @@ struct ScorecardGrid: View {
         return diff > 0 ? "+\(diff)" : "\(diff)"
     }
 
+    /// The column of the most recently PLAYED hole (slice 79) — the
+    /// server's entry order, not the highest hole number.
     private var lastPlayedIndex: Int? {
-        guard let player = metaPlayer else { return nil }
-        return (0 ..< detail.holes)
-            .last { player.scoresByHole[detail.holeNumber(at: $0)] != nil }
+        guard let player = metaPlayer,
+              let hole = MatchDetailMath.holesInPlayOrder(for: player).last
+        else { return nil }
+        return detail.roundIndex(ofHole: hole)
     }
 
     // MARK: - Split grid

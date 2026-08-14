@@ -34,6 +34,29 @@ nonisolated enum MatchDetailMath {
         return played > 0 ? diff : nil
     }
 
+    /// The holes a player has scored, **oldest played first**.
+    ///
+    /// Prefers the server's `scoreOrder` (the order the scores were
+    /// entered, which is the order they were played). Falls back to
+    /// hole-number order, which is right for a round starting on hole 1.
+    ///
+    /// Anything scored but absent from `scoreOrder` — an older server, or
+    /// a score written optimistically since the payload was built — goes
+    /// on the END in hole order. Appending is deliberate: dropping a hole
+    /// would understate a player's round, and a just-entered score really
+    /// is the most recent thing that happened.
+    static func holesInPlayOrder(scoreOrder: [Int], scoresByHole: [Int: Int]) -> [Int] {
+        let scored = Set(scoresByHole.keys)
+        let ordered = scoreOrder.filter { scored.contains($0) }
+        let missing = scored.subtracting(ordered).sorted()
+        return ordered + missing
+    }
+
+    /// Play-order holes for a detail-screen player.
+    static func holesInPlayOrder(for player: MatchDetailPlayer) -> [Int] {
+        holesInPlayOrder(scoreOrder: player.scoreOrder, scoresByHole: player.scoresByHole)
+    }
+
     /// Count of holes the player has scored this round.
     static func holesPlayed(for player: MatchDetailPlayer, in detail: MatchDetail) -> Int {
         (0 ..< detail.holes)

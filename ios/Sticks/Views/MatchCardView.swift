@@ -1101,13 +1101,19 @@ nonisolated enum MatchCardMath {
 
     /// ONE momentum chip when earned, in priority order:
     /// eagle on last hole → 3+ birdies → birdie on last hole → cold streak.
+    ///
+    /// "Last" means last PLAYED, not highest-numbered (slice 79). A group
+    /// teeing off hole 10 reads 16-17-18 as their *first* three holes, so
+    /// scoring them in hole order made the chip describe two hours ago.
     static func momentumChip(for player: MatchPlayerSummary, in match: MatchSummary) -> MomentumChip? {
-        // Scored holes in round order: (hole number, strokes − par).
-        let scored: [(hole: Int, diff: Int)] = (0 ..< match.holes).compactMap { index in
-            let hole = match.holeNumber(at: index)
-            guard let score = player.scoresByHole[hole] else { return nil }
-            return (hole, score - match.par(at: index))
-        }
+        // Scored holes oldest-played first: (hole number, strokes − par).
+        let scored: [(hole: Int, diff: Int)] = MatchDetailMath
+            .holesInPlayOrder(scoreOrder: player.scoreOrder, scoresByHole: player.scoresByHole)
+            .compactMap { hole in
+                guard let index = match.roundIndex(ofHole: hole),
+                      let score = player.scoresByHole[hole] else { return nil }
+                return (hole, score - match.par(at: index))
+            }
         guard let last = scored.last else { return nil }
 
         if last.diff <= -2 {

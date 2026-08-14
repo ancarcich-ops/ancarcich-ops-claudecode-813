@@ -367,10 +367,87 @@ struct CreateMatchView: View {
                     selection: Bindable(viewModel).holesChoice
                 )
 
+                if viewModel.showsStartTeePicker {
+                    startTeeSection
+                }
+
                 roundContinueButton(from: 1, label: viewModel.roundStage >= 3 ? "DONE" : "CONTINUE")
             }
         } else {
             roundChip(label: "TEE & HOLES", summary: teeHolesSummary, group: 1)
+        }
+    }
+
+    // MARK: - Starting tee (slice 80)
+
+    /// Shotgun starts: every group tees off a different hole. Nearly all
+    /// rounds go off 1 or 10, so those get one tap each and the other
+    /// sixteen holes stay behind CUSTOM. 18-hole rounds only — a nine
+    /// already answers this with Front 9 / Back 9.
+    private var startTeeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("STARTING TEE")
+
+            SegmentPicker(
+                options: [
+                    (CreateMatchViewModel.StartTeeOption.hole1, "HOLE 1"),
+                    (.hole10, "HOLE 10"),
+                    (.custom, "CUSTOM"),
+                ],
+                selection: startTeeBinding
+            )
+
+            if viewModel.startTeeCustom {
+                startTeeGrid
+                Text("The round's scorecard begins here and wraps back around.")
+                    .font(SticksFont.mono(10.5, weight: .regular))
+                    .foregroundStyle(Color.sticksFaint)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: viewModel.startTeeCustom)
+        .animation(.easeOut(duration: 0.16), value: viewModel.startingHole)
+    }
+
+    /// Reads through the view model's derived selection so exactly one of
+    /// the three buttons is ever active; writes go through selectStartTee,
+    /// which keeps the current hole when CUSTOM opens.
+    private var startTeeBinding: Binding<CreateMatchViewModel.StartTeeOption> {
+        Binding(
+            get: { viewModel.startTeeSelection },
+            set: { option in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    viewModel.selectStartTee(option)
+                }
+            }
+        )
+    }
+
+    private var startTeeGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(spacing: 7), count: 6), spacing: 7) {
+            ForEach(1 ... 18, id: \.self) { hole in
+                let isActive = viewModel.startingHole == hole
+                Button {
+                    guard !isActive else { return }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    viewModel.setStartingHole(hole)
+                } label: {
+                    Text("\(hole)")
+                        .font(SticksFont.display(15, weight: .bold))
+                        .foregroundStyle(isActive ? Color.sticksCream : Color.sticksInk)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(isActive ? Color.sticksGreen : Color.sticksPanel2)
+                        .clipShape(.rect(cornerRadius: 9))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9)
+                                .stroke(isActive ? Color.clear : Color.sticksHairline, lineWidth: 1)
+                        )
+                        .contentShape(.rect)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel("Start on hole \(hole)")
+                .accessibilityAddTraits(isActive ? .isSelected : [])
+            }
         }
     }
 
@@ -546,9 +623,13 @@ struct CreateMatchView: View {
         "\(Self.teeTimeFormatter.string(from: viewModel.teeTime)) · \(holesLabel)"
     }
 
+    /// A shotgun group has to see their own start reflected back before
+    /// they commit — scoring against the wrong holes ruins the round.
     private var holesLabel: String {
         switch viewModel.holesChoice {
-        case .full18: return "18 holes"
+        case .full18:
+            let start = viewModel.effectiveStartingHole
+            return start == 1 ? "18 holes" : "18 holes from \(start)"
         case .front9: return "Front 9"
         case .back9: return "Back 9"
         }

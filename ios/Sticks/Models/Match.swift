@@ -31,12 +31,16 @@ nonisolated struct MatchPlayerSummary: Identifiable, Hashable {
     let avatarVariant: String?
     /// Hole number → strokes (converted from the server's string keys).
     let scoresByHole: [Int: Int]
+    /// Hole numbers oldest-played first. Empty when the server didn't
+    /// send it; callers fall back to hole-number order, which is correct
+    /// for any round starting on hole 1.
+    let scoreOrder: [Int]
 }
 
 extension MatchPlayerSummary: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, displayName, seat, handicap
-        case avatarUrl, avatarSeed, avatarVariant, scoresByHole
+        case avatarUrl, avatarSeed, avatarVariant, scoresByHole, scoreOrder
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +62,9 @@ extension MatchPlayerSummary: Decodable {
             }
         }
         scoresByHole = converted
+
+        // NOT sorted — its whole value is the order the holes were played.
+        scoreOrder = (try? container.decodeIfPresent([Int].self, forKey: .scoreOrder)) ?? []
     }
 }
 
@@ -105,6 +112,12 @@ nonisolated struct MatchSummary: Identifiable, Hashable {
     func par(at index: Int) -> Int {
         guard pars.indices.contains(index) else { return 4 }
         return pars[index]
+    }
+
+    /// Round index of an absolute hole number — nil when the hole isn't
+    /// part of this round (e.g. hole 3 on a back nine).
+    func roundIndex(ofHole hole: Int) -> Int? {
+        (0 ..< max(holes, 0)).first { holeNumber(at: $0) == hole }
     }
 
     /// Round index of the next hole in play — the first hole in round

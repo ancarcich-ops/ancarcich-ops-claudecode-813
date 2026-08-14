@@ -54,6 +54,9 @@ final class CreateMatchViewModel {
             tees = []
             defaultTeeName = nil
             for index in seats.indices { seats[index].teeId = nil }
+            // A different course is a different scorecard — don't carry a
+            // shotgun hole over to it.
+            resetStartTee()
         }
     }
     private(set) var isLocating = false
@@ -85,6 +88,9 @@ final class CreateMatchViewModel {
                 // Nassau is 18-hole only — server rejects it on 9.
                 sideGames.remove("NASSAU")
             }
+            // A nine answers the tee question with Front/Back, so the
+            // 18-hole picker resets rather than carrying a stale hole.
+            resetStartTee()
         }
     }
     var startsOnBack = false
@@ -103,6 +109,64 @@ final class CreateMatchViewModel {
                 addSeat()
             }
         }
+    }
+
+    // MARK: Starting tee (slice 80)
+
+    /// Which of the three starting-tee buttons reads as active.
+    enum StartTeeOption: Hashable {
+        case hole1, hole10, custom
+    }
+
+    /// The hole an 18-hole round tees off from. Nearly every round goes
+    /// off 1 or 10; a shotgun start can be any hole. Unused on a nine,
+    /// which derives its start from `startsOnBack`.
+    private(set) var startingHole = 1
+
+    /// Whether the 1–18 list is revealed. Tracked separately from the
+    /// hole itself because "Custom → hole 1" is a real, expressible
+    /// state: deriving openness from the value alone would collapse the
+    /// list the moment it read 1, making that choice impossible.
+    private(set) var startTeeCustom = false
+
+    var startTeeSelection: StartTeeOption {
+        if startTeeCustom { return .custom }
+        return startingHole == 10 ? .hole10 : .hole1
+    }
+
+    /// The control only makes sense on a full 18.
+    var showsStartTeePicker: Bool { holes == 18 }
+
+    /// The hole the round actually tees off from — the picker's value on
+    /// an 18, or the nine's Front/Back choice. This is what gets sent.
+    var effectiveStartingHole: Int {
+        guard holes == 18 else { return startsOnBack ? 10 : 1 }
+        return (1 ... 18).contains(startingHole) ? startingHole : 1
+    }
+
+    /// Tapping Custom opens the list and KEEPS the current hole — it's a
+    /// disclosure, not a reset.
+    func selectStartTee(_ option: StartTeeOption) {
+        switch option {
+        case .hole1:
+            startingHole = 1
+            startTeeCustom = false
+        case .hole10:
+            startingHole = 10
+            startTeeCustom = false
+        case .custom:
+            startTeeCustom = true
+        }
+    }
+
+    func setStartingHole(_ hole: Int) {
+        guard (1 ... 18).contains(hole) else { return }
+        startingHole = hole
+    }
+
+    private func resetStartTee() {
+        startingHole = 1
+        startTeeCustom = false
     }
 
     /// Single web-parity holes control — Full 18 / Front 9 / Back 9
@@ -194,6 +258,13 @@ final class CreateMatchViewModel {
         )
         holes = detail.holes
         startsOnBack = detail.holes == 9 && detail.startingHole == 10
+        // Prefill the tee, and OPEN Custom when the hole is neither 1 nor
+        // 10 — otherwise the control would light "Hole 1" while actually
+        // holding 7, which is the picker lying about its own value.
+        if detail.holes == 18 {
+            startingHole = (1 ... 18).contains(detail.startingHole) ? detail.startingHole : 1
+            startTeeCustom = startingHole != 1 && startingHole != 10
+        }
         scoringMode = detail.scoringMode
         let knownFormats = ["INDIVIDUAL", "SCRAMBLE", "BOTH"]
         let detailFormat = detail.format.uppercased()
@@ -631,14 +702,16 @@ final class CreateMatchViewModel {
                 team: sendsTeams ? seat.team : nil
             )
         }
-        // Belt & braces on the server's rules: 18-hole rounds always
-        // start on 1; Nassau never posts on 9 holes.
+        // Belt & braces on the server's rules: Nassau never posts on 9
+        // holes. The starting hole is sent always — an explicit 1 and an
+        // absent field mean the same thing, and always sending it keeps
+        // the request shape stable.
         var games = sideGames
         if holes != 18 { games.remove("NASSAU") }
         let request = CreateMatchRequest(
             courseName: course.name,
             holes: holes,
-            startingHole: holes == 18 ? 1 : (startsOnBack ? 10 : 1),
+            startingHole: effectiveStartingHole,
             scheduledAt: ISO8601DateFormatter().string(from: teeTime),
             scoringMode: scoringMode,
             format: effectiveFormat,
