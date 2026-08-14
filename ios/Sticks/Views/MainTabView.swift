@@ -23,6 +23,31 @@ enum SticksTab: Hashable {
     case settings
 }
 
+extension Notification.Name {
+    /// Posted when an already-selected tab is tapped again. The tab that
+    /// owns that stack pops it back to its root — the standard iOS
+    /// "take me back to the top of this section" gesture.
+    static let sticksPopToRoot = Notification.Name("sticksPopToRoot")
+}
+
+extension View {
+    /// Resets this tab's navigation stack when its bar button is
+    /// re-tapped. Every tab stays mounted behind the others, so the
+    /// note carries the tab and each stack answers only for its own.
+    func popsToRoot(on tab: SticksTab, path: Binding<NavigationPath>) -> some View {
+        onReceive(NotificationCenter.default.publisher(for: .sticksPopToRoot)) { note in
+            guard note.userInfo?["tab"] as? SticksTab == tab,
+                  !path.wrappedValue.isEmpty
+            else { return }
+            // Fired here rather than in the bar because only the stack
+            // knows whether there was anything to pop — a buzz with no
+            // movement reads as a bug.
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            path.wrappedValue = NavigationPath()
+        }
+    }
+}
+
 struct MainTabView: View {
     let user: User
     let session: SessionStore
@@ -200,7 +225,16 @@ struct SticksTabBar: View {
     private func tabButton(_ tab: SticksTab, icon: String, label: String) -> some View {
         let isActive = selection == tab
         return Button {
-            guard selection != tab else { return }
+            guard selection != tab else {
+                // Already here — the tap means "back to this section's
+                // main page", not a no-op.
+                NotificationCenter.default.post(
+                    name: .sticksPopToRoot,
+                    object: nil,
+                    userInfo: ["tab": tab]
+                )
+                return
+            }
             UISelectionFeedbackGenerator().selectionChanged()
             selection = tab
         } label: {

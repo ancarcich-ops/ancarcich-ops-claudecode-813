@@ -94,6 +94,7 @@ struct GroupsView: View {
                 handleCreated(matchId)
             }
         }
+        .popsToRoot(on: .groups, path: $path)
         .task {
             await viewModel.load(session: session)
         }

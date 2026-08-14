@@ -129,6 +129,7 @@ struct SettingsView: View {
                 handleCreated(matchId)
             }
         }
+        .popsToRoot(on: .settings, path: $path)
         .task {
             await viewModel.load(session: session)
             await viewModel.loadFollows(session: session)

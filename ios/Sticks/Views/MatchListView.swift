@@ -82,6 +82,7 @@ struct MatchListView: View {
                 Task { await openCreatedMatch(id: matchId) }
             }
         }
+        .popsToRoot(on: .home, path: $path)
         .task {
             await viewModel.load(session: session, group: groupFilter.groupQueryValue)
         }

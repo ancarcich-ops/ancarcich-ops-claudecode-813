@@ -78,6 +78,7 @@ struct StatsView: View {
                 handleCreated(matchId)
             }
         }
+        .popsToRoot(on: .stats, path: $path)
         .task {
             await viewModel.load(session: session)
         }
