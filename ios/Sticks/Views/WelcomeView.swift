@@ -9,8 +9,13 @@
 //  replay it.
 //
 //  Slice 49: a "Reading the card" decoder page between the overview and
-//  the send-off — six legend rows explaining the chips, dots, and
-//  numbers on the home-feed match cards, mirroring the website's page.
+//  the send-off — legend rows explaining the parts of a home-feed match
+//  card that aren't self-evident, mirroring the website's page.
+//
+//  Slice 81: copy realigned with what the app actually does. The odds
+//  are a win probability, not a market — the screen leads with scoring
+//  the group's games, and the decoder drops the two rows (LIVE pill,
+//  ticker) that explained the obvious.
 //
 
 import SwiftUI
@@ -160,7 +165,7 @@ struct WelcomeView: View {
                         .foregroundStyle(Color.sticksInk)
                         .lineSpacing(2)
 
-                    Text("Score any format, watch the odds move, and settle up before the 19th hole.")
+                    Text("Every format your group plays, scored properly — with handicaps that hold up anywhere and GPS on every hole.")
                         .font(SticksFont.sans(15))
                         .foregroundStyle(Color.sticksMuted)
                         .lineSpacing(3)
@@ -170,24 +175,24 @@ struct WelcomeView: View {
 
                 VStack(spacing: 10) {
                     featureCard(
-                        icon: "chart.line.uptrend.xyaxis",
-                        title: "A live betting market",
-                        line: "Win odds blend the model, the crowd, and live scores — tap Place your pick to back who wins."
-                    )
-                    featureCard(
                         icon: "flag.2.crossed",
-                        title: "Every game in your group",
-                        line: "Skins, Stableford, Nassau, Wolf, BBB, Snake, Sixes, plus team formats."
+                        title: "Every game your group plays",
+                        line: "Skins, Stableford, Nassau, Wolf, BBB, Snake, Sixes, plus team formats — scored live alongside the round."
                     )
                     featureCard(
                         icon: "dial.medium",
-                        title: "Course-fair handicaps & stats",
-                        line: "A true WHS index with rating & slope per tee — net scoring is fair anywhere."
+                        title: "Handicaps that hold up",
+                        line: "A true WHS index with rating and slope per tee, and strokes that fall on the holes the card says they should."
                     )
                     featureCard(
                         icon: "map",
                         title: "On-course GPS + 3D flyover",
                         line: "Live distances, front/center/back, and a photorealistic tee→green flyover of every hole."
+                    )
+                    featureCard(
+                        icon: "chart.line.uptrend.xyaxis",
+                        title: "Follow a round live",
+                        line: "Win probability moves as scores land, with momentum and standings — so you can follow a round you're not even in."
                     )
                     featureCard(
                         icon: "square.and.arrow.up",
@@ -253,7 +258,7 @@ struct WelcomeView: View {
                         .font(SticksFont.display(34))
                         .foregroundStyle(Color.sticksInk)
 
-                    Text("A quick decoder for what every chip, dot, and number means on the home page.")
+                    Text("The few things on a match card you can't just read off it.")
                         .font(SticksFont.sans(15))
                         .foregroundStyle(Color.sticksMuted)
                         .lineSpacing(3)
@@ -263,13 +268,6 @@ struct WelcomeView: View {
 
                 VStack(spacing: 10) {
                     legendRow(
-                        title: "Live status pill",
-                        line: "A round is in progress right now. Sky-blue \"In 2h 14m\" = upcoming. Gold \"Final\" = settled."
-                    ) {
-                        legendPill(text: "● LIVE", color: .sticksGreen)
-                    }
-
-                    legendRow(
                         title: "Hole dot row",
                         line: "The number in each box is the player's raw strokes. Color encodes par: solid pine = birdie · gold = eagle · soft green = par · muted red = bogey · bright red + halo = double or worse. Dashed = current hole, empty = unplayed."
                     ) {
@@ -278,7 +276,7 @@ struct WelcomeView: View {
 
                     legendRow(
                         title: "Win probability",
-                        line: "The live market — a blend of the model, the crowd's picks, and live scores. The arrow shows the last move (▲ rising, ▼ falling, • flat)."
+                        line: "Each player's chance of winning — a blend of the model, the group's picks, and live scores. The arrow shows the last move (▲ rising, ▼ falling, • flat)."
                     ) {
                         (
                             Text("▲ ").foregroundStyle(Color.sticksGreen)
@@ -308,21 +306,6 @@ struct WelcomeView: View {
                         line: "🔥 hot = ≥3 birdies in a round. ❄️ cold = +4 over par across the last 3. 🦅 = eagle on the most recent hole. 🐥 = birdie on the most recent."
                     ) {
                         legendPill(text: "🔥 3 BIRDIES", color: .sticksGreen)
-                    }
-
-                    legendRow(
-                        title: "Header ticker",
-                        line: "Scrolling strip of live odds and recent events. Adapts to whether the round is open, live, or settled."
-                    ) {
-                        Text("… LEADER −2 THRU 12 · 1 WAGER …")
-                            .font(SticksFont.mono(9))
-                            .kerning(0.6)
-                            .foregroundStyle(Color.sticksMuted)
-                            .lineLimit(1)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.sticksPanel2)
-                            .clipShape(.rect(cornerRadius: 5))
                     }
                 }
             }
@@ -441,12 +424,12 @@ struct WelcomeView: View {
                     .kerning(1.6)
                     .foregroundStyle(Color.sticksGreen)
 
-                Text("Time to open a line.")
+                Text("Time to tee it up.")
                     .font(SticksFont.displayItalic(34))
                     .foregroundStyle(Color.sticksInk)
                     .multilineTextAlignment(.center)
 
-                Text("Start a round, invite your group,\nand let the market do the talking.")
+                Text("Start a round, invite your group,\nand let the scorecard settle it.")
                     .font(SticksFont.sans(15))
                     .foregroundStyle(Color.sticksMuted)
                     .multilineTextAlignment(.center)

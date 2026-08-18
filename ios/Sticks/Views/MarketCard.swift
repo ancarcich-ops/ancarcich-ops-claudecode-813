@@ -182,7 +182,7 @@ struct MarketCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Market")
+            Text("Live odds")
                 .font(SticksFont.display(13, weight: .bold))
                 .foregroundStyle(Color.sticksInk)
 
@@ -539,7 +539,7 @@ struct MarketCard: View {
             }
 
             if !odds.open {
-                Text("Market closed — this round is final.")
+                Text("Picks are closed — this round is final.")
                     .font(SticksFont.sans(12))
                     .foregroundStyle(Color.sticksMuted)
             }

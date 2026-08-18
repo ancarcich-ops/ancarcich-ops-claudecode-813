@@ -94,7 +94,7 @@ struct EditSideGamesSheet: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 10)
 
-                Text("Sticks only keeps score — no money is collected, held, or paid through the app. Settle up among yourselves.")
+                Text("Sticks only keeps score — no money is collected, held, or paid through the app. Anything owed is sorted out between you.")
                     .font(SticksFont.mono(10))
                     .kerning(0.3)
                     .foregroundStyle(Color.sticksFaint)
