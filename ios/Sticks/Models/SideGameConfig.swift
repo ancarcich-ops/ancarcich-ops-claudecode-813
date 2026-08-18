@@ -259,6 +259,36 @@ nonisolated struct NassauConfig: Codable, Hashable {
     }
 }
 
+/// Team-vs-team settings — which scoring rules are live. The server
+/// publishes a separate leaderboard per rule (keyed TEAM_<RULE>), so
+/// this is a list, not a single choice. An empty/absent list leaves the
+/// server on its own default.
+nonisolated struct TeamVsTeamConfig: Codable, Hashable {
+    var rules: [String]
+
+    static let bestBall = "BEST_BALL"
+
+    private enum CodingKeys: String, CodingKey {
+        case rules
+    }
+
+    init(rules: [String]) {
+        self.rules = rules
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rules = (try? container.decode([String].self, forKey: .rules)) ?? []
+    }
+
+    /// Parses the raw JSON string from sideGameConfigs — nil when the
+    /// game has no config saved yet.
+    static func decode(from raw: String?) -> TeamVsTeamConfig? {
+        guard let raw, let data = raw.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(TeamVsTeamConfig.self, from: data)
+    }
+}
+
 /// Slice 57: which side-game settings editor sheet is open.
 enum SideGameConfigKind: String, Identifiable {
     case stableford = "STABLEFORD"

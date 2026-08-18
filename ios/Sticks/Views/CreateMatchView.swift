@@ -1035,7 +1035,7 @@ struct CreateMatchView: View {
             if !viewModel.teamsAreValid {
                 Text(
                     viewModel.seats.count < 2
-                        ? "\(viewModel.format == "BOTH" ? "Both" : "Scramble") needs at least 2 players — add one below."
+                        ? "\(teamFormatName) needs at least 2 players — add one below."
                         : "Both teams need at least one player."
                 )
                 .font(SticksFont.mono(10.5, weight: .regular))
@@ -1043,6 +1043,16 @@ struct CreateMatchView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: viewModel.teamsAreValid)
+    }
+
+    /// What put teams on screen — the format, or the team-vs-team side
+    /// game riding on an individual round.
+    private var teamFormatName: String {
+        switch viewModel.format {
+        case "BOTH": return "Both"
+        case "SCRAMBLE": return "Scramble"
+        default: return "Team vs team"
+        }
     }
 
     @ViewBuilder private func suggestionsCard(for seat: CreateMatchViewModel.Seat) -> some View {
@@ -1115,6 +1125,9 @@ struct CreateMatchView: View {
 
     // MARK: - Side games
 
+    /// Slice 82: every game the web offers, as rows with the web's
+    /// blurbs. Games this round can't play stay visible and disabled
+    /// with the reason — a game you can see is a game you can learn.
     private var sideGamesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
@@ -1126,48 +1139,135 @@ struct CreateMatchView: View {
                     .foregroundStyle(Color.sticksFaint)
             }
 
-            let columns = [GridItem(.adaptive(minimum: 104), spacing: 8)]
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(availableSideGames, id: \.kind) { game in
-                    sideGameChip(kind: game.kind, label: game.label)
+            VStack(spacing: 0) {
+                ForEach(Array(CreateMatchViewModel.sideGameOptions.enumerated()), id: \.element.kind) { position, option in
+                    if position > 0 {
+                        Rectangle()
+                            .fill(Color.sticksHairline.opacity(0.6))
+                            .frame(height: 1)
+                            .padding(.leading, 42)
+                    }
+                    sideGameRow(option)
                 }
             }
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+
+            if viewModel.isSideGameOn(CreateMatchViewModel.teamVsTeam) {
+                teamRulesSection
+            }
         }
+        .animation(.easeOut(duration: 0.18), value: viewModel.sideGames)
     }
 
-    /// Nassau is 18-hole only — hidden on 9-hole rounds (the server
-    /// rejects it there anyway).
-    private var availableSideGames: [(kind: String, label: String)] {
-        var games: [(String, String)] = [
-            ("SKINS", "Skins"),
-            ("STABLEFORD", "Stableford"),
-        ]
-        if viewModel.holes == 18 {
-            games.append(("NASSAU", "Nassau"))
-        }
-        games.append(contentsOf: [
-            ("BBB", "BBB"),
-            ("SNAKE", "Snake"),
-            ("WOLF", "Wolf"),
-        ])
-        return games
-    }
+    private func sideGameRow(_ option: CreateMatchViewModel.SideGameOption) -> some View {
+        let blocker = viewModel.blocker(for: option.kind)
+        let isLocked = viewModel.isSideGameLocked(option.kind)
+        let isOn = viewModel.isSideGameOn(option.kind)
+        let isDisabled = blocker != nil || isLocked
 
-    private func sideGameChip(kind: String, label: String) -> some View {
-        let isOn = viewModel.sideGames.contains(kind)
         return Button {
-            viewModel.toggleSideGame(kind)
+            viewModel.toggleSideGame(option.kind)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 12, weight: .semibold))
-                Text(label)
-                    .font(SticksFont.sans(13.5, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isOn ? Color.sticksGreen : Color.sticksFaint)
+                    .frame(width: 22, alignment: .leading)
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(option.label)
+                        .font(SticksFont.sans(15, weight: .semibold))
+                        .foregroundStyle(isDisabled && !isOn ? Color.sticksMuted : Color.sticksInk)
+
+                    Text(option.blurb)
+                        .font(SticksFont.sans(12))
+                        .foregroundStyle(Color.sticksMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let reason = blocker ?? (isLocked ? "On with the Both format" : nil) {
+                        Text(reason.uppercased())
+                            .font(SticksFont.mono(9.5))
+                            .kerning(0.8)
+                            .foregroundStyle(Color.sticksFaint)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.sticksPanel2)
+                            .clipShape(.rect(cornerRadius: 5))
+                            .padding(.top, 1)
+                    }
+                }
+
+                if isDisabled {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.sticksFaint)
+                        .padding(.top, 3)
+                }
             }
-            .foregroundStyle(isOn ? Color.sticksGreen : Color.sticksMuted)
-            .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(isDisabled)
+        .opacity(isDisabled && !isOn ? 0.62 : 1)
+        .animation(.easeOut(duration: 0.12), value: isOn)
+    }
+
+    /// Team vs team is scored per rule — the server publishes a board
+    /// for each one picked, so this is a multi-select, not a choice.
+    private var teamRulesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("TEAM SCORING")
+
+            let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(CreateMatchViewModel.teamRuleOptions, id: \.key) { rule in
+                    teamRuleChip(rule)
+                }
+            }
+
+            Text("Every rule you pick gets its own board. Teams are set on the Players step.")
+                .font(SticksFont.mono(10.5, weight: .regular))
+                .foregroundStyle(Color.sticksFaint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
+    }
+
+    private func teamRuleChip(_ rule: CreateMatchViewModel.TeamRuleOption) -> some View {
+        let isOn = viewModel.teamRules.contains(rule.key)
+        return Button {
+            viewModel.toggleTeamRule(rule.key)
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(rule.label)
+                        .font(SticksFont.sans(13.5, weight: .semibold))
+                }
+                .foregroundStyle(isOn ? Color.sticksGreen : Color.sticksMuted)
+
+                Text(rule.blurb)
+                    .font(SticksFont.sans(11))
+                    .foregroundStyle(Color.sticksFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
             .background(isOn ? Color.sticksGreen.opacity(0.1) : Color.sticksPanel2)
             .clipShape(.rect(cornerRadius: 10))
             .overlay(

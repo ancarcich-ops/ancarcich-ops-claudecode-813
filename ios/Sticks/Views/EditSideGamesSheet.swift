@@ -8,6 +8,11 @@
 //  TEAM_VS_TEAM shows as a read-only row (teams are edited on the web)
 //  and is preserved in the sent set.
 //
+//  Slice 82: BBB posts as "BBB" — the long "BINGO_BANGO_BONGO" spelling
+//  is a display alias the server doesn't know, and this sheet was the
+//  one place it reached the wire. SIXES now hides unless the round can
+//  actually play it.
+//
 
 import SwiftUI
 import UIKit
@@ -29,7 +34,7 @@ struct EditSideGamesSheet: View {
         ("STABLEFORD", "Stableford", "Points per hole against par"),
         ("NASSAU", "Nassau", "Front nine, back nine, and overall"),
         ("WOLF", "Wolf", "Rotating captain picks a partner — or goes lone wolf"),
-        ("BINGO_BANGO_BONGO", "Bingo Bango Bongo", "First on, closest to the pin, first in"),
+        ("BBB", "Bingo Bango Bongo", "First on, closest to the pin, first in"),
         ("SNAKE", "Snake", "Last three-putt holds the snake"),
         ("SIXES", "Sixes", "Partners rotate every six holes"),
     ]
@@ -50,9 +55,17 @@ struct EditSideGamesSheet: View {
     }
 
     /// NASSAU needs a full 18 — the server drops it otherwise, so
-    /// don't offer it on shorter rounds.
+    /// don't offer it on shorter rounds. SIXES needs a full 18 AND
+    /// exactly four players: switched on for a threesome it produces a
+    /// board that can never resolve.
     private var visibleOptions: [(kind: String, label: String, blurb: String)] {
-        Self.options.filter { $0.kind != "NASSAU" || detail.holes == 18 }
+        Self.options.filter { option in
+            switch option.kind {
+            case "NASSAU": return detail.holes == 18
+            case "SIXES": return detail.holes == 18 && detail.players.count == 4
+            default: return true
+            }
+        }
     }
 
     var body: some View {

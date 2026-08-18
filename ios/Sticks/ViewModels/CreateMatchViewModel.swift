@@ -84,10 +84,10 @@ final class CreateMatchViewModel {
             guard holes != oldValue else { return }
             if holes == 18 {
                 startsOnBack = false
-            } else {
-                // Nassau is 18-hole only — server rejects it on 9.
-                sideGames.remove("NASSAU")
             }
+            // Nassau and Sixes are 18-hole only — the server rejects
+            // them on a nine.
+            sanitizeSideGames()
             // A nine answers the tee question with Front/Back, so the
             // 18-hole picker resets rather than carrying a stale hole.
             resetStartTee()
@@ -214,6 +214,9 @@ final class CreateMatchViewModel {
     // MARK: Side games / group
 
     var sideGames: Set<String> = []
+    /// Team-vs-team scoring rules, keyed exactly as the server names
+    /// them. Never empty — a team game with no rule can never resolve.
+    private(set) var teamRules: Set<String> = ["BEST_BALL"]
     private(set) var groups: [SticksGroup] = []
     var selectedGroupId: String?
 
@@ -266,10 +269,15 @@ final class CreateMatchViewModel {
             startTeeCustom = startingHole != 1 && startingHole != 10
         }
         scoringMode = detail.scoringMode
+        let kinds = Set(editing.sideGameKinds.map { MatchDetailMath.eventGameKey($0) })
         let knownFormats = ["INDIVIDUAL", "SCRAMBLE", "BOTH"]
         let detailFormat = detail.format.uppercased()
-        format = knownFormats.contains(detailFormat) ? detailFormat : "INDIVIDUAL"
-        sideGames = Set(editing.sideGameKinds)
+        let resolved = knownFormats.contains(detailFormat) ? detailFormat : "INDIVIDUAL"
+        // The server has no BOTH — it stores an INDIVIDUAL round with the
+        // team game attached. Read that back as Both so the picker shows
+        // the round the way it was set up.
+        format = resolved == "INDIVIDUAL" && kinds.contains(Self.teamVsTeam) ? "BOTH" : resolved
+        sideGames = kinds
         selectedGroupId = editing.groupId
         teeTime = detail.scheduledAt
         // Edit mode opens with everything answered — all chips, like
@@ -304,8 +312,12 @@ final class CreateMatchViewModel {
 
     // MARK: Teams (slice 39)
 
-    /// SCRAMBLE and BOTH seat players onto Team A / Team B.
-    var usesTeams: Bool { format != "INDIVIDUAL" }
+    /// SCRAMBLE and BOTH seat players onto Team A / Team B — and so
+    /// does an INDIVIDUAL round carrying the team-vs-team side game,
+    /// which is the same thing said a different way.
+    var usesTeams: Bool {
+        format != "INDIVIDUAL" || sideGames.contains(Self.teamVsTeam)
+    }
 
     var teamACount: Int { seats.filter { $0.team != 1 }.count }
     var teamBCount: Int { seats.filter { $0.team == 1 }.count }
@@ -584,6 +596,7 @@ final class CreateMatchViewModel {
 
     func addSeat() {
         guard canAddSeat else { return }
+        defer { sanitizeSideGames() }
         seats.append(Seat(
             id: UUID(),
             name: "",
@@ -614,6 +627,7 @@ final class CreateMatchViewModel {
         if seats.count < 2, format != "INDIVIDUAL" {
             format = "INDIVIDUAL"
         }
+        sanitizeSideGames()
     }
 
     func removeSeat(id: UUID) {
@@ -623,6 +637,7 @@ final class CreateMatchViewModel {
         if seats.count < 2, format != "INDIVIDUAL" {
             format = "INDIVIDUAL"
         }
+        sanitizeSideGames()
     }
 
     /// Links a seat to a suggestion — carries the userId and prefills
@@ -656,13 +671,166 @@ final class CreateMatchViewModel {
         seats[index].handicapText = Self.formatHandicap(next)
     }
 
-    // MARK: - Side games
+    // MARK: - Side games (slice 82)
+
+    /// One selectable side game. Labels and blurbs match the web's
+    /// new-round form so two people looking at the same round read the
+    /// same description of it.
+    struct SideGameOption: Hashable {
+        let kind: String
+        let label: String
+        let blurb: String
+    }
+
+    /// Every game the round can carry, in the web's order. Whether a
+    /// given round can actually play one is answered by `blocker(for:)`.
+    static let sideGameOptions: [SideGameOption] = [
+        SideGameOption(
+            kind: "SKINS",
+            label: "Skins",
+            blurb: "Win a hole outright to take the skin — ties carry over."
+        ),
+        SideGameOption(
+            kind: "STABLEFORD",
+            label: "Stableford",
+            blurb: "Points per hole against par."
+        ),
+        SideGameOption(
+            kind: "NASSAU",
+            label: "Nassau",
+            blurb: "Front nine, back nine, and overall."
+        ),
+        SideGameOption(
+            kind: "BBB",
+            label: "BBB",
+            blurb: "First on, closest to the pin, first in."
+        ),
+        SideGameOption(
+            kind: "SNAKE",
+            label: "Snake",
+            blurb: "Last three-putt holds the snake."
+        ),
+        SideGameOption(
+            kind: "WOLF",
+            label: "Wolf",
+            blurb: "Rotating captain picks a partner — or goes lone wolf."
+        ),
+        SideGameOption(
+            kind: "TARGETS",
+            label: "Targets",
+            blurb: "Each player chases a target count of pars-or-better (or birdies). Hit the number to win."
+        ),
+        SideGameOption(
+            kind: "MATCH",
+            label: "Match",
+            blurb: "Match play: lowest net score on a hole wins a dot; ties wash. Round-robin with 3+ players."
+        ),
+        SideGameOption(
+            kind: "SIXES",
+            label: "Sixes",
+            blurb: "4-player rotating partnerships every 6 holes (1+2 vs 3+4, then 1+3 vs 2+4, then 1+4 vs 2+3). Best-ball match play."
+        ),
+        SideGameOption(
+            kind: "TEAM_VS_TEAM",
+            label: "Team vs team",
+            blurb: "Split into 2 teams; per-hole team score from best ball, high-low, sum, or net."
+        ),
+    ]
+
+    /// One team-vs-team scoring rule. `key` is the server's name — the
+    /// server publishes a separate leaderboard per rule, keyed
+    /// TEAM_<RULE>, which is why this is a multi-select.
+    struct TeamRuleOption: Hashable {
+        let key: String
+        let label: String
+        let blurb: String
+    }
+
+    /// Six of the server's seven rules. VEGAS is deliberately absent:
+    /// it carries its own options (birdie flip, doubling holes, stake)
+    /// and a half-configured Vegas is worse than no Vegas.
+    static let teamRuleOptions: [TeamRuleOption] = [
+        TeamRuleOption(key: "BEST_BALL", label: "Best ball", blurb: "The better ball on the hole."),
+        TeamRuleOption(key: "WORST_BALL", label: "Worst ball", blurb: "The worse ball on the hole."),
+        TeamRuleOption(key: "HIGH_LOW", label: "High-low", blurb: "Low vs low and high vs high — 2 points a hole."),
+        TeamRuleOption(key: "HIGH_LOW_BALL", label: "High-low by ball", blurb: "The same, scored per ball."),
+        TeamRuleOption(key: "SUM", label: "Sum", blurb: "Both players' gross added."),
+        TeamRuleOption(key: "AGGREGATE_NET", label: "Aggregate net", blurb: "Both players' net added."),
+    ]
+
+    static let teamVsTeam = "TEAM_VS_TEAM"
+
+    /// Why this round can't play `kind`, or nil when it can. Shown on a
+    /// disabled row rather than hiding the game, so people still learn
+    /// it exists — one pattern for every constrained game.
+    func blocker(for kind: String) -> String? {
+        switch kind {
+        case "NASSAU":
+            return holes == 18 ? nil : "18 holes only"
+        case "SIXES":
+            if holes != 18 { return "18 holes only" }
+            return seats.count == 4 ? nil : "Needs 4 players"
+        case Self.teamVsTeam:
+            return seats.count > 1 ? nil : "Needs 2 players"
+        default:
+            return nil
+        }
+    }
+
+    /// The Both format IS team vs team — the row reads on and locked
+    /// rather than quietly disagreeing with the format above it.
+    func isSideGameLocked(_ kind: String) -> Bool {
+        kind == Self.teamVsTeam && format == "BOTH" && seats.count > 1
+    }
+
+    func isSideGameOn(_ kind: String) -> Bool {
+        sideGames.contains(kind) || isSideGameLocked(kind)
+    }
 
     func toggleSideGame(_ kind: String) {
+        guard blocker(for: kind) == nil, !isSideGameLocked(kind) else { return }
         if sideGames.contains(kind) {
             sideGames.remove(kind)
         } else {
             sideGames.insert(kind)
+            if kind == Self.teamVsTeam {
+                // A team game needs two sides, exactly like picking a
+                // team format does.
+                if seats.count < 2, canAddSeat { addSeat() }
+                seedTeamsIfNeeded()
+            }
+        }
+    }
+
+    /// Drops any game this round can no longer play. Called whenever the
+    /// hole count or the seat list changes, so the form can never carry
+    /// a game the server would reject.
+    private func sanitizeSideGames() {
+        for kind in sideGames where blocker(for: kind) != nil {
+            sideGames.remove(kind)
+        }
+    }
+
+    /// Splits the seats down the middle the first time a team game is
+    /// switched on. The side-games step comes AFTER Players, so without
+    /// this the round would land on an empty Team B and disable Create
+    /// on a step that shows no teams to fix. Seats stay editable.
+    private func seedTeamsIfNeeded() {
+        guard seats.count > 1, !teamsAreValid else { return }
+        let half = seats.count / 2
+        for index in seats.indices {
+            seats[index].team = index < half ? 0 : 1
+        }
+    }
+
+    /// Toggles a team rule, refusing to clear the last one — a team game
+    /// with no rule produces a board that can never resolve.
+    func toggleTeamRule(_ key: String) {
+        if teamRules.contains(key) {
+            guard teamRules.count > 1 else { return }
+            teamRules.remove(key)
+        } else {
+            teamRules.insert(key)
         }
     }
 
@@ -685,10 +853,23 @@ final class CreateMatchViewModel {
         createError = nil
         defer { isCreating = false }
 
-        // Belt & braces: a solo round is always Individual, and team
-        // assignments only travel on team formats.
-        let effectiveFormat = seats.count > 1 ? format : "INDIVIDUAL"
-        let sendsTeams = effectiveFormat != "INDIVIDUAL"
+        // Belt & braces on the server's rules: a solo round is always
+        // Individual, games this round can't play never post, and the
+        // team game rides along whenever the Both shortcut is picked.
+        var games = sideGames
+        for kind in games where blocker(for: kind) != nil {
+            games.remove(kind)
+        }
+        if format == "BOTH", seats.count > 1 {
+            games.insert(Self.teamVsTeam)
+        }
+        // "Both" is a form shortcut, not a server format — on the wire
+        // it's an INDIVIDUAL round carrying the team-vs-team side game.
+        let requestedFormat = format == "BOTH" ? "INDIVIDUAL" : format
+        let effectiveFormat = seats.count > 1 ? requestedFormat : "INDIVIDUAL"
+        // Team assignments travel for a team format AND for an
+        // individual round with a team match running on top of it.
+        let sendsTeams = effectiveFormat != "INDIVIDUAL" || games.contains(Self.teamVsTeam)
         let players = seats.map { seat in
             // Seats on the default still send their tee explicitly; when
             // the course has no rated tees the keys are omitted entirely.
@@ -702,12 +883,9 @@ final class CreateMatchViewModel {
                 team: sendsTeams ? seat.team : nil
             )
         }
-        // Belt & braces on the server's rules: Nassau never posts on 9
-        // holes. The starting hole is sent always — an explicit 1 and an
-        // absent field mean the same thing, and always sending it keeps
-        // the request shape stable.
-        var games = sideGames
-        if holes != 18 { games.remove("NASSAU") }
+        // The starting hole is sent always — an explicit 1 and an absent
+        // field mean the same thing, and always sending it keeps the
+        // request shape stable.
         let request = CreateMatchRequest(
             courseName: course.name,
             holes: holes,
@@ -727,7 +905,11 @@ final class CreateMatchViewModel {
             } else {
                 response = try await api.createMatch(request, token: token)
             }
-            return response.match.id
+            let matchId = response.match.id
+            if games.contains(Self.teamVsTeam) {
+                await saveTeamRules(matchId: matchId, token: token)
+            }
+            return matchId
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
             return nil
@@ -738,6 +920,23 @@ final class CreateMatchViewModel {
             createError = "Can't reach Sticks. Check your connection and try again."
             return nil
         }
+    }
+
+    /// Saves the picked team rules onto the freshly created round. The
+    /// round itself already exists by this point, so a failure here is
+    /// never allowed to read as a failed create — the rules fall back to
+    /// the server's default and stay editable.
+    private func saveTeamRules(matchId: String, token: String) async {
+        let rules = Self.teamRuleOptions
+            .map(\.key)
+            .filter { teamRules.contains($0) }
+        guard !rules.isEmpty else { return }
+        try? await api.setSideGameConfig(
+            matchId: matchId,
+            kind: Self.teamVsTeam,
+            config: TeamVsTeamConfig(rules: rules),
+            token: token
+        )
     }
 
     // MARK: - Handicap helpers
