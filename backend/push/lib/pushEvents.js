@@ -169,9 +169,30 @@ export async function notifyScoreHighlight({
   }
 }
 
+/** Sums strokes/pars for holes 1–9; null unless all nine are present. */
+function frontNineFromHoles(frontStrokes, frontPars) {
+  if (!Array.isArray(frontStrokes) || !Array.isArray(frontPars)) return null;
+  if (frontStrokes.length < 9 || frontPars.length < 9) return null;
+  const strokes = frontStrokes.slice(0, 9).map(Number);
+  const pars = frontPars.slice(0, 9).map(Number);
+  if ([...strokes, ...pars].some((n) => !Number.isFinite(n) || n <= 0)) return null;
+  const total = strokes.reduce((a, b) => a + b, 0);
+  const par = pars.reduce((a, b) => a + b, 0);
+  return { total, toPar: total - par };
+}
+
 /**
  * front_nine — call when a player's 9th front-nine hole score lands
  * (holes 1–9 all have strokes). Fire-once per match player is handled here.
+ *
+ * The score is the whole point of this alert. Pass EITHER the totals
+ * (`frontTotal` + `frontToPar`) OR the raw per-hole arrays
+ * (`frontStrokes` + `frontPars`, holes 1–9 in order) and the sender sums
+ * them. If neither yields a score the alert is SKIPPED and an error is
+ * logged — a turn alert without a score is not worth a buzz.
+ *
+ * 9-hole rounds are skipped: their 9th hole is the finish, which
+ * round_final already covers (otherwise the last putt double-fires).
  *
  * @param {object} p
  * @param {string} p.matchId
@@ -179,8 +200,11 @@ export async function notifyScoreHighlight({
  * @param {string} p.actorUserId
  * @param {string} p.playerName
  * @param {string} p.courseName
- * @param {number} p.frontTotal     strokes for holes 1-9, e.g. 39
- * @param {number} p.frontToPar     e.g. 3 → "(+3)", 0 → "(E)"
+ * @param {number} [p.roundHoles]     9 or 18 — 9 skips the alert
+ * @param {number} [p.frontTotal]     strokes for holes 1-9, e.g. 39
+ * @param {number} [p.frontToPar]     e.g. 3 → "(+3)", 0 → "(E)"
+ * @param {number[]} [p.frontStrokes] strokes for holes 1-9, in order
+ * @param {number[]} [p.frontPars]    pars for holes 1-9, in order
  */
 export async function notifyFrontNine({
   matchId,
@@ -188,10 +212,27 @@ export async function notifyFrontNine({
   actorUserId,
   playerName,
   courseName,
+  roundHoles,
   frontTotal,
   frontToPar,
+  frontStrokes,
+  frontPars,
 }) {
   try {
+    if (Number(roundHoles) === 9) return;
+
+    const score =
+      Number.isFinite(frontTotal) && Number.isFinite(frontToPar)
+        ? { total: frontTotal, toPar: frontToPar }
+        : frontNineFromHoles(frontStrokes, frontPars);
+    if (!score) {
+      console.error(
+        `[push] front_nine skipped for ${matchId}: no score passed ` +
+          `(need frontTotal+frontToPar or frontStrokes+frontPars)`
+      );
+      return;
+    }
+
     if (!(await markEventOnce(`f9-${matchPlayerId}`))) return;
     const audience = await roundAudienceOrNull(matchId, actorUserId);
     if (!audience) return;
@@ -200,8 +241,8 @@ export async function notifyFrontNine({
       audience,
       "frontNineScores",
       buildPayload({
-        title: "Made the turn",
-        body: `${playerName} out in ${frontTotal} (${formatToPar(frontToPar)}) at ${courseName}`,
+        title: "At the turn",
+        body: `${playerName} made the turn in ${score.total} (${formatToPar(score.toPar)}) at ${courseName}`,
         matchId,
         type: "front_nine",
         userId: actorUserId,

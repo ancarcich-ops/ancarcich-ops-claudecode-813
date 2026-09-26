@@ -57,7 +57,14 @@ if (strokes != null && strokes <= par - 1) {
   waitUntil(notifyScoreHighlight({ matchId, matchPlayerId, actorUserId, playerName, courseName, hole, par, strokes }));
 }
 if (holes1to9AllScored) {
-  waitUntil(notifyFrontNine({ matchId, matchPlayerId, actorUserId, playerName, courseName, frontTotal, frontToPar }));
+  // The score is required — pass totals OR the raw hole arrays (holes 1-9).
+  // Without one of them the sender skips the alert and logs an error.
+  waitUntil(notifyFrontNine({
+    matchId, matchPlayerId, actorUserId, playerName, courseName,
+    roundHoles,                  // 9 → skipped (round_final covers it)
+    frontStrokes, frontPars,     // e.g. [4,5,3,...] / [4,4,3,...]
+    // or: frontTotal: 39, frontToPar: 3
+  }));
 }
 
 // POST /matches/:id/complete — on the first transition to COMPLETED:

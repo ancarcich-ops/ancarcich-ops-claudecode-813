@@ -156,9 +156,11 @@ Classify: `strokes == 1` → ace; `par - strokes`: 1 → birdie, 2 → eagle,
 
 ### front_nine — pref `frontNineScores`
 Trigger: a player's 9th front-nine hole score lands (holes 1–9 all have
-strokes). Fire once per match player.
-- Title: `Made the turn`
-- Body: `Tj out in 39 (+3) at Rustic Canyon`
+strokes). Fire once per match player. Skip 9-hole rounds (their 9th
+hole is the finish — round_final covers it).
+- Title: `At the turn`
+- Body: `Tj made the turn in 39 (+3) at Rustic Canyon` (even par → `(E)`)
+- The score is REQUIRED. Never send this alert without it — skip instead.
 - `apns-collapse-id: f9-<matchPlayerId>`
 
 ### round_final — pref `finalScores`
