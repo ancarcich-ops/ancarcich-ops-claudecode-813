@@ -135,7 +135,7 @@ struct MatchCardView: View {
             ? (match.completedAt ?? match.scheduledAt)
             : match.scheduledAt
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEE h:mm a"
+        formatter.dateFormat = "EEE, MMM d · h:mm a"
         return formatter.string(from: date).uppercased()
     }
 
