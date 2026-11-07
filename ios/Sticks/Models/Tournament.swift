@@ -32,6 +32,66 @@ nonisolated enum TournamentStatus: Hashable {
     }
 }
 
+// MARK: - Format (slice 83)
+
+/// How a tournament is scored — one of the server's format registry
+/// entries (GET /formats). The server resolves legacy tournaments to a
+/// real format, so this is never absent on a tournament payload.
+///
+/// Field meanings (spec appendix A):
+/// - `teamSize`: players per side; nil = individual play.
+/// - `entry`: `.shared` = one card per hole for the side (scramble);
+///   `.perPlayer` = everyone keeps their own card.
+/// - `countBest`: balls counted per hole; nil = every ball, summed.
+/// - `result`: `.strokes` (low wins) or `.points` (Stableford, high wins).
+nonisolated struct TournamentFormat: Hashable {
+    nonisolated enum Entry: Hashable {
+        case shared
+        case perPlayer
+    }
+
+    nonisolated enum Result: Hashable {
+        case strokes
+        case points
+    }
+
+    let id: String
+    let label: String
+    let blurb: String?
+    let teamSize: Int?
+    let entry: Entry
+    let countBest: Int?
+    let result: Result
+
+    /// True when players are grouped into sides.
+    var isTeamFormat: Bool { (teamSize ?? 1) > 1 }
+    /// Scramble-style: the side records one score per hole.
+    var isSharedCard: Bool { entry == .shared }
+    /// Stableford: higher totals are better.
+    var highWins: Bool { result == .points }
+}
+
+extension TournamentFormat: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case id, label, blurb, teamSize, entry, countBest, result
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        label = try container.decode(String.self, forKey: .label)
+        blurb = try? container.decodeIfPresent(String.self, forKey: .blurb)
+        teamSize = try? container.decodeIfPresent(Int.self, forKey: .teamSize)
+        // The list endpoint sends only id/label/teamSize — the rest
+        // default to the per-player / low-wins reading.
+        let rawEntry = (try? container.decodeIfPresent(String.self, forKey: .entry)) ?? nil
+        entry = rawEntry?.lowercased() == "shared" ? .shared : .perPlayer
+        countBest = try? container.decodeIfPresent(Int.self, forKey: .countBest)
+        let rawResult = (try? container.decodeIfPresent(String.self, forKey: .result)) ?? nil
+        result = rawResult?.lowercased() == "points" ? .points : .strokes
+    }
+}
+
 // MARK: - GET /tournaments
 
 /// One row of GET /tournaments.
@@ -46,12 +106,14 @@ nonisolated struct TournamentSummary: Identifiable, Hashable {
     let isCreator: Bool
     let inviteCode: String
     let createdAt: Date?
+    /// id / label / teamSize only on list rows.
+    let format: TournamentFormat
 }
 
 extension TournamentSummary: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, name, status, scoringMode, roundsPlanned, roundsPlayed
-        case playerCount, isCreator, inviteCode, createdAt
+        case playerCount, isCreator, inviteCode, createdAt, format
     }
 
     init(from decoder: Decoder) throws {
@@ -66,6 +128,7 @@ extension TournamentSummary: Decodable {
         isCreator = try container.decodeIfPresent(Bool.self, forKey: .isCreator) ?? false
         inviteCode = try container.decodeIfPresent(String.self, forKey: .inviteCode) ?? ""
         createdAt = try? container.decodeIfPresent(Date.self, forKey: .createdAt)
+        format = try container.decode(TournamentFormat.self, forKey: .format)
     }
 }
 
@@ -96,12 +159,13 @@ nonisolated struct TournamentInfo {
     let inviteCode: String
     let isCreator: Bool
     let createdBy: String?
+    let format: TournamentFormat
 }
 
 extension TournamentInfo: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, name, status, scoringMode, roundsPlanned
-        case scheduledStartAt, notes, inviteCode, isCreator, createdBy
+        case scheduledStartAt, notes, inviteCode, isCreator, createdBy, format
     }
 
     init(from decoder: Decoder) throws {
@@ -116,6 +180,7 @@ extension TournamentInfo: Decodable {
         inviteCode = try container.decodeIfPresent(String.self, forKey: .inviteCode) ?? ""
         isCreator = try container.decodeIfPresent(Bool.self, forKey: .isCreator) ?? false
         createdBy = try? container.decodeIfPresent(String.self, forKey: .createdBy)
+        format = try container.decode(TournamentFormat.self, forKey: .format)
     }
 }
 

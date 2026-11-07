@@ -251,6 +251,12 @@ private struct TournamentCard: View {
                     TournamentStatusChip(status: tournament.status)
                 }
 
+                Text(tournament.format.label)
+                    .font(SticksFont.sans(13.5, weight: .semibold))
+                    .foregroundStyle(Color.sticksGreen)
+                    .lineLimit(1)
+                    .padding(.top, -4)
+
                 HStack(spacing: 0) {
                     metaCell(label: "ROUND", value: roundProgress)
                     divider

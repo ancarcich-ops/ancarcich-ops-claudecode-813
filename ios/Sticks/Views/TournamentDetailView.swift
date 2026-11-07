@@ -153,6 +153,8 @@ struct TournamentDetailView: View {
                 .kerning(1.1)
                 .foregroundStyle(Color.sticksMuted)
 
+            formatLine(tournament.format)
+
             if let notes = tournament.notes, !notes.isEmpty {
                 Text(notes)
                     .font(SticksFont.sans(13.5))
@@ -160,6 +162,25 @@ struct TournamentDetailView: View {
                     .padding(.top, 2)
             }
         }
+    }
+
+    /// Slice 83: how this event is scored, straight from the server's
+    /// format registry — label plus its one-line explanation.
+    private func formatLine(_ format: TournamentFormat) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(format.label)
+                .font(SticksFont.sans(14.5, weight: .semibold))
+                .foregroundStyle(Color.sticksGreen)
+
+            if let blurb = format.blurb, !blurb.isEmpty {
+                Text(blurb)
+                    .font(SticksFont.sans(13))
+                    .foregroundStyle(Color.sticksMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .combine)
     }
 
     private func metaLine(_ tournament: TournamentInfo) -> String {
