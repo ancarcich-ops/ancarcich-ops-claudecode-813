@@ -53,14 +53,38 @@ struct ScoreEntryView: View {
         viewModel.detail?.players.first { $0.id == currentPlayerId }
     }
 
+    // MARK: - Shared-card side (slice 89)
+
+    /// Scramble-style entry: the side records ONE score per hole on a
+    /// single card. The sheet pins to that card — tapping any seat's
+    /// cell lands on the same entry, so the side can't create four
+    /// different cards (the server reads whichever card holds the most
+    /// holes, but the UI should never produce them).
+    private var isSharedCard: Bool { viewModel.isSharedCard }
+
+    /// The player whose match row carries the side's card in shared
+    /// mode; nil outside shared mode.
+    private var cardPlayer: MatchDetailPlayer? {
+        guard isSharedCard else { return nil }
+        return viewModel.sharedCardPlayer
+    }
+
+    /// Who the sheet is actually scoring: the team card in shared mode,
+    /// the cycled seat otherwise.
+    private var effectivePlayer: MatchDetailPlayer? {
+        cardPlayer ?? currentPlayer
+    }
+
     private var currentScore: Int? {
-        currentPlayer?.scoresByHole[hole]
+        effectivePlayer?.scoresByHole[hole]
     }
 
     /// Handicap strokes ("pops") the current player receives on this hole
-    /// — net rounds only; 0 hides the badge.
+    /// — net rounds only; 0 hides the badge. A team card never shows
+    /// them: the side's allowance is a team number, not a seat's.
     private var popCount: Int {
-        guard let detail = viewModel.detail,
+        guard !isSharedCard,
+              let detail = viewModel.detail,
               MatchDetailMath.isNetMode(detail),
               let index = (0 ..< detail.holes).first(where: { detail.holeNumber(at: $0) == hole })
         else { return 0 }
@@ -76,7 +100,7 @@ struct ScoreEntryView: View {
         VStack(spacing: 18) {
             header
 
-            if viewModel.seatOrderedPlayers.count > 1 {
+            if !isSharedCard, viewModel.seatOrderedPlayers.count > 1 {
                 playerCycleRow
             }
 
@@ -94,6 +118,12 @@ struct ScoreEntryView: View {
         .presentationDetents([.height(544)])
         .presentationBackground(Color.sticksBg)
         .presentationDragIndicator(.visible)
+        // The team card can resolve after the sheet opens (the format
+        // lookup is async) — resync the pending score to that card.
+        .onChange(of: effectivePlayer?.id, initial: true) {
+            guard isSharedCard else { return }
+            pendingScore = effectivePlayer?.scoresByHole[hole]
+        }
     }
 
     // MARK: - Header
@@ -105,24 +135,42 @@ struct ScoreEntryView: View {
                 .kerning(1.8)
                 .foregroundStyle(Color.sticksMuted)
 
-            HStack(spacing: 7) {
-                Text(currentPlayer?.displayName ?? "")
-                    .font(SticksFont.display(28))
-                    .foregroundStyle(Color.sticksInk)
+            if isSharedCard {
+                // One card for the whole side — show the side, not a seat.
+                Text("TEAM CARD")
+                    .font(SticksFont.label(9, weight: .heavy))
+                    .kerning(0.8)
+                    .foregroundStyle(Color.sticksCream)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.sticksGreen)
+                    .clipShape(.capsule)
+                    .padding(.top, 3)
+                Text(sideMembers)
+                    .font(SticksFont.sans(13, weight: .semibold))
+                    .foregroundStyle(Color.sticksMuted)
                     .lineLimit(1)
-                    .contentTransition(.opacity)
-                if isMe(currentPlayerId) {
-                    Text("YOU")
-                        .font(SticksFont.label(9, weight: .heavy))
-                        .kerning(0.8)
-                        .foregroundStyle(Color.sticksCream)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2.5)
-                        .background(Color.sticksGreen)
-                        .clipShape(.capsule)
+                    .padding(.top, 1)
+            } else {
+                HStack(spacing: 7) {
+                    Text(currentPlayer?.displayName ?? "")
+                        .font(SticksFont.display(28))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
+                    if isMe(currentPlayerId) {
+                        Text("YOU")
+                            .font(SticksFont.label(9, weight: .heavy))
+                            .kerning(0.8)
+                            .foregroundStyle(Color.sticksCream)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2.5)
+                            .background(Color.sticksGreen)
+                            .clipShape(.capsule)
+                    }
                 }
+                .animation(.easeInOut(duration: 0.2), value: currentPlayerId)
             }
-            .animation(.easeInOut(duration: 0.2), value: currentPlayerId)
 
             if popCount > 0 {
                 popBadge
@@ -131,6 +179,11 @@ struct ScoreEntryView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: popCount)
+    }
+
+    /// The side's names for the team-card header, seat order.
+    private var sideMembers: String {
+        viewModel.seatOrderedPlayers.map(\.displayName).joined(separator: " · ")
     }
 
     /// "● POPPING · 1 STROKE HERE" — gold, the same marker the scorecard
@@ -365,11 +418,12 @@ struct ScoreEntryView: View {
         viewModel.nextUnscoredPlayer(onHole: hole, after: currentPlayerId) != nil
     }
 
-    /// "Save" while others still need a score on this hole; when the
-    /// caller is the last, "Save · go to {next}" or "Save · finish round"
-    /// on the round's final hole.
+    /// "Save" while others still need a score on this hole (per-player
+    /// entry); when the caller is the last, "Save · go to {next}" or
+    /// "Save · finish round" on the round's final hole. A team card is
+    /// one save per hole, so it always moves on or finishes.
     private var saveLabel: String {
-        if othersStillNeedScore { return "Save" }
+        if !isSharedCard, othersStillNeedScore { return "Save" }
         guard let detail = viewModel.detail,
               let index = (0 ..< detail.holes).first(where: { detail.holeNumber(at: $0) == hole })
         else { return "Save" }
@@ -435,11 +489,13 @@ struct ScoreEntryView: View {
 
     /// Posts the score (nil clears), then cycles to the next unscored
     /// player in seat order, or dismisses when the hole is complete.
+    /// A team card writes to the side's single card and always finishes
+    /// the hole — there is no next seat.
     private func save(_ strokes: Int?) {
         guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
-        let playerId = currentPlayerId
+        let playerId = effectivePlayer?.id ?? currentPlayerId
 
         Task {
             do {
@@ -451,14 +507,17 @@ struct ScoreEntryView: View {
                 )
                 isSaving = false
                 if strokes == nil {
-                    // Cleared — stay on this player so a new score can go in.
+                    // Cleared — stay so a new score can go in.
                     pendingScore = nil
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     return
                 }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 onScoreSaved()
-                if let next = viewModel.nextUnscoredPlayer(onHole: hole, after: playerId) {
+                if isSharedCard {
+                    dismiss()
+                    onHoleComplete()
+                } else if let next = viewModel.nextUnscoredPlayer(onHole: hole, after: playerId) {
                     withAnimation(.easeInOut(duration: 0.2)) { currentPlayerId = next.id }
                     pendingScore = next.scoresByHole[hole]
                 } else {

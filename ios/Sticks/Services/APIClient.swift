@@ -749,6 +749,86 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// PATCH /tournaments/:id/roster/:playerId — sets the ROSTER
+    /// handicap (seeds rounds created from now on; never rewrites an
+    /// existing round — those carry their own, deliberately). Pass
+    /// `clear: true` to send `null`; never send 0 for "don't know" —
+    /// a scratch player and an unknown player are different things.
+    func setRosterHandicap(
+        tournamentId: String,
+        playerId: String,
+        handicap: Double,
+        token: String
+    ) async throws -> TournamentMutationResponse {
+        var request = makeRequest(
+            path: "tournaments/\(tournamentId)/roster/\(playerId)", method: "PATCH", token: token
+        )
+        request.httpBody = try encoder.encode(HandicapPatchBody(handicap: handicap))
+        return try await perform(request)
+    }
+
+    /// Same route with `clear: true` — the body carries `"handicap": null`
+    /// (explicitly encoded, not omitted).
+    func clearRosterHandicap(
+        tournamentId: String,
+        playerId: String,
+        token: String
+    ) async throws -> TournamentMutationResponse {
+        var request = makeRequest(
+            path: "tournaments/\(tournamentId)/roster/\(playerId)", method: "PATCH", token: token
+        )
+        request.httpBody = Data("{\"handicap\":null}".utf8)
+        return try await perform(request)
+    }
+
+    /// DELETE /tournaments/:id/roster/:playerId — removes the entry.
+    func removeRosterPlayer(
+        tournamentId: String,
+        playerId: String,
+        token: String
+    ) async throws -> TournamentMutationResponse {
+        let request = makeRequest(
+            path: "tournaments/\(tournamentId)/roster/\(playerId)", method: "DELETE", token: token
+        )
+        return try await perform(request)
+    }
+
+    /// PATCH /tournaments/:id — open / close sign-ups.
+    func setSignupsOpen(tournamentId: String, open: Bool, token: String) async throws -> TournamentMutationResponse {
+        var request = makeRequest(path: "tournaments/\(tournamentId)", method: "PATCH", token: token)
+        request.httpBody = try encoder.encode(SignupsPatchBody(signupsOpen: open))
+        return try await perform(request)
+    }
+
+    /// PATCH /tournaments/:id — call the event (status COMPLETED).
+    func completeTournament(tournamentId: String, token: String) async throws -> TournamentMutationResponse {
+        var request = makeRequest(path: "tournaments/\(tournamentId)", method: "PATCH", token: token)
+        request.httpBody = Data("{\"status\":\"COMPLETED\"}".utf8)
+        return try await perform(request)
+    }
+
+    /// DELETE /tournaments/:id — removes the tournament, its roster,
+    /// its rounds and their scores. Not undoable.
+    func deleteTournament(tournamentId: String, token: String) async throws -> TournamentMutationResponse {
+        let request = makeRequest(path: "tournaments/\(tournamentId)", method: "DELETE", token: token)
+        return try await perform(request)
+    }
+
+    /// PATCH /tournaments/:id/me — the caller's own entry. Nil fields
+    /// are left untouched (synthesized Encodable omits them).
+    func patchMyEntry(
+        tournamentId: String,
+        handicap: Double?,
+        partnerName: String?,
+        token: String
+    ) async throws -> TournamentMutationResponse {
+        var request = makeRequest(path: "tournaments/\(tournamentId)/me", method: "PATCH", token: token)
+        request.httpBody = try encoder.encode(
+            MyEntryPatchBody(handicap: handicap, partnerName: partnerName)
+        )
+        return try await perform(request)
+    }
+
     /// GET /stats — the caller's personal stats + handicap baselines.
     /// 404 means nothing is logged yet (shown as an empty state).
     func stats(token: String) async throws -> StatsResponse {

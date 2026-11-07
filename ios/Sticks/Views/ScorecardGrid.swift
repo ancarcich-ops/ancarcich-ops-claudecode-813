@@ -32,6 +32,11 @@ struct ScorecardGrid: View {
     let players: [MatchDetailPlayer]
     /// Round index of the current hole — nil when the match isn't live.
     let currentHoleIndex: Int?
+    /// Slice 89: on a shared-card side the grid renders ONE row (the
+    /// team's single card) labeled with this instead of a player name —
+    /// the side records one score per hole, so per-player rows would
+    /// invite four different cards.
+    let sideLabel: String?
     let onSelect: (ScoreCellSelection) -> Void
 
     /// Slice 35: gross/net lens — defaults to the round's scoring mode.
@@ -41,11 +46,13 @@ struct ScorecardGrid: View {
         detail: MatchDetail,
         players: [MatchDetailPlayer],
         currentHoleIndex: Int?,
+        sideLabel: String? = nil,
         onSelect: @escaping (ScoreCellSelection) -> Void
     ) {
         self.detail = detail
         self.players = players
         self.currentHoleIndex = currentHoleIndex
+        self.sideLabel = sideLabel
         self.onSelect = onSelect
         _scoreView = State(
             initialValue: detail.scoringMode.uppercased() == "NET" ? .net : .gross
@@ -89,8 +96,10 @@ struct ScorecardGrid: View {
     // MARK: - Gross/Net toggle (slice 35)
 
     /// Net view is meaningless on a GROSS round — hide the toggle there.
+    /// A shared team card's net needs the side's team allowance, which
+    /// the round payload doesn't carry — gross only there.
     private var showsToggle: Bool {
-        detail.scoringMode.uppercased() != "GROSS"
+        detail.scoringMode.uppercased() != "GROSS" && sideLabel == nil
     }
 
     private var showsNet: Bool {
@@ -258,8 +267,18 @@ struct ScorecardGrid: View {
 
     private func nameCellBody(for player: MatchDetailPlayer) -> some View {
         HStack(spacing: 6) {
-            avatarBubble(for: player)
-            Text(player.displayName)
+            if sideLabel != nil {
+                // Team card row: a green T bubble instead of initials.
+                Text("T")
+                    .font(SticksFont.sans(7, weight: .bold))
+                    .foregroundStyle(Color.sticksCream)
+                    .frame(width: 14, height: 14)
+                    .background(Color.sticksGreen)
+                    .clipShape(.circle)
+            } else {
+                avatarBubble(for: player)
+            }
+            Text(sideLabel ?? player.displayName)
                 .font(SticksFont.sans(12, weight: .semibold))
                 .foregroundStyle(Color.sticksInk)
                 .lineLimit(1)
@@ -318,8 +337,10 @@ struct ScorecardGrid: View {
         let par = detail.par(at: index)
         let gross = player.scoresByHole[hole]
         // Pop dots and the shifted number both belong to the net lens —
-        // switching back to gross hides them.
-        let strokes = showsNet ? strokesReceived(for: player, at: index) : 0
+        // switching back to gross hides them. A team card row never
+        // shows them: the side's allowance is a team number the round
+        // payload doesn't carry, not this seat's handicap.
+        let strokes = showsNet && sideLabel == nil ? strokesReceived(for: player, at: index) : 0
         let display = showsNet ? gross.map { $0 - strokes } : gross
 
         return Button {
@@ -407,7 +428,7 @@ struct ScorecardGrid: View {
 
     /// Legend shows only in the net lens, when pops are actually allocated.
     private var showsPopLegend: Bool {
-        showsNet && players.contains {
+        showsNet && sideLabel == nil && players.contains {
             MatchDetailMath.playingAllowance(handicap: $0.handicap ?? 0, holes: detail.holes) > 0
         }
     }

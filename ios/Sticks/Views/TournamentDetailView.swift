@@ -22,6 +22,7 @@ struct TournamentDetailView: View {
     @State private var selectedTab: Tab = .leaderboard
     @State private var showsAddRound = false
     @State private var showsTeams = false
+    @State private var showsOrganizer = false
     @State private var showsCopied = false
     @State private var copyResetTask: Task<Void, Never>?
 
@@ -76,6 +77,17 @@ struct TournamentDetailView: View {
                 await viewModel.load(session: session, quiet: true)
             }
         }
+        .fullScreenCover(isPresented: $showsOrganizer) {
+            TournamentOrganizerView(
+                tournamentId: tournamentId,
+                session: session,
+                onChange: { await viewModel.load(session: session, quiet: true) },
+                onDeleted: {
+                    showsOrganizer = false
+                    dismiss()
+                }
+            )
+        }
         .task {
             await viewModel.load(session: session)
         }
@@ -114,6 +126,10 @@ struct TournamentDetailView: View {
                     shareRow(response.tournament)
                 }
 
+                if response.tournament.isCreator {
+                    organizerRow
+                }
+
                 tabBar(response)
 
                 if selectedTab == .odds, !response.odds.isEmpty {
@@ -121,11 +137,18 @@ struct TournamentDetailView: View {
                 } else {
                     LeaderboardCard(
                         rows: response.leaderboard,
-                        roundsPlanned: response.tournament.roundsPlanned
+                        roundsPlanned: response.tournament.roundsPlanned,
+                        // Slice 90: a points event's totals are points —
+                        // mark the unit so "36" never reads as strokes.
+                        pointsTotal: response.tournament.format.highWins
                     )
                 }
 
                 sidesSection(response)
+
+                if !response.teamBreakdowns.isEmpty {
+                    TournamentTeamBreakdownsCard(breakdowns: response.teamBreakdowns)
+                }
 
                 roundsSection(response)
             }
@@ -324,6 +347,41 @@ struct TournamentDetailView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+
+    /// Creator-only door to the organizer tools (slice 87).
+    private var organizerRow: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showsOrganizer = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Organize")
+                    .font(SticksFont.sans(14.5, weight: .bold))
+                Spacer()
+                Text("HANDICAPS · SIGN-UPS · FINISH")
+                    .font(SticksFont.mono(9.5))
+                    .kerning(0.8)
+                    .foregroundStyle(Color.sticksFaint)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.sticksFaint)
+            }
+            .foregroundStyle(Color.sticksInk)
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("Organizer tools")
     }
 
     // MARK: - Sides (slice 85)
@@ -576,6 +634,9 @@ struct TournamentDetailView: View {
 
     /// Minimal MatchSummary so the round can push the existing
     /// MatchDetailView — the detail screen refetches everything by id.
+    /// The tournament's format id rides on `format` (slice 89): the
+    /// match payload itself only carries legacy INDIVIDUAL/SCRAMBLE/BOTH,
+    /// so this hint is how the round recovers shared-card context.
     private func matchStub(for round: TournamentRound, tournament: TournamentInfo) -> MatchSummary {
         MatchSummary(
             id: round.id,
@@ -586,7 +647,7 @@ struct TournamentDetailView: View {
             holes: 18,
             startingHole: 1,
             scoringMode: tournament.scoringMode,
-            format: "INDIVIDUAL",
+            format: tournament.format.id,
             pars: [],
             strokeIndex: [],
             probabilities: [:],
@@ -680,6 +741,7 @@ nonisolated enum TournamentScoreFormat {
 private struct LeaderboardCard: View {
     let rows: [TournamentLeaderboardRow]
     let roundsPlanned: Int
+    let pointsTotal: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -700,6 +762,7 @@ private struct LeaderboardCard: View {
                     LeaderboardRowView(
                         row: row,
                         roundsPlanned: roundsPlanned,
+                        pointsTotal: pointsTotal,
                         isLeader: row.rank == 1
                     )
                 }
@@ -717,6 +780,7 @@ private struct LeaderboardCard: View {
 private struct LeaderboardRowView: View {
     let row: TournamentLeaderboardRow
     let roundsPlanned: Int
+    let pointsTotal: Bool
     let isLeader: Bool
 
     var body: some View {
@@ -741,10 +805,18 @@ private struct LeaderboardRowView: View {
                 Spacer(minLength: 8)
 
                 VStack(alignment: .trailing, spacing: 2) {
+                    // Points events: the unit rides on the total — the
+                    // server ranks high-points-first, so this is the
+                    // same number it sorted by, never a to-par.
                     Text(TournamentScoreFormat.score(row.total))
                         .font(SticksFont.display(22, weight: .bold))
                         .foregroundStyle(isLeader ? Color.sticksGreen : Color.sticksInk)
-
+                    if pointsTotal {
+                        Text("PTS")
+                            .font(SticksFont.mono(9, weight: .heavy))
+                            .kerning(1)
+                            .foregroundStyle(Color.sticksFaint)
+                    }
                     if isPartial {
                         Text("THRU R\(row.playedRounds)")
                             .font(SticksFont.mono(9))

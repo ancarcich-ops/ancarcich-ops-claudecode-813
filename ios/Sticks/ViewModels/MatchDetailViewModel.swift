@@ -34,11 +34,31 @@ final class MatchDetailViewModel {
 
     private let api: APIClient
     private let matchId: String
+    /// The format string the round was opened with. Tournament rounds are
+    /// pushed with the tournament's format id (e.g. "scramble-2") on the
+    /// navigation stub; the match payload itself only ever carries the
+    /// legacy INDIVIDUAL/SCRAMBLE/BOTH values, so this hint is the only
+    /// way to recover shared-card context. Nil/legacy → no resolution.
+    private let formatHint: String?
 
-    init(matchId: String, api: APIClient = .shared) {
+    init(matchId: String, formatHint: String? = nil, api: APIClient = .shared) {
         self.matchId = matchId
+        self.formatHint = formatHint
         self.api = api
     }
+
+    /// The legacy format values the server round-trips on every match
+    /// payload — anything else is a tournament format id.
+    private static let legacyFormats: Set<String> = ["INDIVIDUAL", "SCRAMBLE", "BOTH"]
+
+    /// Slice 89: the resolved tournament format when this round belongs
+    /// to a format-aware tournament — nil for standalone rounds (and
+    /// when the registry lookup fails, falling back to per-player UI).
+    private(set) var tournamentFormat: TournamentFormat?
+
+    /// Scramble-style entry: the side records ONE score per hole on a
+    /// single card, never one per player.
+    var isSharedCard: Bool { tournamentFormat?.isSharedCard == true }
 
     var detail: MatchDetail? { response?.match }
 
@@ -61,6 +81,31 @@ final class MatchDetailViewModel {
             if aSeat != bSeat { return aSeat < bSeat }
             return a.id < b.id
         }
+    }
+
+    /// Slice 89: the side's single card for shared-entry formats — the
+    /// seated player whose match row the team score is written to. The
+    /// card with the most holes already scored wins (so an existing
+    /// card keeps collecting); ties break by seat order. Nil when the
+    /// round has no players.
+    var sharedCardPlayer: MatchDetailPlayer? {
+        guard isSharedCard else { return nil }
+        return seatOrderedPlayers.max { a, b in
+            let aHoles = a.scoresByHole.count
+            let bHoles = b.scoresByHole.count
+            if aHoles != bHoles { return aHoles < bHoles }
+            let aSeat = a.seat ?? Int.max
+            let bSeat = b.seat ?? Int.max
+            if aSeat != bSeat { return aSeat > bSeat }
+            return a.id > b.id
+        }
+    }
+
+    /// Scorecard rows: the caller's row first normally; on a shared-card
+    /// side, just the team's single card row.
+    var scorecardPlayers: [MatchDetailPlayer] {
+        if let card = sharedCardPlayer { return [card] }
+        return sortedPlayers
     }
 
     /// Next seat-ordered player (wrapping) still missing a score on `hole`,
@@ -115,9 +160,17 @@ final class MatchDetailViewModel {
     }
 
     /// True when every seated player has a score on every hole of the
-    /// round — the condition for showing the FINISH ROUND button.
+    /// round — the condition for showing the FINISH ROUND button. On a
+    /// shared-card side it's the team's single card that must be full.
     var isRoundComplete: Bool {
         guard let detail = response?.match, !detail.players.isEmpty else { return false }
+        if let card = sharedCardPlayer {
+            for index in 0 ..< detail.holes
+            where card.scoresByHole[detail.holeNumber(at: index)] == nil {
+                return false
+            }
+            return true
+        }
         for index in 0 ..< detail.holes {
             let hole = detail.holeNumber(at: index)
             for player in detail.players where player.scoresByHole[hole] == nil {
@@ -430,6 +483,25 @@ final class MatchDetailViewModel {
         }
     }
 
+    /// Slice 89: resolves a tournament format id from the navigation
+    /// hint against GET /formats. Quiet on failure — an unreachable
+    /// registry or unknown id just leaves the per-player behavior.
+    private func resolveTournamentFormat(token: String) async {
+        guard tournamentFormat == nil,
+              let hint = formatHint?.uppercased(),
+              !Self.legacyFormats.contains(hint)
+        else { return }
+        do {
+            let registry = try await api.formats(token: token)
+            tournamentFormat = registry.groups
+                .flatMap(\.formats)
+                .first { $0.id.lowercased() == hint.lowercased() }
+        } catch {
+            // Keep per-player behavior; the server still scores the
+            // tournament from the most complete card.
+        }
+    }
+
     /// Fetches the match detail. A 401 signs the user out. When `quiet`,
     /// failures never disturb already-displayed data (used by the poll).
     func load(session: SessionStore, quiet: Bool = false) async {
@@ -441,6 +513,7 @@ final class MatchDetailViewModel {
         do {
             response = try await api.matchDetail(id: matchId, token: token)
             phase = .loaded
+            await resolveTournamentFormat(token: token)
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
         } catch let error as APIError {

@@ -218,12 +218,15 @@ nonisolated struct TournamentInfo {
     let isCreator: Bool
     let createdBy: String?
     let format: TournamentFormat
+    /// Nil when the server doesn't report it — the organizer sheet
+    /// then offers "Close sign-ups" without claiming a current state.
+    let signupsOpen: Bool?
 }
 
 extension TournamentInfo: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, name, status, scoringMode, roundsPlanned
-        case scheduledStartAt, notes, inviteCode, isCreator, createdBy, format
+        case scheduledStartAt, notes, inviteCode, isCreator, createdBy, format, signupsOpen
     }
 
     init(from decoder: Decoder) throws {
@@ -239,6 +242,7 @@ extension TournamentInfo: Decodable {
         isCreator = try container.decodeIfPresent(Bool.self, forKey: .isCreator) ?? false
         createdBy = try? container.decodeIfPresent(String.self, forKey: .createdBy)
         format = try container.decode(TournamentFormat.self, forKey: .format)
+        signupsOpen = try? container.decodeIfPresent(Bool.self, forKey: .signupsOpen)
     }
 }
 
@@ -461,9 +465,11 @@ nonisolated struct TournamentDetailResponse: Decodable {
     /// Formed sides, already in team-number order (slice 85). Empty
     /// when the event hasn't been seeded into sides.
     let teams: [TournamentSide]
+    /// Per-side per-hole derivations (slice 88). Empty when no sides.
+    let teamBreakdowns: [TeamBreakdown]
 
     private enum CodingKeys: String, CodingKey {
-        case tournament, rounds, roster, leaderboard, odds, teams
+        case tournament, rounds, roster, leaderboard, odds, teams, teamBreakdowns
     }
 
     /// Wrapper so one bad element never sinks the array.
@@ -487,6 +493,169 @@ nonisolated struct TournamentDetailResponse: Decodable {
             .compactMap(\.value)
         teams = ((try? container.decode([Lenient<TournamentSide>].self, forKey: .teams)) ?? [])
             .compactMap(\.value)
+        teamBreakdowns = ((try? container.decode([Lenient<TeamBreakdown>].self, forKey: .teamBreakdowns)) ?? [])
+            .compactMap(\.value)
+    }
+}
+
+// MARK: - Team breakdowns (slice 88)
+
+/// The same per-hole derivation the web shows, one entry per formed
+/// side per round. Empty when no sides exist.
+nonisolated struct TeamBreakdown: Identifiable, Hashable {
+    let team: Int
+    let members: [String]
+    let roundNumber: Int
+    let courseName: String
+    let format: TeamBreakdownFormat?
+    /// One number for the WHOLE side when set. Null → allowances are
+    /// per player. NEVER split it across players when rendering.
+    let teamAllowance: Double?
+    let teamStrokesReceived: Int?
+    let allowances: [TeamBreakdownAllowance]
+    let holes: [TeamBreakdownHole]
+    let total: Double?
+
+    var id: Int { team }
+}
+
+extension TeamBreakdown: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case team, members, roundNumber, courseName, format
+        case teamAllowance, teamStrokesReceived, allowances, holes, total
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        team = try container.decodeIfPresent(Int.self, forKey: .team) ?? 0
+        members = (try? container.decodeIfPresent([String].self, forKey: .members)) ?? []
+        roundNumber = try container.decodeIfPresent(Int.self, forKey: .roundNumber) ?? 1
+        courseName = try container.decodeIfPresent(String.self, forKey: .courseName) ?? ""
+        format = try? container.decodeIfPresent(TeamBreakdownFormat.self, forKey: .format)
+        teamAllowance = try? container.decodeIfPresent(Double.self, forKey: .teamAllowance)
+        teamStrokesReceived = try? container.decodeIfPresent(Int.self, forKey: .teamStrokesReceived)
+        allowances = ((try? container.decode([Lenient<TeamBreakdownAllowance>].self, forKey: .allowances)) ?? [])
+            .compactMap(\.value)
+        holes = ((try? container.decode([Lenient<TeamBreakdownHole>].self, forKey: .holes)) ?? [])
+            .compactMap(\.value)
+        total = try? container.decodeIfPresent(Double.self, forKey: .total)
+    }
+
+    /// Wrapper so one malformed element never sinks the entry.
+    private struct Lenient<T: Decodable>: Decodable {
+        let value: T?
+        init(from decoder: Decoder) throws {
+            value = try? T(from: decoder)
+        }
+    }
+}
+
+/// The breakdown's own format echo — includes `allowanceLabel`
+/// (e.g. "90%"), which the tournament-level format doesn't carry.
+nonisolated struct TeamBreakdownFormat: Hashable {
+    let id: String
+    let label: String
+    let entry: String?
+    let countBest: Int?
+    let result: String?
+    let allowanceLabel: String?
+}
+
+extension TeamBreakdownFormat: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case id, label, entry, countBest, result, allowanceLabel
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        entry = try? container.decodeIfPresent(String.self, forKey: .entry)
+        countBest = try? container.decodeIfPresent(Int.self, forKey: .countBest)
+        result = try? container.decodeIfPresent(String.self, forKey: .result)
+        allowanceLabel = try? container.decodeIfPresent(String.self, forKey: .allowanceLabel)
+    }
+}
+
+/// Per-player allowance line.
+nonisolated struct TeamBreakdownAllowance: Hashable {
+    let displayName: String
+    let handicap: Double?
+    let playingHandicap: Int?
+    let strokesReceived: Int?
+}
+
+extension TeamBreakdownAllowance: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case displayName, handicap, playingHandicap, strokesReceived
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? "Player"
+        handicap = try? container.decodeIfPresent(Double.self, forKey: .handicap)
+        playingHandicap = try? container.decodeIfPresent(Int.self, forKey: .playingHandicap)
+        strokesReceived = try? container.decodeIfPresent(Int.self, forKey: .strokesReceived)
+    }
+}
+
+/// One hole of a breakdown. `players` drives the TABLE COLUMNS, not
+/// the roster — a four-man scramble shows ONE column (its shared card).
+nonisolated struct TeamBreakdownHole: Identifiable, Hashable {
+    let hole: Int
+    let par: Int?
+    let strokeIndex: Int?
+    let players: [TeamBreakdownPlayerCell]
+    let teamScore: Int?
+
+    var id: Int { hole }
+}
+
+extension TeamBreakdownHole: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case hole, par, strokeIndex, players, teamScore
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hole = try container.decodeIfPresent(Int.self, forKey: .hole) ?? 0
+        par = try? container.decodeIfPresent(Int.self, forKey: .par)
+        strokeIndex = try? container.decodeIfPresent(Int.self, forKey: .strokeIndex)
+        players = ((try? container.decode([Lenient<TeamBreakdownPlayerCell>].self, forKey: .players)) ?? [])
+            .compactMap(\.value)
+        teamScore = try? container.decodeIfPresent(Int.self, forKey: .teamScore)
+    }
+
+    private struct Lenient<T: Decodable>: Decodable {
+        let value: T?
+        init(from decoder: Decoder) throws {
+            value = try? T(from: decoder)
+        }
+    }
+}
+
+/// One player's cell on a hole. `strokes` = handicap strokes received
+/// on this hole, rendered as that many `*` after the gross.
+nonisolated struct TeamBreakdownPlayerCell: Hashable {
+    let displayName: String
+    let gross: Int?
+    let strokes: Int?
+    let net: Int?
+    let counted: Bool
+}
+
+extension TeamBreakdownPlayerCell: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case displayName, gross, strokes, net, counted
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
+        gross = try? container.decodeIfPresent(Int.self, forKey: .gross)
+        strokes = try? container.decodeIfPresent(Int.self, forKey: .strokes)
+        net = try? container.decodeIfPresent(Int.self, forKey: .net)
+        counted = try container.decodeIfPresent(Bool.self, forKey: .counted) ?? false
     }
 }
 
@@ -520,6 +689,25 @@ nonisolated struct AutoSeatResponse: Decodable {
     private enum CodingKeys: String, CodingKey {
         case formed, leftOver
     }
+}
+
+// MARK: - Organizer mutations (slice 87)
+
+/// Body for PATCH /tournaments/:id/roster/:playerId.
+nonisolated struct HandicapPatchBody: Encodable {
+    let handicap: Double
+}
+
+/// Body for PATCH /tournaments/:id — sign-ups open/closed.
+nonisolated struct SignupsPatchBody: Encodable {
+    let signupsOpen: Bool
+}
+
+/// Body for PATCH /tournaments/:id/me — nil fields are omitted and
+/// left untouched server-side.
+nonisolated struct MyEntryPatchBody: Encodable {
+    let handicap: Double?
+    let partnerName: String?
 }
 
 // MARK: - POST /tournaments

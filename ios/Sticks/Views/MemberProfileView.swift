@@ -21,14 +21,14 @@ struct MemberProfileDestination: Hashable {
 }
 
 extension MatchDetailPlayer {
-    /// Profile tap-through destination — only linked seats (userId set)
-    /// have one. Prefers the payload's username; falls back to
-    /// displayName, which the server fills with the handle for linked
-    /// users without a custom display name.
+    /// Profile tap-through destination — only seats whose payload
+    /// carries a `username` link (slice 91). A null username is a
+    /// hand-typed guest (or a linked seat the server couldn't resolve a
+    /// handle for) and renders as plain text — never a link; guessing
+    /// from displayName would link a custom display name to the wrong
+    /// profile.
     var profileDestination: MemberProfileDestination? {
-        guard userId != nil else { return nil }
-        let handle = username ?? displayName
-        guard !handle.isEmpty else { return nil }
+        guard let handle = username, !handle.isEmpty else { return nil }
         return MemberProfileDestination(username: handle, displayName: displayName)
     }
 }

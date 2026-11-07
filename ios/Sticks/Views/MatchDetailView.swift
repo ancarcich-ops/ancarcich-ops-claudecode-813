@@ -65,7 +65,10 @@ struct MatchDetailView: View {
     init(match: MatchSummary, session: SessionStore) {
         self.match = match
         self.session = session
-        _viewModel = State(initialValue: MatchDetailViewModel(matchId: match.id))
+        // The opening summary's format string rides along as the
+        // shared-card hint — tournament rounds are pushed with the
+        // tournament's format id on the navigation stub (slice 89).
+        _viewModel = State(initialValue: MatchDetailViewModel(matchId: match.id, formatHint: match.format))
     }
 
     var body: some View {
@@ -541,7 +544,14 @@ struct MatchDetailView: View {
     private func summaryLine(_ detail: MatchDetail?) -> String {
         let holes = detail?.holes ?? match.holes
         let mode = detail?.scoringMode ?? match.scoringMode
-        let format = detail?.format ?? match.format
+        // A resolved tournament format shows its proper label
+        // ("Two-man scramble"), not the legacy wire value.
+        let format: String
+        if let resolved = viewModel.tournamentFormat {
+            format = resolved.label
+        } else {
+            format = detail?.format ?? match.format
+        }
         return "\(holes) HOLES · \(mode.uppercased()) · \(format.replacingOccurrences(of: "_", with: " ").uppercased())"
     }
 
@@ -724,8 +734,11 @@ struct MatchDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             ScorecardGrid(
                 detail: detail,
-                players: viewModel.sortedPlayers,
+                players: viewModel.scorecardPlayers,
                 currentHoleIndex: currentHoleIndex(detail),
+                // Slice 89: a shared-card side scores one row — the
+                // team's single card — labeled for the side, not a name.
+                sideLabel: viewModel.isSharedCard ? "TEAM CARD" : nil,
                 // Score cells only respond for golfers seated in the
                 // round — spectators get a read-only scorecard.
                 onSelect: { cell in
