@@ -21,6 +21,7 @@ struct TournamentDetailView: View {
     @State private var viewModel: TournamentDetailViewModel
     @State private var selectedTab: Tab = .leaderboard
     @State private var showsAddRound = false
+    @State private var showsTeams = false
     @State private var showsCopied = false
     @State private var copyResetTask: Task<Void, Never>?
 
@@ -68,6 +69,11 @@ struct TournamentDetailView: View {
                 showsAddRound = false
                 NotificationCenter.default.post(name: .sticksMatchesDidChange, object: nil)
                 Task { await viewModel.load(session: session, quiet: true) }
+            }
+        }
+        .fullScreenCover(isPresented: $showsTeams) {
+            TournamentTeamsView(tournamentId: tournamentId, session: session) {
+                await viewModel.load(session: session, quiet: true)
             }
         }
         .task {
@@ -118,6 +124,8 @@ struct TournamentDetailView: View {
                         roundsPlanned: response.tournament.roundsPlanned
                     )
                 }
+
+                sidesSection(response)
 
                 roundsSection(response)
             }
@@ -316,6 +324,153 @@ struct TournamentDetailView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Sides (slice 85)
+
+    /// The formed sides, rendered in the server's team-number order.
+    /// Hidden until teams exist — except the creator of a team-format
+    /// event, who gets the door to the organizer screen (slice 86).
+    @ViewBuilder
+    private func sidesSection(_ response: TournamentDetailResponse) -> some View {
+        if !response.teams.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Sides")
+                        .font(SticksFont.display(19))
+                        .foregroundStyle(Color.sticksInk)
+
+                    Spacer()
+
+                    if response.tournament.isCreator && response.tournament.format.isTeamFormat {
+                        manageTeamsButton
+                    }
+
+                    Text("\(response.teams.count) TEAMS")
+                        .font(SticksFont.mono(12))
+                        .kerning(1)
+                        .foregroundStyle(Color.sticksFaint)
+                }
+                .padding(.top, 4)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(response.teams.enumerated()), id: \.element.id) { index, side in
+                        if index > 0 {
+                            Rectangle()
+                                .fill(Color.sticksHairline)
+                                .frame(height: 1)
+                                .padding(.leading, 60)
+                        }
+                        sideRow(side)
+                    }
+                }
+                .background(Color.sticksCard)
+                .clipShape(.rect(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.sticksHairline, lineWidth: 1)
+                )
+            }
+        } else if response.tournament.isCreator,
+                  response.tournament.format.isTeamFormat {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Sides")
+                    .font(SticksFont.display(19))
+                    .foregroundStyle(Color.sticksInk)
+                    .padding(.top, 4)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showsTeams = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "person.3")
+                            .font(.system(size: 14, weight: .semibold))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Form teams")
+                                .font(SticksFont.sans(15, weight: .bold))
+                                .foregroundStyle(Color.sticksGreen)
+                            Text("Seat the roster into \(response.tournament.format.teamSize ?? 2)-player sides")
+                                .font(SticksFont.sans(12.5))
+                                .foregroundStyle(Color.sticksMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sticksFaint)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .background(Color.sticksCard)
+                .clipShape(.rect(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.sticksHairline, lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private func sideRow(_ side: TournamentSide) -> some View {
+        HStack(spacing: 13) {
+            Text("T\(max(side.team, 1))")
+                .font(SticksFont.mono(13))
+                .foregroundStyle(Color.sticksGreen)
+                .frame(width: 40, height: 40)
+                .background(Color.sticksGreen.opacity(0.1))
+                .clipShape(.rect(cornerRadius: 11))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(side.members.map(\.displayName).joined(separator: " + "))
+                    .font(SticksFont.sans(14.5, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
+                    .lineLimit(2)
+
+                Text("TEAM \(max(side.team, 1))")
+                    .font(SticksFont.mono(9.5))
+                    .kerning(1)
+                    .foregroundStyle(Color.sticksFaint)
+            }
+
+            Spacer(minLength: 8)
+
+            // Incomplete = fewer players than the format needs. Said
+            // plainly rather than implying the side will score normally.
+            if !side.complete {
+                Text("SHORT")
+                    .font(SticksFont.mono(9.5))
+                    .kerning(1)
+                    .foregroundStyle(Color.sticksGold)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.sticksGold.opacity(0.14))
+                    .clipShape(.rect(cornerRadius: 8))
+                    .accessibilityLabel("Team \(side.team) is short a player")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+
+    private var manageTeamsButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showsTeams = true
+        } label: {
+            Text("MANAGE")
+                .font(SticksFont.mono(11))
+                .kerning(1)
+                .foregroundStyle(Color.sticksGreen)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color.sticksGreen.opacity(0.1))
+                .clipShape(.rect(cornerRadius: 9))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("Manage teams")
     }
 
     // MARK: - Rounds

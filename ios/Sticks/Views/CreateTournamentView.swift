@@ -24,6 +24,9 @@ struct CreateTournamentView: View {
     @State private var hasStartDate = false
     @State private var startDate: Date = .now
     @State private var notes = ""
+    /// Slice 84: side size + format, chosen from the server's registry.
+    @State private var selectedSize = 2
+    @State private var selectedFormatID: String?
     @FocusState private var isNameFocused: Bool
 
     private var canCreate: Bool {
@@ -40,6 +43,7 @@ struct CreateTournamentView: View {
                         eyebrow("THE FIELD IS FORMING")
 
                         nameSection
+                        formatSection
                         scoringSection
                         roundsSection
                         startDateSection
@@ -69,7 +73,16 @@ struct CreateTournamentView: View {
             .toolbarBackground(Color.sticksBg, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { createBar }
             .tint(Color.sticksGreen)
-            .onAppear { isNameFocused = true }
+            .task {
+                isNameFocused = true
+                await viewModel.loadFormats(session: session)
+                // Default to the 2-man bucket's first format so what's
+                // on screen is always a combination the server scores.
+                if let group = defaultGroup {
+                    selectedSize = group.size
+                    selectedFormatID = group.formats.first?.id
+                }
+            }
         }
         .presentationDetents([.large])
     }
@@ -108,6 +121,141 @@ struct CreateTournamentView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(isNameFocused ? Color.sticksGreen : Color.sticksHairline, lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: - Format (slice 84)
+
+    private var formatGroups: [FormatGroup] { viewModel.formatGroups }
+
+    /// The bucket the picker defaults to: 2-man teams when the server
+    /// offers it, otherwise the first group it sent.
+    private var defaultGroup: FormatGroup? {
+        formatGroups.first(where: { $0.size == 2 }) ?? formatGroups.first
+    }
+
+    private var selectedGroup: FormatGroup? {
+        formatGroups.first(where: { $0.size == selectedSize }) ?? formatGroups.first
+    }
+
+    /// The format to send: the user's pick, falling back to the
+    /// group's first so a stale id never leaves the screen.
+    private var selectedFormat: TournamentFormat? {
+        guard let group = selectedGroup else { return nil }
+        return group.formats.first(where: { $0.id == selectedFormatID }) ?? group.formats.first
+    }
+
+    @ViewBuilder
+    private var formatSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            fieldLabel("SIDES & FORMAT")
+
+            if formatGroups.isEmpty {
+                formatsPlaceholder
+            } else if let group = selectedGroup {
+                // 1. Team size — drives which formats are offered.
+                HStack(spacing: 6) {
+                    ForEach(formatGroups) { bucket in
+                        sizeChip(bucket)
+                    }
+                }
+
+                // 2. How scores count — only this size's formats.
+                Picker("How scores count", selection: $selectedFormatID) {
+                    ForEach(group.formats) { format in
+                        Text(format.label).tag(Optional(format.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(SticksFont.sans(15, weight: .semibold))
+                .foregroundStyle(Color.sticksInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 50)
+                .background(Color.sticksPanel2)
+                .clipShape(.rect(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.sticksHairline, lineWidth: 1)
+                )
+                .padding(.top, 2)
+
+                if let format = selectedFormat, let blurb = format.blurb, !blurb.isEmpty {
+                    Text(blurb)
+                        .font(SticksFont.sans(13))
+                        .foregroundStyle(Color.sticksMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 2)
+                }
+            }
+        }
+    }
+
+    private func sizeChip(_ bucket: FormatGroup) -> some View {
+        let isSelected = bucket.size == selectedSize
+        return Button {
+            guard bucket.size != selectedSize else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Changing size selects that group's FIRST format, so the
+            // visible pair is always one the server can score.
+            selectedSize = bucket.size
+            selectedFormatID = bucket.formats.first?.id
+        } label: {
+            Text(bucket.label)
+                .font(SticksFont.sans(12, weight: isSelected ? .bold : .medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(isSelected ? Color.sticksCream : Color.sticksInk)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(isSelected ? Color.sticksGreen : Color.sticksCard)
+                .clipShape(.rect(cornerRadius: 11))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(isSelected ? Color.clear : Color.sticksHairline, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Sides: \(bucket.label)")
+    }
+
+    @ViewBuilder
+    private var formatsPlaceholder: some View {
+        if viewModel.formatsFailed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Formats couldn't load — the event will be scored the classic way.")
+                    .font(SticksFont.sans(13))
+                    .foregroundStyle(Color.sticksMuted)
+                Button("Retry") {
+                    Task { await viewModel.loadFormats(session: session, force: true) }
+                }
+                .font(SticksFont.sans(13, weight: .semibold))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+        } else {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .tint(Color.sticksGreen)
+                Text("Loading formats…")
+                    .font(SticksFont.sans(13))
+                    .foregroundStyle(Color.sticksMuted)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
             )
         }
     }
@@ -318,6 +466,7 @@ struct CreateTournamentView: View {
         Task {
             let id = await viewModel.create(
                 name: trimmed,
+                format: selectedFormat?.id,
                 scoringMode: scoringMode,
                 roundsPlanned: roundsPlanned,
                 scheduledStartAt: hasStartDate ? startDate : nil,

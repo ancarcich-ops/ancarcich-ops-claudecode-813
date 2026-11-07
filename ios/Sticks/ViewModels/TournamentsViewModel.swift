@@ -29,6 +29,13 @@ final class TournamentsViewModel {
     private(set) var isJoining = false
     private(set) var joinError: String?
 
+    /// The GET /formats registry for the create picker (slice 84).
+    /// Empty until loaded; `formatsFailed` distinguishes "still loading"
+    /// from "couldn't load" (create then goes out without a format id
+    /// and the server falls back to its default scoring).
+    private(set) var formatGroups: [FormatGroup] = []
+    private(set) var formatsFailed = false
+
     private let api: APIClient
 
     init(api: APIClient = .shared) {
@@ -58,10 +65,30 @@ final class TournamentsViewModel {
         }
     }
 
+    /// GET /formats — the picker's data. Never re-fetched within a
+    /// session unless the caller forces it (retry after failure).
+    func loadFormats(session: SessionStore, force: Bool = false) async {
+        if !force, !formatGroups.isEmpty || formatsFailed { return }
+        guard let token = session.token else {
+            session.signOut()
+            return
+        }
+        do {
+            let response = try await api.formats(token: token)
+            formatGroups = response.groups
+            formatsFailed = false
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+        } catch {
+            formatsFailed = true
+        }
+    }
+
     /// POST /tournaments. Returns the new tournament's id on success;
     /// on failure `createError` carries the server's message.
     func create(
         name: String,
+        format: String?,
         scoringMode: String,
         roundsPlanned: Int,
         scheduledStartAt: Date?,
@@ -77,6 +104,7 @@ final class TournamentsViewModel {
         defer { isCreating = false }
         let body = CreateTournamentRequest(
             name: name,
+            format: format,
             scoringMode: scoringMode,
             roundsPlanned: roundsPlanned,
             scheduledStartAt: scheduledStartAt.map { ISO8601DateFormatter().string(from: $0) },

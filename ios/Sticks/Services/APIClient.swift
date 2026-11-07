@@ -693,6 +693,14 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /formats — the scoring-format registry, grouped by side
+    /// size. Drives the create-tournament picker; never hard-code a
+    /// copy of this list in the app.
+    func formats(token: String) async throws -> FormatsResponse {
+        let request = makeRequest(path: "formats", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     /// GET /tournaments/:id — full tournament detail with rounds,
     /// roster, cumulative leaderboard, and win odds. 403/404 carry
     /// server messages shown verbatim.
@@ -715,6 +723,29 @@ nonisolated struct APIClient {
     func joinTournament(code: String, handicap: Double?, token: String) async throws -> JoinTournamentResponse {
         var request = makeRequest(path: "tournaments/join", method: "POST", token: token)
         request.httpBody = try encoder.encode(JoinTournamentRequest(code: code, handicap: handicap))
+        return try await perform(request)
+    }
+
+    /// POST /tournaments/:id/teams — forms ONE side from the given
+    /// roster entry ids. Refusals (403 creator-only, 400 wrong count /
+    /// already seated) carry the server's message verbatim.
+    func formTeam(tournamentId: String, playerIds: [String], token: String) async throws -> TournamentMutationResponse {
+        var request = makeRequest(path: "tournaments/\(tournamentId)/teams", method: "POST", token: token)
+        request.httpBody = try encoder.encode(FormTeamRequest(playerIds: playerIds))
+        return try await perform(request)
+    }
+
+    /// POST /tournaments/:id/teams/auto — seat everyone the server
+    /// can, honouring mutual partner requests. Returns the counts.
+    func autoSeatTeams(tournamentId: String, token: String) async throws -> AutoSeatResponse {
+        let request = makeRequest(path: "tournaments/\(tournamentId)/teams/auto", method: "POST", token: token)
+        return try await perform(request)
+    }
+
+    /// DELETE /tournaments/:id/teams/:team — disband one side; its
+    /// players return to unassigned.
+    func disbandTeam(tournamentId: String, team: Int, token: String) async throws -> TournamentMutationResponse {
+        let request = makeRequest(path: "tournaments/\(tournamentId)/teams/\(team)", method: "DELETE", token: token)
         return try await perform(request)
     }
 

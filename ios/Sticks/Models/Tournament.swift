@@ -92,6 +92,65 @@ extension TournamentFormat: Decodable {
     }
 }
 
+// MARK: - GET /formats (slice 84)
+
+extension TournamentFormat: Identifiable {}
+
+/// One side-size bucket of the GET /formats registry — e.g. size 2,
+/// "2-man teams", with that size's six formats.
+nonisolated struct FormatGroup: Identifiable, Hashable {
+    let size: Int
+    let label: String
+    let formats: [TournamentFormat]
+
+    var id: Int { size }
+}
+
+extension FormatGroup: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case size, label, formats
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        size = try container.decodeIfPresent(Int.self, forKey: .size) ?? 1
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        formats = ((try? container.decode([Lenient<TournamentFormat>].self, forKey: .formats)) ?? [])
+            .compactMap(\.value)
+    }
+
+    /// Wrapper so one malformed entry never sinks the registry.
+    private struct Lenient<T: Decodable>: Decodable {
+        let value: T?
+        init(from decoder: Decoder) throws {
+            value = try? T(from: decoder)
+        }
+    }
+}
+
+/// GET /formats — the full format registry. Drives the
+/// create-tournament picker; never hard-code a copy of this list.
+nonisolated struct FormatsResponse: Decodable {
+    let groups: [FormatGroup]
+
+    private enum CodingKeys: String, CodingKey { case groups }
+
+    /// Wrapper so one malformed group never sinks the registry.
+    private struct Lenient<T: Decodable>: Decodable {
+        let value: T?
+        init(from decoder: Decoder) throws {
+            value = try? T(from: decoder)
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        groups = ((try? container.decodeIfPresent([Lenient<FormatGroup>].self, forKey: .groups)) ?? [])
+            .compactMap(\.value)
+            .sorted { $0.size < $1.size }
+    }
+}
+
 // MARK: - GET /tournaments
 
 /// One row of GET /tournaments.
@@ -138,7 +197,6 @@ nonisolated struct TournamentsResponse: Decodable {
     private enum CodingKeys: String, CodingKey {
         case tournaments
     }
-
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         tournaments = try container.decodeIfPresent([TournamentSummary].self, forKey: .tournaments) ?? []
@@ -239,17 +297,21 @@ extension TournamentRound: Decodable {
     }
 }
 
-/// One roster entry on the detail payload.
+/// One roster entry on the detail payload. `team` is nil for an
+/// unseated player (slices 85/86); `partnerName` is the entry's
+/// requested partner, shown in the teams screen as a seating hint.
 nonisolated struct TournamentRosterEntry: Identifiable, Hashable {
     let id: String
     let displayName: String
     let userId: String?
     let handicapAtStart: Double?
+    let team: Int?
+    let partnerName: String?
 }
 
 extension TournamentRosterEntry: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case id, displayName, userId, handicapAtStart
+        case id, displayName, userId, handicapAtStart, team, partnerName
     }
 
     init(from decoder: Decoder) throws {
@@ -258,6 +320,66 @@ extension TournamentRosterEntry: Decodable {
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? "Player"
         userId = try? container.decodeIfPresent(String.self, forKey: .userId)
         handicapAtStart = try? container.decodeIfPresent(Double.self, forKey: .handicapAtStart)
+        team = try? container.decodeIfPresent(Int.self, forKey: .team)
+        partnerName = try? container.decodeIfPresent(String.self, forKey: .partnerName)
+    }
+}
+
+// MARK: - Sides (slice 85)
+
+/// One member of a formed side on the detail payload.
+nonisolated struct TournamentTeamMember: Identifiable, Hashable {
+    let rosterId: String
+    let displayName: String
+    let userId: String?
+    let handicap: Double?
+
+    var id: String { rosterId }
+}
+
+extension TournamentTeamMember: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case rosterId, displayName, userId, handicap
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rosterId = try container.decodeIfPresent(String.self, forKey: .rosterId) ?? UUID().uuidString
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? "Player"
+        userId = try? container.decodeIfPresent(String.self, forKey: .userId)
+        handicap = try? container.decodeIfPresent(Double.self, forKey: .handicap)
+    }
+}
+
+/// One formed side. `complete: false` means fewer players than the
+/// format needs — show it as incomplete, not as a normal side.
+nonisolated struct TournamentSide: Identifiable, Hashable {
+    let team: Int
+    let members: [TournamentTeamMember]
+    let complete: Bool
+
+    var id: Int { team }
+}
+
+extension TournamentSide: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case team, members, complete
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        team = try container.decodeIfPresent(Int.self, forKey: .team) ?? 0
+        members = ((try? container.decode([Lenient<TournamentTeamMember>].self, forKey: .members)) ?? [])
+            .compactMap(\.value)
+        complete = try container.decodeIfPresent(Bool.self, forKey: .complete) ?? false
+    }
+
+    /// Wrapper so one malformed member never sinks the side.
+    private struct Lenient<T: Decodable>: Decodable {
+        let value: T?
+        init(from decoder: Decoder) throws {
+            value = try? T(from: decoder)
+        }
     }
 }
 
@@ -336,9 +458,12 @@ nonisolated struct TournamentDetailResponse: Decodable {
     let roster: [TournamentRosterEntry]
     let leaderboard: [TournamentLeaderboardRow]
     let odds: [TournamentOddsRow]
+    /// Formed sides, already in team-number order (slice 85). Empty
+    /// when the event hasn't been seeded into sides.
+    let teams: [TournamentSide]
 
     private enum CodingKeys: String, CodingKey {
-        case tournament, rounds, roster, leaderboard, odds
+        case tournament, rounds, roster, leaderboard, odds, teams
     }
 
     /// Wrapper so one bad element never sinks the array.
@@ -360,6 +485,40 @@ nonisolated struct TournamentDetailResponse: Decodable {
             .compactMap(\.value)
         odds = ((try? container.decode([Lenient<TournamentOddsRow>].self, forKey: .odds)) ?? [])
             .compactMap(\.value)
+        teams = ((try? container.decode([Lenient<TournamentSide>].self, forKey: .teams)) ?? [])
+            .compactMap(\.value)
+    }
+}
+
+// MARK: - Team mutations (slice 86)
+
+/// Body for POST /tournaments/:id/teams — ROSTER ENTRY ids
+/// (roster[].id), not user ids.
+nonisolated struct FormTeamRequest: Encodable {
+    let playerIds: [String]
+}
+
+/// Accepts any response shape — the teams screen refetches the detail
+/// after every mutation rather than trusting the mutation body.
+nonisolated struct TournamentMutationResponse: Decodable {
+    init(from decoder: Decoder) throws {}
+}
+
+/// POST /tournaments/:id/teams/auto — auto-seating honours MUTUAL
+/// partner requests only. Left-over players stay unassigned rather
+/// than landing on a short side the format can't score.
+nonisolated struct AutoSeatResponse: Decodable {
+    let formed: Int
+    let leftOver: Int
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formed = try container.decodeIfPresent(Int.self, forKey: .formed) ?? 0
+        leftOver = try container.decodeIfPresent(Int.self, forKey: .leftOver) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case formed, leftOver
     }
 }
 
@@ -369,6 +528,10 @@ nonisolated struct TournamentDetailResponse: Decodable {
 /// (synthesized Encodable omits nil keys, which the server expects).
 nonisolated struct CreateTournamentRequest: Encodable {
     let name: String
+    /// An id from GET /formats. Nil is omitted — the server then falls
+    /// back to its legacy scoring. Unknown ids are dropped server-side,
+    /// never rejected.
+    let format: String?
     let scoringMode: String?
     let roundsPlanned: Int?
     let scheduledStartAt: String?
