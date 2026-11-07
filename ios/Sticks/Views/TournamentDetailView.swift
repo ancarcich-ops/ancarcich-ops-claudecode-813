@@ -648,6 +648,9 @@ struct TournamentDetailView: View {
             startingHole: 1,
             scoringMode: tournament.scoringMode,
             format: tournament.format.id,
+            // Slice 89b: the round detail pulls the event's formed sides
+            // through this id to seat shared-card entry.
+            tournamentId: tournament.id,
             pars: [],
             strokeIndex: [],
             probabilities: [:],

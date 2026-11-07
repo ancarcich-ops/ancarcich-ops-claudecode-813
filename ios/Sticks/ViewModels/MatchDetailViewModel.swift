@@ -40,10 +40,21 @@ final class MatchDetailViewModel {
     /// legacy INDIVIDUAL/SCRAMBLE/BOTH values, so this hint is the only
     /// way to recover shared-card context. Nil/legacy → no resolution.
     private let formatHint: String?
+    /// Slice 89b: the owning tournament's id (from the navigation stub)
+    /// — lets a shared-card round fetch the event's formed sides, since
+    /// the match payload carries no tournament reference and leaves
+    /// players[].team null.
+    private let tournamentId: String?
 
-    init(matchId: String, formatHint: String? = nil, api: APIClient = .shared) {
+    init(
+        matchId: String,
+        formatHint: String? = nil,
+        tournamentId: String? = nil,
+        api: APIClient = .shared
+    ) {
         self.matchId = matchId
         self.formatHint = formatHint
+        self.tournamentId = tournamentId
         self.api = api
     }
 
@@ -56,9 +67,23 @@ final class MatchDetailViewModel {
     /// when the registry lookup fails, falling back to per-player UI).
     private(set) var tournamentFormat: TournamentFormat?
 
-    /// Scramble-style entry: the side records ONE score per hole on a
+    /// Scramble-style entry: each side records ONE score per hole on a
     /// single card, never one per player.
     var isSharedCard: Bool { tournamentFormat?.isSharedCard == true }
+
+    /// Slice 89b: the owning tournament's formed sides, fetched when the
+    /// format resolves to shared-card entry. Nil when the lookup hasn't
+    /// run, failed, or the round is standalone.
+    private(set) var tournamentTeams: [TournamentSide]?
+
+    /// One side's shared card: the member whose match row carries the
+    /// team's scores, the side's display label, and the member rows.
+    struct SideCard: Identifiable, Hashable {
+        let label: String
+        let cardPlayer: MatchDetailPlayer
+        let members: [MatchDetailPlayer]
+        var id: String { cardPlayer.id }
+    }
 
     var detail: MatchDetail? { response?.match }
 
@@ -83,14 +108,63 @@ final class MatchDetailViewModel {
         }
     }
 
-    /// Slice 89: the side's single card for shared-entry formats — the
-    /// seated player whose match row the team score is written to. The
-    /// card with the most holes already scored wins (so an existing
-    /// card keeps collecting); ties break by seat order. Nil when the
-    /// round has no players.
-    var sharedCardPlayer: MatchDetailPlayer? {
-        guard isSharedCard else { return nil }
-        return seatOrderedPlayers.max { a, b in
+    /// Slice 89/89b: the round's shared cards, one per side. Sides are
+    /// seated from the server's players[].team stamp when present,
+    /// otherwise by matching userIds against the tournament's formed
+    /// teams. Everything that can't be seated falls into one trailing
+    /// bucket, so no player's score is ever dropped. With no formed
+    /// teams (or a failed lookup) the whole round is one side — the
+    /// original single-card behavior.
+    var sideCards: [SideCard] {
+        guard isSharedCard else { return [] }
+        let players = seatOrderedPlayers
+        guard !players.isEmpty else { return [] }
+
+        var teamByUser: [String: Int] = [:]
+        if let teams = tournamentTeams {
+            for side in teams {
+                for member in side.members {
+                    if let userId = member.userId {
+                        teamByUser[userId] = side.team
+                    }
+                }
+            }
+        }
+
+        var byTeam: [Int: [MatchDetailPlayer]] = [:]
+        var unseated: [MatchDetailPlayer] = []
+        for player in players {
+            if let stamp = player.team, let team = Int(stamp) {
+                byTeam[team, default: []].append(player)
+            } else if let userId = player.userId, let team = teamByUser[userId] {
+                byTeam[team, default: []].append(player)
+            } else {
+                unseated.append(player)
+            }
+        }
+
+        var cards: [SideCard] = []
+        for team in byTeam.keys.sorted() {
+            let members = byTeam[team] ?? []
+            cards.append(
+                SideCard(label: "TEAM \(team)", cardPlayer: cardWinner(members), members: members)
+            )
+        }
+        if !unseated.isEmpty {
+            // The sole side keeps the friendly generic label; beside
+            // formed teams, unseatable players get their own bucket so
+            // their scores stay out of a team's card.
+            let label = cards.isEmpty ? "TEAM CARD" : "UNSEEDED"
+            cards.append(SideCard(label: label, cardPlayer: cardWinner(unseated), members: unseated))
+        }
+        return cards
+    }
+
+    /// The member whose match row should carry a side's card — the one
+    /// with the most holes already scored (so an existing card keeps
+    /// collecting); ties break by seat order, then id.
+    private func cardWinner(_ players: [MatchDetailPlayer]) -> MatchDetailPlayer {
+        players.max { a, b in
             let aHoles = a.scoresByHole.count
             let bHoles = b.scoresByHole.count
             if aHoles != bHoles { return aHoles < bHoles }
@@ -98,14 +172,21 @@ final class MatchDetailViewModel {
             let bSeat = b.seat ?? Int.max
             if aSeat != bSeat { return aSeat > bSeat }
             return a.id > b.id
-        }
+        } ?? players[0]
     }
 
-    /// Scorecard rows: the caller's row first normally; on a shared-card
-    /// side, just the team's single card row.
+    /// Scorecard rows: the caller's row first normally; on shared-card
+    /// entry, one row per side's card.
     var scorecardPlayers: [MatchDetailPlayer] {
-        if let card = sharedCardPlayer { return [card] }
+        if isSharedCard, !sideCards.isEmpty { return sideCards.map(\.cardPlayer) }
         return sortedPlayers
+    }
+
+    /// Side labels aligned with `scorecardPlayers` — non-nil only on
+    /// shared-card entry (ScorecardGrid swaps names for these).
+    var scorecardSideLabels: [String]? {
+        guard isSharedCard, !sideCards.isEmpty else { return nil }
+        return sideCards.map(\.label)
     }
 
     /// Next seat-ordered player (wrapping) still missing a score on `hole`,
@@ -164,10 +245,15 @@ final class MatchDetailViewModel {
     /// shared-card side it's the team's single card that must be full.
     var isRoundComplete: Bool {
         guard let detail = response?.match, !detail.players.isEmpty else { return false }
-        if let card = sharedCardPlayer {
-            for index in 0 ..< detail.holes
-            where card.scoresByHole[detail.holeNumber(at: index)] == nil {
-                return false
+        if isSharedCard {
+            // Every side's card must be full.
+            let cards = sideCards.map(\.cardPlayer)
+            guard !cards.isEmpty else { return false }
+            for index in 0 ..< detail.holes {
+                let hole = detail.holeNumber(at: index)
+                if cards.contains(where: { $0.scoresByHole[hole] == nil }) {
+                    return false
+                }
             }
             return true
         }
@@ -496,6 +582,12 @@ final class MatchDetailViewModel {
             tournamentFormat = registry.groups
                 .flatMap(\.formats)
                 .first { $0.id.lowercased() == hint.lowercased() }
+            // Slice 89b: shared-card rounds also pull the event's formed
+            // sides — the match payload leaves players[].team null, so
+            // this is where seating comes from. Failure keeps one card.
+            if tournamentFormat?.isSharedCard == true, let tournamentId {
+                tournamentTeams = try? await api.tournamentDetail(id: tournamentId, token: token).teams
+            }
         } catch {
             // Keep per-player behavior; the server still scores the
             // tournament from the most complete card.

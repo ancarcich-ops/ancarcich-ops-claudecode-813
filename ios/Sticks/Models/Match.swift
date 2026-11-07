@@ -79,6 +79,11 @@ nonisolated struct MatchSummary: Identifiable, Hashable {
     let startingHole: Int
     let scoringMode: String
     let format: String
+    /// Slice 89b: set only by navigation stubs pushing a round FROM a
+    /// tournament — the match payload itself carries no tournament
+    /// reference (and leaves players[].team null), so this id is how the
+    /// detail screen finds the event's formed sides and seats them.
+    var tournamentId: String?
     /// Exactly `holes` entries, index = round order.
     let pars: [Int]
     /// Course hole handicaps, 1 = hardest. Empty when the server has no
@@ -159,7 +164,8 @@ extension MatchSummary {
 extension MatchSummary: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, completedAt, status, holes
-        case startingHole, scoringMode, format, pars, strokeIndex, probabilities
+        case startingHole, scoringMode, format, tournamentId
+        case pars, strokeIndex, probabilities
         case myMatchPlayerId, groupId, players, tickerItems
         case myCall, wagerCounts
     }
@@ -175,6 +181,7 @@ extension MatchSummary: Decodable {
         startingHole = try container.decode(Int.self, forKey: .startingHole)
         scoringMode = try container.decode(String.self, forKey: .scoringMode)
         format = try container.decode(String.self, forKey: .format)
+        tournamentId = try? container.decodeIfPresent(String.self, forKey: .tournamentId)
         pars = try container.decodeIfPresent([Int].self, forKey: .pars) ?? []
         strokeIndex = (try? container.decodeIfPresent([Int].self, forKey: .strokeIndex)) ?? []
         probabilities = try container.decodeIfPresent([String: Double].self, forKey: .probabilities) ?? [:]

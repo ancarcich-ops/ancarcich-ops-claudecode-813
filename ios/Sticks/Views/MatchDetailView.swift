@@ -67,8 +67,13 @@ struct MatchDetailView: View {
         self.session = session
         // The opening summary's format string rides along as the
         // shared-card hint — tournament rounds are pushed with the
-        // tournament's format id on the navigation stub (slice 89).
-        _viewModel = State(initialValue: MatchDetailViewModel(matchId: match.id, formatHint: match.format))
+        // tournament's format id on the navigation stub (slice 89). The
+        // tournament id (89b) seats the round's players into sides.
+        _viewModel = State(initialValue: MatchDetailViewModel(
+            matchId: match.id,
+            formatHint: match.format,
+            tournamentId: match.tournamentId
+        ))
     }
 
     var body: some View {
@@ -736,9 +741,9 @@ struct MatchDetailView: View {
                 detail: detail,
                 players: viewModel.scorecardPlayers,
                 currentHoleIndex: currentHoleIndex(detail),
-                // Slice 89: a shared-card side scores one row — the
-                // team's single card — labeled for the side, not a name.
-                sideLabel: viewModel.isSharedCard ? "TEAM CARD" : nil,
+                // Slice 89: shared-card entry scores one row per side,
+                // labeled for the side, not a name.
+                sideLabels: viewModel.scorecardSideLabels,
                 // Score cells only respond for golfers seated in the
                 // round — spectators get a read-only scorecard.
                 onSelect: { cell in

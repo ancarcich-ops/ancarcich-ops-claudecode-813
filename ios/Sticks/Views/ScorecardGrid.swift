@@ -32,11 +32,12 @@ struct ScorecardGrid: View {
     let players: [MatchDetailPlayer]
     /// Round index of the current hole — nil when the match isn't live.
     let currentHoleIndex: Int?
-    /// Slice 89: on a shared-card side the grid renders ONE row (the
-    /// team's single card) labeled with this instead of a player name —
-    /// the side records one score per hole, so per-player rows would
-    /// invite four different cards.
-    let sideLabel: String?
+    /// Slice 89: on shared-card entry the grid renders one row per
+    /// side's single card, labeled from this array (index-aligned with
+    /// `players`) instead of a player name — each side records one
+    /// score per hole, so per-player rows would invite four different
+    /// cards. Nil renders player names (per-player entry).
+    let sideLabels: [String]?
     let onSelect: (ScoreCellSelection) -> Void
 
     /// Slice 35: gross/net lens — defaults to the round's scoring mode.
@@ -46,13 +47,13 @@ struct ScorecardGrid: View {
         detail: MatchDetail,
         players: [MatchDetailPlayer],
         currentHoleIndex: Int?,
-        sideLabel: String? = nil,
+        sideLabels: [String]? = nil,
         onSelect: @escaping (ScoreCellSelection) -> Void
     ) {
         self.detail = detail
         self.players = players
         self.currentHoleIndex = currentHoleIndex
-        self.sideLabel = sideLabel
+        self.sideLabels = sideLabels
         self.onSelect = onSelect
         _scoreView = State(
             initialValue: detail.scoringMode.uppercased() == "NET" ? .net : .gross
@@ -99,7 +100,7 @@ struct ScorecardGrid: View {
     /// A shared team card's net needs the side's team allowance, which
     /// the round payload doesn't carry — gross only there.
     private var showsToggle: Bool {
-        detail.scoringMode.uppercased() != "GROSS" && sideLabel == nil
+        detail.scoringMode.uppercased() != "GROSS" && sideLabels == nil
     }
 
     private var showsNet: Bool {
@@ -242,8 +243,10 @@ struct ScorecardGrid: View {
         VStack(spacing: 0) {
             Color.clear
                 .frame(width: nameWidth, height: headerHeight)
-            ForEach(players) { player in
-                nameCell(for: player)
+            ForEach(players.indices, id: \.self) { index in
+                nameCell(for: players[index], sideLabel: sideLabels.flatMap { labels in
+                    labels.indices.contains(index) ? labels[index] : nil
+                })
             }
         }
         .frame(width: nameWidth)
@@ -252,20 +255,20 @@ struct ScorecardGrid: View {
     /// Linked seats push the member's read-only profile; unlinked guest
     /// seats render the plain label.
     @ViewBuilder
-    private func nameCell(for player: MatchDetailPlayer) -> some View {
-        if let destination = player.profileDestination {
+    private func nameCell(for player: MatchDetailPlayer, sideLabel: String?) -> some View {
+        if sideLabel == nil, let destination = player.profileDestination {
             NavigationLink(value: destination) {
-                nameCellBody(for: player)
+                nameCellBody(for: player, sideLabel: sideLabel)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(player.displayName). Opens their profile")
         } else {
-            nameCellBody(for: player)
+            nameCellBody(for: player, sideLabel: sideLabel)
         }
     }
 
-    private func nameCellBody(for player: MatchDetailPlayer) -> some View {
+    private func nameCellBody(for player: MatchDetailPlayer, sideLabel: String?) -> some View {
         HStack(spacing: 6) {
             if sideLabel != nil {
                 // Team card row: a green T bubble instead of initials.
@@ -340,7 +343,7 @@ struct ScorecardGrid: View {
         // switching back to gross hides them. A team card row never
         // shows them: the side's allowance is a team number the round
         // payload doesn't carry, not this seat's handicap.
-        let strokes = showsNet && sideLabel == nil ? strokesReceived(for: player, at: index) : 0
+        let strokes = showsNet && sideLabels == nil ? strokesReceived(for: player, at: index) : 0
         let display = showsNet ? gross.map { $0 - strokes } : gross
 
         return Button {
@@ -428,7 +431,7 @@ struct ScorecardGrid: View {
 
     /// Legend shows only in the net lens, when pops are actually allocated.
     private var showsPopLegend: Bool {
-        showsNet && sideLabel == nil && players.contains {
+        showsNet && sideLabels == nil && players.contains {
             MatchDetailMath.playingAllowance(handicap: $0.handicap ?? 0, holes: detail.holes) > 0
         }
     }

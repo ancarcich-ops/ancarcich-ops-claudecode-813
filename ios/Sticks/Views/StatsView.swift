@@ -1229,6 +1229,7 @@ private struct LoggedRoundsCard: View {
             startingHole: 1,
             scoringMode: "GROSS",
             format: "STROKE_PLAY",
+            tournamentId: nil,
             pars: [],
             strokeIndex: [],
             probabilities: [:],
