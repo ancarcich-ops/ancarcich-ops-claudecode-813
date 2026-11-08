@@ -263,23 +263,58 @@ nonisolated struct NassauConfig: Codable, Hashable {
 /// publishes a separate leaderboard per rule (keyed TEAM_<RULE>), so
 /// this is a list, not a single choice. An empty/absent list leaves the
 /// server on its own default.
+///
+/// Slice 92, verified live: the POST /matches/:id/side-game-config
+/// endpoint only accepts the FULL config — the `teams` map (team number
+/// → matchPlayerIds) alongside the rules, and rules as OBJECTS
+/// ("rules":[{"rule":"BEST_BALL"}]); a bare {"rules":[…]} or string
+/// entries get "That game has no settings, or the settings were
+/// invalid." The team-handicap mode rides along as `handicap` (the
+/// server currently accepts-and-drops it; kept for when it persists).
+/// Decoding is tolerant of every historical shape (string rules,
+/// missing teams) so old rounds read back.
 nonisolated struct TeamVsTeamConfig: Codable, Hashable {
-    var rules: [String]
+    nonisolated struct Rule: Codable, Hashable {
+        let rule: String
+        init(rule: String) { self.rule = rule }
+    }
+
+    /// matchPlayerId lists keyed by team number ("0"/"1") — sent on
+    /// writes, absent on bare-rule decodes.
+    var teams: [String: [String]]?
+    var rules: [Rule]
+    /// Team handicap mode id (GROSS / AVG / CUSTOM), when picked.
+    var handicap: String?
 
     static let bestBall = "BEST_BALL"
 
     private enum CodingKeys: String, CodingKey {
-        case rules
+        case teams, rules, handicap
     }
 
-    init(rules: [String]) {
-        self.rules = rules
+    init(teams: [String: [String]]? = nil, rules: [String], handicap: String? = nil) {
+        self.teams = teams
+        self.rules = rules.map(Rule.init(rule:))
+        self.handicap = handicap
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        rules = (try? container.decode([String].self, forKey: .rules)) ?? []
+        teams = try? container.decodeIfPresent([String: [String]].self, forKey: .teams)
+        handicap = try? container.decodeIfPresent(String.self, forKey: .handicap)
+        // Rules decode across shapes: current objects and the legacy
+        // bare-string array (older saved configs).
+        if let objects = try? container.decodeIfPresent([Rule].self, forKey: .rules) {
+            rules = objects
+        } else if let strings = try? container.decodeIfPresent([String].self, forKey: .rules) {
+            rules = strings.map(Rule.init(rule:))
+        } else {
+            rules = []
+        }
     }
+
+    /// The rule ids, in pick order.
+    var ruleIds: [String] { rules.map(\.rule) }
 
     /// Parses the raw JSON string from sideGameConfigs — nil when the
     /// game has no config saved yet.

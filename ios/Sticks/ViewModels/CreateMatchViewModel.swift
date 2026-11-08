@@ -95,21 +95,78 @@ final class CreateMatchViewModel {
     }
     var startsOnBack = false
     var scoringMode = "NET"
+    /// Slice 92: how a TEAM's score is handicapped — GROSS (no
+    /// allowance), AVG (mean of members' handicaps) or CUSTOM (the
+    /// group sets each side's allowance). Only asked for team formats.
+    var teamHandicap = "GROSS"
     /// The round's tee time — maps to the create body's `scheduledAt`.
     /// Defaults to now, matching the web's starting state (slice 45).
     var teeTime: Date = .now
     /// Game format — INDIVIDUAL (all-vs-all), SCRAMBLE (one ball per
     /// team), or BOTH (individual + a team match on top). Slice 39.
-    /// Picking a team format while solo grows the round to a twosome
-    /// (the inverse of "solo forces Individual").
+    /// Slice 92: the stored enum is a wire value — the picker shows the
+    /// server's labels (Individual / Teams / Individual and Team), and
+    /// formats the chosen player count can't play aren't offered.
     var format = "INDIVIDUAL" {
         didSet {
             guard format != oldValue else { return }
-            if format != "INDIVIDUAL", seats.count < 2, canAddSeat {
-                addSeat()
+            // The rule that catches people: team rules compare two
+            // balls per side, and a SCRAMBLE records one ball per team
+            // — none of them can be computed there. Switching to (or
+            // through) Scramble clears them rather than carrying them
+            // silently into a round that scores nothing.
+            if format == "SCRAMBLE" {
+                teamRules.removeAll()
+            } else if format == "BOTH", teamRules.isEmpty {
+                // Both needs at least one rule to score the team game.
+                teamRules.insert(Self.bestBallRule)
             }
         }
     }
+
+    /// Slice 92: the Round step's copy — labels, blurbs and rules from
+    /// GET /round-options. Falls back to a bundled mirror of the live
+    /// payload when the fetch fails, so the form is never blank.
+    private(set) var roundOptions: RoundOptionsResponse = .fallback
+
+    /// Formats the current player count can actually play, in server
+    /// order. A format below its minPlayers is HIDDEN, not disabled —
+    /// the website's behavior. The current selection always stays in
+    /// the list (edit mode can hold a format the party has since
+    /// outgrown; dropping the players falls back to Individual).
+    var availableFormats: [RoundFormatOption] {
+        var options = roundOptions.roundFormats
+            .filter { $0.minPlayers <= max(seats.count, 1) }
+        if !options.contains(where: { $0.id == format }),
+           let current = roundOptions.format(id: format) {
+            options.append(current)
+        }
+        return options
+    }
+
+    /// The chosen format's payload — nil for an unknown id.
+    var selectedFormatOption: RoundFormatOption? { roundOptions.format(id: format) }
+
+    /// Team rules minus Vegas, whose options panel (birdie flip,
+    /// doubling holes, stake) hasn't shipped — the other six are
+    /// complete on their own.
+    var teamRuleChoices: [TeamRuleChoice] {
+        let choices = roundOptions.teamRules.filter { !$0.hasOptions }
+        return choices.isEmpty
+            ? CreateMatchViewModel.teamRuleOptions.map {
+                TeamRuleChoice(
+                    id: $0.key,
+                    label: $0.label,
+                    blurb: $0.blurb,
+                    needsTwoBalls: true,
+                    hasOptions: false
+                )
+            }
+            : choices
+    }
+
+    /// The rule seeded when Both turns on with none picked.
+    static let bestBallRule = "BEST_BALL"
 
     // MARK: Starting tee (slice 80)
 
@@ -327,6 +384,17 @@ final class CreateMatchViewModel {
         !usesTeams || (teamACount > 0 && teamBCount > 0)
     }
 
+    /// Slice 92: a round whose team game is live (the Both format, or
+    /// the team-vs-team game toggled on an individual round) scores
+    /// through its rules — with none picked there's nothing to score,
+    /// so Create stays gated until one is checked. (Scramble never
+    /// carries rules — one ball per team — so it always passes.)
+    var teamRulesAreValid: Bool {
+        guard format == "BOTH" || (format == "INDIVIDUAL" && sideGames.contains(Self.teamVsTeam))
+        else { return true }
+        return !teamRules.isEmpty
+    }
+
     func setTeam(seatId: UUID, team: Int) {
         guard let index = seats.firstIndex(where: { $0.id == seatId }) else { return }
         seats[index].team = team == 1 ? 1 : 0
@@ -343,9 +411,11 @@ final class CreateMatchViewModel {
     }
 
     /// Course chosen + every seat has a name and a parseable handicap
-    /// (+ both teams filled when the format uses teams).
+    /// (+ both teams filled when the format uses teams, + at least one
+    /// team rule on an Individual-and-Team round).
     var canCreate: Bool {
         selectedCourse != nil && !isCreating && seatsAreValid && teamsAreValid
+            && teamRulesAreValid
     }
 
     // MARK: - Bootstrap
@@ -376,6 +446,9 @@ final class CreateMatchViewModel {
 
         async let suggest = try? api.suggestPlayers(query: nil, token: token)
         async let groupList = try? api.groups(token: token)
+        // Slice 92: the Round step's labels and rules — server-owned so
+        // the app matches the website. Failure keeps the bundled mirror.
+        async let options = try? api.roundOptions(token: token)
 
         if let response = await suggest {
             recentPartners = response.players
@@ -390,6 +463,12 @@ final class CreateMatchViewModel {
         }
         if let response = await groupList {
             groups = response.groups
+        }
+        if let response = await options, !response.roundFormats.isEmpty {
+            roundOptions = response
+            // The fetched registry may gate the held format differently
+            // than the fallback did — re-check the selection.
+            enforceFormatValidity()
         }
     }
 
@@ -611,9 +690,9 @@ final class CreateMatchViewModel {
 
     /// Round-step player-count chips (Solo / Twosome / Threesome /
     /// Foursome+). Grows with empty guest seats, shrinks from the bottom
-    /// (never removes the "me" seat). Solo forces Individual, like the
-    /// web. Foursome+ is a floor: asking for 4 when the party is already
-    /// 4–8 is a no-op, so re-tapping the preset never drops added seats.
+    /// (never removes the "me" seat). Foursome+ is a floor: asking for 4
+    /// when the party is already 4–8 is a no-op, so re-tapping the
+    /// preset never drops added seats.
     func setPlayerCount(_ count: Int) {
         if count == 4, seats.count >= 4 { return }
         let target = min(max(count, 1), 8)
@@ -624,20 +703,24 @@ final class CreateMatchViewModel {
             guard let index = seats.lastIndex(where: { !$0.isMe }) else { break }
             seats.remove(at: index)
         }
-        if seats.count < 2, format != "INDIVIDUAL" {
-            format = "INDIVIDUAL"
-        }
+        enforceFormatValidity()
         sanitizeSideGames()
     }
 
     func removeSeat(id: UUID) {
         seats.removeAll { $0.id == id && !$0.isMe }
-        // Solo rounds are always Individual — dropping below 2 players
-        // reverts a team format (mirrors the web).
-        if seats.count < 2, format != "INDIVIDUAL" {
+        enforceFormatValidity()
+        sanitizeSideGames()
+    }
+
+    /// A format whose minPlayers outgrew the party can't stay selected
+    /// — a team format needs four, so dropping below four falls back to
+    /// Individual rather than leaving something unplayable on screen.
+    private func enforceFormatValidity() {
+        if let option = roundOptions.format(id: format),
+           option.minPlayers > max(seats.count, 1), format != "INDIVIDUAL" {
             format = "INDIVIDUAL"
         }
-        sanitizeSideGames()
     }
 
     /// Links a seat to a suggestion — carries the userId and prefills
@@ -746,9 +829,11 @@ final class CreateMatchViewModel {
         let blurb: String
     }
 
-    /// Six of the server's seven rules. VEGAS is deliberately absent:
-    /// it carries its own options (birdie flip, doubling holes, stake)
-    /// and a half-configured Vegas is worse than no Vegas.
+    /// Offline fallback for `teamRuleChoices` (slice 92) — used only
+    /// when GET /round-options never loaded. Six of the server's seven
+    /// rules: VEGAS is deliberately absent, as it carries its own
+    /// options (birdie flip, doubling holes, stake) and a
+    /// half-configured Vegas is worse than no Vegas.
     static let teamRuleOptions: [TeamRuleOption] = [
         TeamRuleOption(key: "BEST_BALL", label: "Best ball", blurb: "The better ball on the hole."),
         TeamRuleOption(key: "WORST_BALL", label: "Worst ball", blurb: "The worse ball on the hole."),
@@ -823,11 +908,12 @@ final class CreateMatchViewModel {
         }
     }
 
-    /// Toggles a team rule, refusing to clear the last one — a team game
-    /// with no rule produces a board that can never resolve.
+    /// Toggles a team rule. Unchecking down to zero is allowed — the
+    /// round then asks for at least one before it can be created (the
+    /// canCreate gate), which reads more honestly than a chip that
+    /// refuses to uncheck.
     func toggleTeamRule(_ key: String) {
         if teamRules.contains(key) {
-            guard teamRules.count > 1 else { return }
             teamRules.remove(key)
         } else {
             teamRules.insert(key)
@@ -854,19 +940,16 @@ final class CreateMatchViewModel {
         defer { isCreating = false }
 
         // Belt & braces on the server's rules: a solo round is always
-        // Individual, games this round can't play never post, and the
-        // team game rides along whenever the Both shortcut is picked.
+        // Individual, and games this round can't play never post.
         var games = sideGames
         for kind in games where blocker(for: kind) != nil {
             games.remove(kind)
         }
-        if format == "BOTH", seats.count > 1 {
-            games.insert(Self.teamVsTeam)
-        }
-        // "Both" is a form shortcut, not a server format — on the wire
-        // it's an INDIVIDUAL round carrying the team-vs-team side game.
-        let requestedFormat = format == "BOTH" ? "INDIVIDUAL" : format
-        let effectiveFormat = seats.count > 1 ? requestedFormat : "INDIVIDUAL"
+        // Slice 92, verified live: BOTH posts as BOTH and the server
+        // spins up the team-vs-team game itself (teams map + default
+        // BEST_BALL rule) — no side-game entry needed. The picked rules
+        // and team handicap are saved onto it right after create.
+        let effectiveFormat = seats.count > 1 ? format : "INDIVIDUAL"
         // Team assignments travel for a team format AND for an
         // individual round with a team match running on top of it.
         let sendsTeams = effectiveFormat != "INDIVIDUAL" || games.contains(Self.teamVsTeam)
@@ -906,7 +989,7 @@ final class CreateMatchViewModel {
                 response = try await api.createMatch(request, token: token)
             }
             let matchId = response.match.id
-            if games.contains(Self.teamVsTeam) {
+            if effectiveFormat == "BOTH" || games.contains(Self.teamVsTeam) {
                 await saveTeamRules(matchId: matchId, token: token)
             }
             return matchId
@@ -922,19 +1005,26 @@ final class CreateMatchViewModel {
         }
     }
 
-    /// Saves the picked team rules onto the freshly created round. The
-    /// round itself already exists by this point, so a failure here is
-    /// never allowed to read as a failed create — the rules fall back to
-    /// the server's default and stay editable.
+    /// Saves the picked team rules + team handicap onto the freshly
+    /// created round. Verified live (slice 92): the config endpoint only
+    /// accepts the FULL object — the teams map (team number →
+    /// matchPlayerIds) alongside rule objects — so this reads the round
+    /// back for the seat ids first. The round itself already exists by
+    /// this point, so a failure here is never allowed to read as a
+    /// failed create — the server's BEST_BALL default stands and the
+    /// rules stay editable.
     private func saveTeamRules(matchId: String, token: String) async {
-        let rules = Self.teamRuleOptions
-            .map(\.key)
-            .filter { teamRules.contains($0) }
-        guard !rules.isEmpty else { return }
+        guard let detail = try? await api.matchDetail(id: matchId, token: token) else { return }
+        var teams: [String: [String]] = [:]
+        for player in detail.match.players {
+            teams[String(Self.teamIndex(player.team)), default: []].append(player.id)
+        }
+        let rules = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
+        guard !rules.isEmpty, !teams.isEmpty else { return }
         try? await api.setSideGameConfig(
             matchId: matchId,
             kind: Self.teamVsTeam,
-            config: TeamVsTeamConfig(rules: rules),
+            config: TeamVsTeamConfig(teams: teams, rules: rules, handicap: teamHandicap),
             token: token
         )
     }

@@ -480,43 +480,62 @@ struct CreateMatchView: View {
         )
     }
 
+    /// Slice 92, rebuilt to match the website: player count FIRST (it
+    /// decides which formats can be offered), then format, scoring, and
+    /// — only for team formats — team handicap and team rules.
     @ViewBuilder private var formatGroup: some View {
         if viewModel.openRoundGroup == 2 {
             VStack(alignment: .leading, spacing: 18) {
-                formatSection
                 playerCountSection
+                formatSection
                 scoringSection
+
+                if viewModel.selectedFormatOption?.usesTeams == true {
+                    teamHandicapSection
+                }
+                if viewModel.format == "BOTH" {
+                    roundTeamRulesSection
+                }
 
                 if viewModel.roundStage >= 3 {
                     roundContinueButton(from: 2, label: "DONE")
                 }
             }
+            .animation(.easeOut(duration: 0.18), value: viewModel.format)
         } else {
             roundChip(label: "FORMAT", summary: formatSummary, group: 2)
         }
     }
 
     /// Solo / Twosome / Threesome / Foursome+ — sets how many seats the
-    /// Players step starts with. Solo forces Individual. Foursome+ is a
-    /// floor, not a cap: it stays active for 5–8 players and tapping it
-    /// never shrinks a larger party back to 4.
+    /// Players step starts with. Foursome+ is a floor, not a cap: it
+    /// stays active for 5–8 players and tapping it never shrinks a
+    /// larger party back to 4.
     private var playerCountSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("NUMBER OF PLAYERS")
 
             SegmentPicker(
-                options: [(1, "SOLO"), (2, "TWOSOME"), (3, "THREESOME"), (4, "FOURSOME+")],
+                options: viewModel.roundOptions.playerCounts.map { ($0.count, $0.label) },
                 selection: playerCountBinding
             )
 
-            Text(
-                viewModel.seats.count == 1
-                    ? "Just you — solo rounds play Individual."
-                    : "Add up to 8 on the next step."
-            )
-            .font(SticksFont.mono(10.5, weight: .regular))
-            .foregroundStyle(Color.sticksFaint)
+            Text(playerCountBlurb)
+                .font(SticksFont.mono(10.5, weight: .regular))
+                .foregroundStyle(Color.sticksFaint)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// The chosen count's blurb from the server — Solo's says there are
+    /// no opponents and no odds. Falls back when the list is short.
+    private var playerCountBlurb: String {
+        if let option = viewModel.roundOptions.playerCount(min(viewModel.seats.count, 4)) {
+            return option.blurb
+        }
+        return viewModel.seats.count == 1
+            ? "Just you — solo rounds play Individual."
+            : "Add up to 8 on the next step."
     }
 
     /// Clamps the read side to 4 so a 5–8 party keeps Foursome+ lit;
@@ -635,15 +654,14 @@ struct CreateMatchView: View {
         }
     }
 
+    /// Player count first, then format, then scoring — reading the
+    /// chip replays the order the questions were asked. Server labels
+    /// throughout: "Teams", never the stored "SCRAMBLE".
     private var formatSummary: String {
-        let formatName: String
-        switch viewModel.format {
-        case "SCRAMBLE": formatName = "Scramble"
-        case "BOTH": formatName = "Both"
-        default: formatName = "Individual"
-        }
-        let scoring = viewModel.scoringMode == "GROSS" ? "Gross" : "Net"
-        return "\(formatName) · \(playerCountLabel) · \(scoring)"
+        let formatName = viewModel.selectedFormatOption?.label ?? "Individual"
+        let scoring = viewModel.roundOptions.scoringMode(id: viewModel.scoringMode)?.label
+            ?? (viewModel.scoringMode == "GROSS" ? "Gross" : "Net")
+        return "\(playerCountLabel) · \(formatName) · \(scoring)"
     }
 
     private var playerCountLabel: String {
@@ -872,50 +890,174 @@ struct CreateMatchView: View {
 
     // MARK: - Scoring
 
+    /// Net · Gross · Custom — the Custom mode ("the group sets the
+    /// strokes given") was missing from the app entirely before 92.
     private var scoringSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("SCORING")
 
             SegmentPicker(
-                options: [("NET", "NET"), ("GROSS", "GROSS")],
+                options: viewModel.roundOptions.scoringModes.map { ($0.id, $0.label) },
                 selection: Bindable(viewModel).scoringMode
             )
+
+            if let mode = viewModel.roundOptions.scoringMode(id: viewModel.scoringMode) {
+                scoringModeBlurb(mode)
+            }
         }
     }
 
-    // MARK: - Format (slice 39)
-
-    /// Individual / Scramble / Both, matching the web. Teams are seated
-    /// on the Players step — a round that ends up solo is forced back to
-    /// Individual there (and again at submit, belt & braces).
-    private var formatSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("FORMAT")
-
-            SegmentPicker(
-                options: [
-                    ("INDIVIDUAL", "INDIVIDUAL"),
-                    ("SCRAMBLE", "SCRAMBLE"),
-                    ("BOTH", "BOTH"),
-                ],
-                selection: Bindable(viewModel).format
-            )
-
-            Text(formatHint)
+    /// "HANDICAP — Lowest gross minus handicap wins."
+    private func scoringModeBlurb(_ mode: RoundScoringMode) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let hint = mode.hint {
+                Text(hint.uppercased())
+                    .font(SticksFont.mono(9))
+                    .kerning(1)
+                    .foregroundStyle(Color.sticksGreen)
+            }
+            Text(mode.blurb)
                 .font(SticksFont.mono(10.5, weight: .regular))
                 .foregroundStyle(Color.sticksFaint)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .animation(.easeOut(duration: 0.18), value: viewModel.format)
     }
 
-    private var formatHint: String {
-        switch viewModel.format {
-        case "SCRAMBLE":
-            return "One ball per team — you'll split into Team A and Team B next."
-        case "BOTH":
-            return "Everyone plays their own ball, plus a team match on top."
-        default:
-            return "All-vs-all. Scramble: one ball per team. Both: individual + a team match."
+    // MARK: - Format (slice 39 / 92)
+
+    /// Individual · Teams · Individual and Team — the server's words,
+    /// never the stored enum. A format the chosen player count can't
+    /// play is HIDDEN (a twosome is never offered a team format), and a
+    /// format outgrown by shrinking falls back to Individual in the
+    /// view model rather than sitting unplayable on screen.
+    private var formatSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("ROUND FORMAT")
+
+            let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(viewModel.availableFormats) { option in
+                    formatChip(option)
+                }
+            }
+
+            if let blurb = viewModel.selectedFormatOption?.blurb {
+                Text(blurb)
+                    .font(SticksFont.mono(10.5, weight: .regular))
+                    .foregroundStyle(Color.sticksFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func formatChip(_ option: RoundFormatOption) -> some View {
+        let isActive = viewModel.format == option.id
+        return Button {
+            withAnimation(.easeOut(duration: 0.18)) {
+                viewModel.format = option.id
+            }
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            Text(option.label)
+                .font(SticksFont.sans(13.5, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(isActive ? Color.sticksCream : Color.sticksMuted)
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(isActive ? Color.sticksGreen : Color.sticksPanel2)
+                .clipShape(.rect(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(isActive ? Color.clear : Color.sticksHairline, lineWidth: 1)
+                )
+                .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("Format \(option.label)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    // MARK: - Team questions (slice 92)
+
+    /// Only asked when the format uses teams: how a SIDE's score is
+    /// handicapped — no allowance, the average, or set by hand.
+    private var teamHandicapSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("TEAM HANDICAP")
+
+            SegmentPicker(
+                options: viewModel.roundOptions.teamHandicapModes.map { ($0.id, $0.label) },
+                selection: Bindable(viewModel).teamHandicap
+            )
+
+            if let mode = viewModel.roundOptions.teamHandicapMode(id: viewModel.teamHandicap) {
+                Text(mode.blurb)
+                    .font(SticksFont.mono(10.5, weight: .regular))
+                    .foregroundStyle(Color.sticksFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Team-vs-team rules, multi-select — every rule picked runs
+    /// simultaneously with its own leaderboard, which is why these are
+    /// checkboxes and not a picker. Only on Individual and Team: a
+    /// Scramble records one ball per team and none of the rules (they
+    /// all compare two balls per side) can be computed there, so the
+    /// section — and any selection — is simply gone when Scramble is on.
+    private var roundTeamRulesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                sectionLabel("TEAM RULES")
+                Spacer()
+                if !viewModel.teamRulesAreValid {
+                    Text("PICK AT LEAST ONE")
+                        .font(SticksFont.mono(9.5))
+                        .kerning(0.8)
+                        .foregroundStyle(Color.sticksError)
+                }
+            }
+
+            let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(viewModel.teamRuleChoices) { rule in
+                    teamRuleChip(rule)
+                }
+                vegasRuleRow
+            }
+
+            Text("Every rule you pick gets its own board. Teams are set on the Players step.")
+                .font(SticksFont.mono(10.5, weight: .regular))
+                .foregroundStyle(Color.sticksFaint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
+    }
+
+    /// Vegas carries its own options (birdie flip, doubling holes,
+    /// stake) — shown but unselectable until that panel ships.
+    private var vegasRuleRow: some View {
+        Group {
+            if let vegas = viewModel.roundOptions.teamRules.first(where: \.hasOptions) {
+                HStack(spacing: 6) {
+                    Image(systemName: "circle")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(vegas.label)
+                        .font(SticksFont.sans(13.5, weight: .semibold))
+                }
+                .foregroundStyle(Color.sticksFaint)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
+                .background(Color.sticksPanel2.opacity(0.5))
+                .clipShape(.rect(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.sticksHairline, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                )
+                .accessibilityLabel("\(vegas.label). Needs setup, coming soon.")
+            }
         }
     }
 
@@ -1045,14 +1187,12 @@ struct CreateMatchView: View {
         .animation(.easeOut(duration: 0.18), value: viewModel.teamsAreValid)
     }
 
-    /// What put teams on screen — the format, or the team-vs-team side
-    /// game riding on an individual round.
+    /// What put teams on screen — the format (server label: "Teams",
+    /// "Individual and Team"), or the team-vs-team side game riding on
+    /// an individual round.
     private var teamFormatName: String {
-        switch viewModel.format {
-        case "BOTH": return "Both"
-        case "SCRAMBLE": return "Scramble"
-        default: return "Team vs team"
-        }
+        if viewModel.format == "INDIVIDUAL" { return "Team vs team" }
+        return viewModel.selectedFormatOption?.label ?? "Team vs team"
     }
 
     @ViewBuilder private func suggestionsCard(for seat: CreateMatchViewModel.Seat) -> some View {
@@ -1231,7 +1371,7 @@ struct CreateMatchView: View {
 
             let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(CreateMatchViewModel.teamRuleOptions, id: \.key) { rule in
+                ForEach(viewModel.teamRuleChoices) { rule in
                     teamRuleChip(rule)
                 }
             }
@@ -1244,10 +1384,10 @@ struct CreateMatchView: View {
         .padding(.top, 4)
     }
 
-    private func teamRuleChip(_ rule: CreateMatchViewModel.TeamRuleOption) -> some View {
-        let isOn = viewModel.teamRules.contains(rule.key)
+    private func teamRuleChip(_ rule: TeamRuleChoice) -> some View {
+        let isOn = viewModel.teamRules.contains(rule.id)
         return Button {
-            viewModel.toggleTeamRule(rule.key)
+            viewModel.toggleTeamRule(rule.id)
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
             VStack(alignment: .leading, spacing: 2) {

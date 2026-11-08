@@ -701,6 +701,15 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /round-options — the new-round form's labels, blurbs and
+    /// rules (player counts, formats, scoring modes, team handicap
+    /// modes, team rules). Slice 92: the app builds its Round step from
+    /// this instead of hard-coding, so it always matches the website.
+    func roundOptions(token: String) async throws -> RoundOptionsResponse {
+        let request = makeRequest(path: "round-options", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     /// GET /tournaments/:id — full tournament detail with rounds,
     /// roster, cumulative leaderboard, and win odds. 403/404 carry
     /// server messages shown verbatim.
