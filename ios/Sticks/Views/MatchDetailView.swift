@@ -195,7 +195,8 @@ struct MatchDetailView: View {
                     editing: MatchEditContext(
                         detail: detail,
                         sideGameKinds: viewModel.response?.sideGames.map(\.kind) ?? [],
-                        groupId: match.groupId
+                        groupId: match.groupId,
+                        sideGameConfigs: viewModel.response?.sideGameConfigs ?? [:]
                     )
                 ) { _ in
                     showsEdit = false

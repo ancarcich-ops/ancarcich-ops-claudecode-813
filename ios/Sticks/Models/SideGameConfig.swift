@@ -264,15 +264,14 @@ nonisolated struct NassauConfig: Codable, Hashable {
 /// this is a list, not a single choice. An empty/absent list leaves the
 /// server on its own default.
 ///
-/// Slice 92, verified live: the POST /matches/:id/side-game-config
-/// endpoint only accepts the FULL config — the `teams` map (team number
-/// → matchPlayerIds) alongside the rules, and rules as OBJECTS
-/// ("rules":[{"rule":"BEST_BALL"}]); a bare {"rules":[…]} or string
-/// entries get "That game has no settings, or the settings were
-/// invalid." The team-handicap mode rides along as `handicap` (the
-/// server currently accepts-and-drops it; kept for when it persists).
-/// Decoding is tolerant of every historical shape (string rules,
-/// missing teams) so old rounds read back.
+/// Slice 92 round 2, verified live: on the round itself (POST/PATCH
+/// /matches) `teamRules` goes as a bare id list and the server spins
+/// the team game with those rules. The side-game-config endpoint still
+/// exists and still only accepts the FULL object — the `teams` map
+/// (team number → matchPlayerIds) alongside rule OBJECTS
+/// ("rules":[{"rule":"BEST_BALL"}]) — which is the shape this struct
+/// decodes back for edit-mode prefill. Decoding is tolerant of every
+/// historical shape (string rules, missing teams) so old rounds read.
 nonisolated struct TeamVsTeamConfig: Codable, Hashable {
     nonisolated struct Rule: Codable, Hashable {
         let rule: String

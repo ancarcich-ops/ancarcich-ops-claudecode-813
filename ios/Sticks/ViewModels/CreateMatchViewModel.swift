@@ -18,6 +18,9 @@ struct MatchEditContext {
     let detail: MatchDetail
     let sideGameKinds: [String]
     let groupId: String?
+    /// Slice 92 round 2: raw per-game config JSON keyed by kind — the
+    /// team-vs-team entry prefills the rules picker in edit mode.
+    let sideGameConfigs: [String: String]
 }
 
 @Observable
@@ -97,8 +100,15 @@ final class CreateMatchViewModel {
     var scoringMode = "NET"
     /// Slice 92: how a TEAM's score is handicapped — GROSS (no
     /// allowance), AVG (mean of members' handicaps) or CUSTOM (the
-    /// group sets each side's allowance). Only asked for team formats.
-    var teamHandicap = "GROSS"
+    /// group sets each side's allowance). Asked on Teams only. Slice 92
+    /// round 2: the round payload never echoes the stored mode, so edit
+    /// mode cannot prefill it — `teamHandicapTouched` guards the PATCH,
+    /// sending nothing rather than silently resetting a custom mode to
+    /// Gross when the picker was never touched.
+    var teamHandicap = "GROSS" {
+        didSet { teamHandicapTouched = true }
+    }
+    private(set) var teamHandicapTouched = false
     /// The round's tee time — maps to the create body's `scheduledAt`.
     /// Defaults to now, matching the web's starting state (slice 45).
     var teeTime: Date = .now
@@ -272,7 +282,8 @@ final class CreateMatchViewModel {
 
     var sideGames: Set<String> = []
     /// Team-vs-team scoring rules, keyed exactly as the server names
-    /// them. Never empty — a team game with no rule can never resolve.
+    /// them. Defaults to Best Ball; edit mode prefills the round's
+    /// stored rules. The create gate still demands ≥1 on Both.
     private(set) var teamRules: Set<String> = ["BEST_BALL"]
     private(set) var groups: [SticksGroup] = []
     var selectedGroupId: String?
@@ -335,6 +346,19 @@ final class CreateMatchViewModel {
         // the round the way it was set up.
         format = resolved == "INDIVIDUAL" && kinds.contains(Self.teamVsTeam) ? "BOTH" : resolved
         sideGames = kinds
+        // Prefill the stored team rules so edit mode shows what's live
+        // on the round — and the "pick at least one" gate doesn't force
+        // a re-pick of rules that are already running. (Init assignments
+        // don't trip property observers, so this never marks the
+        // handicap picker as touched.)
+        if let raw = editing.sideGameConfigs[Self.teamVsTeam],
+           let config = TeamVsTeamConfig.decode(from: raw) {
+            let ids = Set(config.ruleIds)
+            if !ids.isEmpty { teamRules = ids }
+            if let handicap = config.handicap {
+                teamHandicap = handicap
+            }
+        }
         selectedGroupId = editing.groupId
         teeTime = detail.scheduledAt
         // Edit mode opens with everything answered — all chips, like
@@ -972,10 +996,17 @@ final class CreateMatchViewModel {
         //
         // Team handicap rides only on a Teams (scramble) round — on
         // Individual and Team the round's NET/GROSS/CUSTOM scoring is
-        // already the team handicap. Rules ride only on Individual and
-        // Team, as a bare id list; empty is sent as absent so an edit
-        // never wipes rules already stored on the round.
-        let handicapMode = effectiveFormat == "SCRAMBLE" ? teamHandicap : nil
+        // already the team handicap. On an edit it rides only when the
+        // user actually touched the picker (see teamHandicapTouched).
+        // Rules ride only on Individual and Team, as a bare id list;
+        // empty is sent as absent so an edit never wipes rules already
+        // stored on the round.
+        let handicapMode: String?
+        if isEditing && !teamHandicapTouched {
+            handicapMode = nil
+        } else {
+            handicapMode = effectiveFormat == "SCRAMBLE" ? teamHandicap : nil
+        }
         let pickedRules = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
         let request = CreateMatchRequest(
             courseName: course.name,
