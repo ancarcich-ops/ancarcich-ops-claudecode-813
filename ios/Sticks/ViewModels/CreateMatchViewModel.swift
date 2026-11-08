@@ -948,7 +948,7 @@ final class CreateMatchViewModel {
         // Slice 92, verified live: BOTH posts as BOTH and the server
         // spins up the team-vs-team game itself (teams map + default
         // BEST_BALL rule) — no side-game entry needed. The picked rules
-        // and team handicap are saved onto it right after create.
+        // and team handicap go on the round request itself.
         let effectiveFormat = seats.count > 1 ? format : "INDIVIDUAL"
         // Team assignments travel for a team format AND for an
         // individual round with a team match running on top of it.
@@ -969,6 +969,14 @@ final class CreateMatchViewModel {
         // The starting hole is sent always — an explicit 1 and an absent
         // field mean the same thing, and always sending it keeps the
         // request shape stable.
+        //
+        // Team handicap rides only on a Teams (scramble) round — on
+        // Individual and Team the round's NET/GROSS/CUSTOM scoring is
+        // already the team handicap. Rules ride only on Individual and
+        // Team, as a bare id list; empty is sent as absent so an edit
+        // never wipes rules already stored on the round.
+        let handicapMode = effectiveFormat == "SCRAMBLE" ? teamHandicap : nil
+        let pickedRules = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
         let request = CreateMatchRequest(
             courseName: course.name,
             holes: holes,
@@ -979,7 +987,9 @@ final class CreateMatchViewModel {
             players: players,
             sideGames: games.isEmpty ? nil : games.sorted(),
             groupId: selectedGroupId,
-            tournamentId: isEditing ? nil : tournamentId
+            tournamentId: isEditing ? nil : tournamentId,
+            teamHandicapMode: handicapMode,
+            teamRules: pickedRules.isEmpty ? nil : pickedRules
         )
         do {
             let response: CreateMatchResponse
@@ -988,11 +998,7 @@ final class CreateMatchViewModel {
             } else {
                 response = try await api.createMatch(request, token: token)
             }
-            let matchId = response.match.id
-            if effectiveFormat == "BOTH" || games.contains(Self.teamVsTeam) {
-                await saveTeamRules(matchId: matchId, token: token)
-            }
-            return matchId
+            return response.match.id
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
             return nil
@@ -1003,30 +1009,6 @@ final class CreateMatchViewModel {
             createError = "Can't reach Sticks. Check your connection and try again."
             return nil
         }
-    }
-
-    /// Saves the picked team rules + team handicap onto the freshly
-    /// created round. Verified live (slice 92): the config endpoint only
-    /// accepts the FULL object — the teams map (team number →
-    /// matchPlayerIds) alongside rule objects — so this reads the round
-    /// back for the seat ids first. The round itself already exists by
-    /// this point, so a failure here is never allowed to read as a
-    /// failed create — the server's BEST_BALL default stands and the
-    /// rules stay editable.
-    private func saveTeamRules(matchId: String, token: String) async {
-        guard let detail = try? await api.matchDetail(id: matchId, token: token) else { return }
-        var teams: [String: [String]] = [:]
-        for player in detail.match.players {
-            teams[String(Self.teamIndex(player.team)), default: []].append(player.id)
-        }
-        let rules = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
-        guard !rules.isEmpty, !teams.isEmpty else { return }
-        try? await api.setSideGameConfig(
-            matchId: matchId,
-            kind: Self.teamVsTeam,
-            config: TeamVsTeamConfig(teams: teams, rules: rules, handicap: teamHandicap),
-            token: token
-        )
     }
 
     // MARK: - Handicap helpers

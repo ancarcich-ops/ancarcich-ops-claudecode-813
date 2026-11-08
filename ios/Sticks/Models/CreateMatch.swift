@@ -173,6 +173,12 @@ nonisolated struct CreateMatchRequest: Encodable {
     let sideGames: [String]?
     let groupId: String?
     let tournamentId: String?
+    /// Slice 92 round 2: the server persists both now. Team handicap
+    /// rides only on a Teams (scramble) round — on Individual and Team
+    /// the round's net/gross/custom scoring already sets it. Rules ride
+    /// only on Individual and Team, as a bare id list.
+    let teamHandicapMode: String?
+    let teamRules: [String]?
 }
 
 nonisolated struct CreatedMatch: Decodable {

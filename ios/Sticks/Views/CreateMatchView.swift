@@ -482,7 +482,9 @@ struct CreateMatchView: View {
 
     /// Slice 92, rebuilt to match the website: player count FIRST (it
     /// decides which formats can be offered), then format, scoring, and
-    /// — only for team formats — team handicap and team rules.
+    /// the team extras — team handicap on Teams only (on Individual and
+    /// Team the round's scoring mode already sets it), team rules on
+    /// Individual and Team only.
     @ViewBuilder private var formatGroup: some View {
         if viewModel.openRoundGroup == 2 {
             VStack(alignment: .leading, spacing: 18) {
@@ -490,7 +492,7 @@ struct CreateMatchView: View {
                 formatSection
                 scoringSection
 
-                if viewModel.selectedFormatOption?.usesTeams == true {
+                if viewModel.format == "SCRAMBLE" {
                     teamHandicapSection
                 }
                 if viewModel.format == "BOTH" {
