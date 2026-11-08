@@ -138,6 +138,15 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     let startingHole: Int
     let scoringMode: String
     let format: String
+    /// Slice 92 round 3: the format as the UI should show it — BOTH for
+    /// an individual round carrying the team-vs-team game, which `format`
+    /// (the wire value) never says. Nil on older payloads; callers fall
+    /// back to inferring BOTH from a TEAM_VS_TEAM side game.
+    let uiFormat: String?
+    /// The round's stored team-handicap mode (GROSS / AVG / CUSTOM) —
+    /// nil unless the round is a scramble. Edit mode prefills the picker
+    /// from this.
+    let teamHandicapMode: String?
     let isCreator: Bool
     let myMatchPlayerId: String?
     /// Slice 61: true when the caller holds no seat AND at least one seat
@@ -157,7 +166,8 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, status, holes, startingHole
-        case scoringMode, format, isCreator, myMatchPlayerId, canClaimSeat
+        case scoringMode, format, uiFormat, teamHandicapMode
+        case isCreator, myMatchPlayerId, canClaimSeat
         case pars, strokeIndex, players
         case createdByUsername, createdBy, creator
     }
@@ -178,6 +188,8 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
         startingHole = try container.decode(Int.self, forKey: .startingHole)
         scoringMode = try container.decode(String.self, forKey: .scoringMode)
         format = try container.decode(String.self, forKey: .format)
+        uiFormat = try container.decodeIfPresent(String.self, forKey: .uiFormat)
+        teamHandicapMode = try container.decodeIfPresent(String.self, forKey: .teamHandicapMode)
         isCreator = try container.decode(Bool.self, forKey: .isCreator)
         myMatchPlayerId = try container.decodeIfPresent(String.self, forKey: .myMatchPlayerId)
         canClaimSeat = (try? container.decode(Bool.self, forKey: .canClaimSeat)) ?? false

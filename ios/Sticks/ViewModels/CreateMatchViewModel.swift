@@ -339,12 +339,17 @@ final class CreateMatchViewModel {
         scoringMode = detail.scoringMode
         let kinds = Set(editing.sideGameKinds.map { MatchDetailMath.eventGameKey($0) })
         let knownFormats = ["INDIVIDUAL", "SCRAMBLE", "BOTH"]
+        // Slice 92 round 3: uiFormat says what the picker should show —
+        // BOTH for an individual round carrying the team-vs-team game,
+        // which the wire `format` never says. Older payloads omit it;
+        // fall back to inferring BOTH from the side-game kinds.
         let detailFormat = detail.format.uppercased()
         let resolved = knownFormats.contains(detailFormat) ? detailFormat : "INDIVIDUAL"
-        // The server has no BOTH — it stores an INDIVIDUAL round with the
-        // team game attached. Read that back as Both so the picker shows
-        // the round the way it was set up.
-        format = resolved == "INDIVIDUAL" && kinds.contains(Self.teamVsTeam) ? "BOTH" : resolved
+        if let ui = detail.uiFormat?.uppercased(), knownFormats.contains(ui) {
+            format = ui
+        } else {
+            format = resolved == "INDIVIDUAL" && kinds.contains(Self.teamVsTeam) ? "BOTH" : resolved
+        }
         sideGames = kinds
         // Prefill the stored team rules so edit mode shows what's live
         // on the round — and the "pick at least one" gate doesn't force
@@ -355,9 +360,17 @@ final class CreateMatchViewModel {
            let config = TeamVsTeamConfig.decode(from: raw) {
             let ids = Set(config.ruleIds)
             if !ids.isEmpty { teamRules = ids }
-            if let handicap = config.handicap {
-                teamHandicap = handicap
-            }
+        }
+        // The stored team-handicap mode now echoes on the round (nil
+        // unless it's a scramble) — prefill the picker from it, falling
+        // back to the team game's config for rounds saved before the
+        // echo shipped. Init assignments never mark the picker touched.
+        if let echoed = detail.teamHandicapMode {
+            teamHandicap = echoed
+        } else if let raw = editing.sideGameConfigs[Self.teamVsTeam],
+                  let config = TeamVsTeamConfig.decode(from: raw),
+                  let handicap = config.handicap {
+            teamHandicap = handicap
         }
         selectedGroupId = editing.groupId
         teeTime = detail.scheduledAt
