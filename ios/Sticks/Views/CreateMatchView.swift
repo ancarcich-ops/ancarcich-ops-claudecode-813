@@ -493,7 +493,10 @@ struct CreateMatchView: View {
                 scoringSection
 
                 if viewModel.format == "SCRAMBLE" {
-                    teamHandicapSection
+                    teamGameSection
+                    if viewModel.teamsGame == "SCRAMBLE" {
+                        teamHandicapSection
+                    }
                 }
                 if viewModel.format == "BOTH" {
                     roundTeamRulesSection
@@ -663,7 +666,12 @@ struct CreateMatchView: View {
         let formatName = viewModel.selectedFormatOption?.label ?? "Individual"
         let scoring = viewModel.roundOptions.scoringMode(id: viewModel.scoringMode)?.label
             ?? (viewModel.scoringMode == "GROSS" ? "Gross" : "Net")
-        return "\(playerCountLabel) · \(formatName) · \(scoring)"
+        // Teams + a named game reads the game, since that's the round's
+        // whole competition ("Foursome · Teams · Best Ball · Net").
+        let game = viewModel.format == "SCRAMBLE" && viewModel.teamsGame != "SCRAMBLE"
+            ? " · \(viewModel.roundOptions.teamRule(id: viewModel.teamsGame)?.label ?? "")"
+            : ""
+        return "\(playerCountLabel) · \(formatName)\(game) · \(scoring)"
     }
 
     private var playerCountLabel: String {
@@ -982,7 +990,68 @@ struct CreateMatchView: View {
 
     // MARK: - Team questions (slice 92)
 
-    /// Only asked when the format uses teams: how a SIDE's score is
+    /// Teams asks WHICH game the two sides play: a true scramble, or
+    /// one of the team-vs-team rules as the round's whole competition
+    /// (single choice — this IS the game, not boards running alongside).
+    /// A non-scramble game posts as BOTH, so the team-handicap question
+    /// gives way to the round's Net/Gross/Custom scoring.
+    private var teamGameSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("TEAM GAME")
+
+            let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                teamGameChip(id: "SCRAMBLE", label: "Scramble")
+                ForEach(viewModel.teamRuleChoices) { rule in
+                    teamGameChip(id: rule.id, label: rule.label)
+                }
+                vegasRuleRow
+            }
+
+            Text(selectedGameBlurb)
+                .font(SticksFont.mono(10.5, weight: .regular))
+                .foregroundStyle(Color.sticksFaint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
+    }
+
+    private var selectedGameBlurb: String {
+        if viewModel.teamsGame == "SCRAMBLE" {
+            return "Both play their own balls, the better lie is taken each shot — one ball per side is recorded."
+        }
+        return viewModel.roundOptions.teamRule(id: viewModel.teamsGame)?.blurb ?? ""
+    }
+
+    private func teamGameChip(id: String, label: String) -> some View {
+        let isActive = viewModel.teamsGame == id
+        return Button {
+            withAnimation(.easeOut(duration: 0.18)) {
+                viewModel.teamsGame = id
+            }
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            Text(label)
+                .font(SticksFont.sans(13.5, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(isActive ? Color.sticksCream : Color.sticksMuted)
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(isActive ? Color.sticksGreen : Color.sticksPanel2)
+                .clipShape(.rect(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(isActive ? Color.clear : Color.sticksHairline, lineWidth: 1)
+                )
+                .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("Team game \(label)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    /// Only asked for a true scramble: how a SIDE's score is
     /// handicapped — no allowance, the average, or set by hand.
     private var teamHandicapSection: some View {
         VStack(alignment: .leading, spacing: 10) {

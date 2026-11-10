@@ -113,6 +113,13 @@ final class CreateMatchViewModel {
         didSet { teamHandicapTouched = true }
     }
     private(set) var teamHandicapTouched = false
+    /// Slice 92 round 4: Teams asks WHICH team game — a true scramble
+    /// (one ball per side) or one of the team-vs-team rules played as
+    /// the round's whole competition. "SCRAMBLE" is the default. A
+    /// non-scramble game posts as BOTH with that single rule: the
+    /// server runs the team game only off a BOTH round (verified live —
+    /// it silently drops teamRules on SCRAMBLE).
+    var teamsGame = "SCRAMBLE"
     /// The round's tee time — maps to the create body's `scheduledAt`.
     /// Defaults to now, matching the web's starting state (slice 45).
     var teeTime: Date = .now
@@ -131,6 +138,7 @@ final class CreateMatchViewModel {
             // silently into a round that scores nothing.
             if format == "SCRAMBLE" {
                 teamRules.removeAll()
+                teamsGame = "SCRAMBLE"
             } else if format == "BOTH", teamRules.isEmpty {
                 // Both needs at least one rule to score the team game.
                 teamRules.insert(Self.bestBallRule)
@@ -1002,6 +1010,16 @@ final class CreateMatchViewModel {
         // BEST_BALL rule) — no side-game entry needed. The picked rules
         // and team handicap go on the round request itself.
         let effectiveFormat = seats.count > 1 ? format : "INDIVIDUAL"
+        // Teams + a real team game posts as BOTH with that single rule —
+        // the server has no scramble-plus-game format, and it drops
+        // teamRules sent on a SCRAMBLE round. A true scramble (the
+        // default Teams game) stays SCRAMBLE.
+        var postedFormat = effectiveFormat
+        var postedRules: [String]?
+        if effectiveFormat == "SCRAMBLE", teamsGame != "SCRAMBLE" {
+            postedFormat = "BOTH"
+            postedRules = [teamsGame]
+        }
         // Team assignments travel for a team format AND for an
         // individual round with a team match running on top of it.
         let sendsTeams = effectiveFormat != "INDIVIDUAL" || games.contains(Self.teamVsTeam)
@@ -1022,33 +1040,38 @@ final class CreateMatchViewModel {
         // field mean the same thing, and always sending it keeps the
         // request shape stable.
         //
-        // Team handicap rides only on a Teams (scramble) round — on
-        // Individual and Team the round's NET/GROSS/CUSTOM scoring is
-        // already the team handicap. On an edit it rides only when the
-        // user actually touched the picker (see teamHandicapTouched).
-        // Rules ride only on Individual and Team, as a bare id list;
-        // empty is sent as absent so an edit never wipes rules already
-        // stored on the round.
+        // Team handicap rides only on a posted-scramble round — the
+        // moment a team game rides along (Teams + game, or Individual
+        // and Team) the round's NET/GROSS/CUSTOM scoring is already the
+        // team handicap. On an edit it rides only when the user
+        // actually touched the picker (see teamHandicapTouched).
+        // Rules ride on Individual and Team from the multi-select, and
+        // on Teams from the game picker, as a bare id list; empty is
+        // sent as absent so an edit never wipes rules already stored
+        // on the round.
         let handicapMode: String?
         if isEditing && !teamHandicapTouched {
             handicapMode = nil
         } else {
-            handicapMode = effectiveFormat == "SCRAMBLE" ? teamHandicap : nil
+            handicapMode = postedFormat == "SCRAMBLE" ? teamHandicap : nil
         }
-        let pickedRules = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
+        if postedRules == nil, postedFormat == "BOTH" {
+            let picked = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
+            postedRules = picked.isEmpty ? nil : picked
+        }
         let request = CreateMatchRequest(
             courseName: course.name,
             holes: holes,
             startingHole: effectiveStartingHole,
             scheduledAt: ISO8601DateFormatter().string(from: teeTime),
             scoringMode: scoringMode,
-            format: effectiveFormat,
+            format: postedFormat,
             players: players,
             sideGames: games.isEmpty ? nil : games.sorted(),
             groupId: selectedGroupId,
             tournamentId: isEditing ? nil : tournamentId,
             teamHandicapMode: handicapMode,
-            teamRules: pickedRules.isEmpty ? nil : pickedRules
+            teamRules: postedRules
         )
         do {
             let response: CreateMatchResponse
