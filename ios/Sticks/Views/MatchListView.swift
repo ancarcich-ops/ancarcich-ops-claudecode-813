@@ -85,6 +85,10 @@ struct MatchListView: View {
         .popsToRoot(on: .home, path: $path)
         .task {
             await viewModel.load(session: session, group: groupFilter.groupQueryValue)
+            // Slice 96: re-sync the account's display prefs so reaction
+            // rows reflect a change made on the website. Throttled in
+            // the store.
+            await DisplayPrefsStore.shared.refresh(session: session)
         }
         // Slice 38: the switcher drives the fetch — the server computes
         // cross-group visibility (a group's feed includes rounds its
@@ -324,13 +328,22 @@ struct MatchListView: View {
                 // be a NavigationLink (the link would swallow the nested
                 // chip taps) — a container tap gesture pushes the detail
                 // instead, and the deeper chip Buttons win their own taps.
-                MatchCardView(match: match, showsPicks: match.status == .inProgress) { emoji in
-                    Task { await viewModel.toggleReaction(
-                        matchId: match.id,
-                        emoji: emoji,
-                        session: session
-                    ) }
-                }
+                // Slice 96: "Show reactions" off → pass nil, which hides
+                // the card's whole reaction row (the row only renders
+                // when a toggle closure is provided).
+                MatchCardView(
+                    match: match,
+                    showsPicks: match.status == .inProgress,
+                    onToggleReaction: DisplayPrefsStore.shared.showReactions
+                        ? { emoji in
+                            Task { await viewModel.toggleReaction(
+                                matchId: match.id,
+                                emoji: emoji,
+                                session: session
+                            ) }
+                        }
+                        : nil
+                )
                 .contentShape(.rect)
                 .onTapGesture { path.append(match) }
                 .accessibilityAddTraits(.isButton)

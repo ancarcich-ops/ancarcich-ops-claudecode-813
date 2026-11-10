@@ -88,6 +88,9 @@ struct HighlightRow: View {
     let highlight: MatchHighlight
     let tallies: [Reaction]
     let emojiSet: [String]
+    /// Slice 96: the account's "Show reactions" setting — false drops
+    /// this row's emoji chips while the highlight itself stays.
+    var showsReactions: Bool = true
     let onToggle: (String) -> Void
 
     var body: some View {
@@ -116,7 +119,9 @@ struct HighlightRow: View {
                 .font(SticksFont.sans(12))
                 .foregroundStyle(Color.sticksMuted)
 
-            ReactionRow(emojis: emojiSet, tallies: tallies, onToggle: onToggle)
+            if showsReactions {
+                ReactionRow(emojis: emojiSet, tallies: tallies, onToggle: onToggle)
+            }
         }
         .padding(.vertical, 10)
     }

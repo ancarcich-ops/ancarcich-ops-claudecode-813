@@ -1122,6 +1122,24 @@ nonisolated struct APIClient {
         let _: OkResponse = try await perform(request)
     }
 
+    /// GET /me/display-prefs — the account's display choices (slice 96).
+    /// `showReactions` decides what's ON SCREEN; the push toggle in
+    /// /me/push-prefs decides whether the phone buzzes. Two separate
+    /// switches on purpose.
+    func displayPrefs(token: String) async throws -> DisplayPrefsResponse {
+        let request = makeRequest(path: "me/display-prefs", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// POST /me/display-prefs — a partial post: the server leaves any
+    /// key not sent exactly as it was, and only a real boolean counts
+    /// (a string "false" is ignored rather than read as truthy).
+    func setDisplayPrefs(showReactions: Bool, token: String) async throws -> DisplayPrefsResponse {
+        var request = makeRequest(path: "me/display-prefs", method: "POST", token: token)
+        request.httpBody = try encoder.encode(DisplayPrefsUpdate(showReactions: showReactions))
+        return try await perform(request)
+    }
+
     /// GET /matches/:id/alerts — the caller's per-round alert override.
     func roundAlertMode(matchId: String, token: String) async throws -> RoundAlertMode {
         let request = makeRequest(path: "matches/\(matchId)/alerts", method: "GET", token: token)

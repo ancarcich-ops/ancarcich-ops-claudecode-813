@@ -258,6 +258,9 @@ struct MatchDetailView: View {
             // loading, so the phase change below can act on it.
             pendingScrollTarget = PendingHighlightScroll.consume(matchId: match.id)
             await viewModel.load(session: session)
+            // Slice 96: re-sync the account's display prefs (throttled
+            // in the store) so a website flip lands here too.
+            await DisplayPrefsStore.shared.refresh(session: session)
             // 30s poll while this screen is up; only fires when foregrounded.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
@@ -758,66 +761,120 @@ struct MatchDetailView: View {
         }
     }
 
-    // MARK: - Reactions (slice 93)
+    // MARK: - Reactions (slice 93) · display prefs (slice 96)
 
-    /// The round's reaction row (top) and — when the server has
-    /// highlights — the HIGHLIGHTS feed, each row rendered exactly as
-    /// sent with its own per-hole reaction row. Empty highlights render
-    /// no section at all.
+    /// The round's reaction row and — when the server has highlights —
+    /// the HIGHLIGHTS feed, each row rendered exactly as sent with its
+    /// own per-hole reaction row. Empty highlights render no section at
+    /// all.
+    ///
+    /// Slice 96 adds two independent quiet-downs:
+    /// - the account's "Show reactions" setting hides EVERY reaction
+    ///   row (feed, round, per-highlight) but keeps the Highlights
+    ///   list;
+    /// - the per-round "hide highlights" fold (device-local, keyed by
+    ///   match id) collapses the list behind its header, which keeps
+    ///   the count and a Show/Hide tap target.
+    @ViewBuilder
     private func reactionsCard(_ detail: MatchDetail) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !detail.highlights.isEmpty {
-                Text("HIGHLIGHTS")
+        let showsReactions = DisplayPrefsStore.shared.showReactions
+        let hasHighlights = !detail.highlights.isEmpty
+
+        // With reactions hidden and no highlights there's nothing left
+        // to render — no empty card.
+        if hasHighlights || showsReactions {
+            VStack(alignment: .leading, spacing: 12) {
+                if hasHighlights {
+                    highlightsHeader(count: detail.highlights.count)
+
+                    if !HighlightFoldStore.shared.isFolded(match.id) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(detail.highlights.enumerated()), id: \.offset) { index, highlight in
+                                if index > 0 {
+                                    Rectangle()
+                                        .fill(Color.sticksHairline.opacity(0.6))
+                                        .frame(height: 1)
+                                }
+                                HighlightRow(
+                                    highlight: highlight,
+                                    tallies: detail.tallies(for: highlight.reactionKey),
+                                    emojiSet: detail.emojiSet,
+                                    showsReactions: showsReactions
+                                ) { emoji in
+                                    Task { await viewModel.toggleReaction(
+                                        emoji: emoji,
+                                        targetKey: highlight.reactionKey,
+                                        session: session
+                                    ) }
+                                }
+                            }
+                        }
+                    }
+
+                    if showsReactions {
+                        Rectangle()
+                            .fill(Color.sticksHairline)
+                            .frame(height: 1)
+                    }
+                }
+
+                if showsReactions {
+                    ReactionRow(
+                        emojis: detail.emojiSet,
+                        tallies: detail.tallies(for: ReactionTarget.roundKey)
+                    ) { emoji in
+                        Task { await viewModel.toggleReaction(
+                            emoji: emoji,
+                            targetKey: ReactionTarget.roundKey,
+                            session: session
+                        ) }
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+            .id(HighlightScrollAnchor.id)
+        }
+    }
+
+    /// "HIGHLIGHTS · 3 … Show/Hide" — the whole header is the fold tap
+    /// target. The count stays visible while folded, so the section
+    /// still says there's something there.
+    private func highlightsHeader(count: Int) -> some View {
+        let isFolded = HighlightFoldStore.shared.isFolded(match.id)
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeOut(duration: 0.2)) {
+                HighlightFoldStore.shared.setFolded(!isFolded, matchId: match.id)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text("HIGHLIGHTS · \(count)")
                     .font(SticksFont.label(11, weight: .semibold))
                     .kerning(1.4)
                     .foregroundStyle(Color.sticksFaint)
 
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(detail.highlights.enumerated()), id: \.offset) { index, highlight in
-                        if index > 0 {
-                            Rectangle()
-                                .fill(Color.sticksHairline.opacity(0.6))
-                                .frame(height: 1)
-                        }
-                        HighlightRow(
-                            highlight: highlight,
-                            tallies: detail.tallies(for: highlight.reactionKey),
-                            emojiSet: detail.emojiSet
-                        ) { emoji in
-                            Task { await viewModel.toggleReaction(
-                                emoji: emoji,
-                                targetKey: highlight.reactionKey,
-                                session: session
-                            ) }
-                        }
-                    }
-                }
+                Spacer(minLength: 8)
 
-                Rectangle()
-                    .fill(Color.sticksHairline)
-                    .frame(height: 1)
+                Text(isFolded ? "SHOW" : "HIDE")
+                    .font(SticksFont.mono(10, weight: .semibold))
+                    .kerning(0.8)
+                    .foregroundStyle(Color.sticksGreen)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.sticksGreen.opacity(0.1))
+                    .clipShape(.capsule)
             }
-
-            ReactionRow(
-                emojis: detail.emojiSet,
-                tallies: detail.tallies(for: ReactionTarget.roundKey)
-            ) { emoji in
-                Task { await viewModel.toggleReaction(
-                    emoji: emoji,
-                    targetKey: ReactionTarget.roundKey,
-                    session: session
-                ) }
-            }
+            .contentShape(.rect)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.sticksCard)
-        .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
-                .stroke(Color.sticksHairline, lineWidth: 1)
-        )
-        .id(HighlightScrollAnchor.id)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Highlights, \(count) entries. Double tap to \(isFolded ? "show" : "hide") them.")
     }
 
     // MARK: - Scorecard

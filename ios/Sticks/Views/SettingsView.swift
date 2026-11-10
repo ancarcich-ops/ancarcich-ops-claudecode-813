@@ -82,6 +82,11 @@ struct SettingsView: View {
                         profileCard
                         handicapCard
                         peopleCard
+                        // Slice 96: the account's display prefs — next to
+                        // the notification toggles, but a different store
+                        // (/me/display-prefs vs /me/push-prefs): screen vs
+                        // buzz.
+                        DisplaySettingsCard(session: session)
                         NotificationSettingsCard()
                         WatchHealthCard()
                         mapCard
