@@ -19,7 +19,9 @@ struct CreateTournamentView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var scoringMode = "NET"
+    // Gross by default, matching the round creator — Net stays one tap
+    // away for groups that play with handicaps.
+    @State private var scoringMode = "GROSS"
     @State private var roundsPlanned = 3
     @State private var hasStartDate = false
     @State private var startDate: Date = .now

@@ -101,7 +101,11 @@ final class CreateMatchViewModel {
         }
     }
     var startsOnBack = false
-    var scoringMode = "NET"
+    /// Gross by default — too many golfers were round-creating past the
+    /// Net chip without knowing what handicap allowance would do to
+    /// their card. Net is one tap away; Gross is what the scoreboard
+    /// says.
+    var scoringMode = "GROSS"
     /// Slice 92: how a TEAM's score is handicapped — GROSS (no
     /// allowance), AVG (mean of members' handicaps) or CUSTOM (the
     /// group sets each side's allowance). Asked on Teams only. Slice 92
