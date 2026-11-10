@@ -19,6 +19,9 @@ nonisolated struct RoundOptionsResponse {
     var teamHandicapModes: [TeamHandicapMode]
     var teamRules: [TeamRuleChoice]
     var maxPlayers: Int
+    /// Slice 95: the support address the "can't find your course?"
+    /// link mails — server-owned, never hard-coded. Nil hides the link.
+    var supportEmail: String?
 
     /// The chosen count's blurb ("Solo round — no opponents, no odds.").
     func playerCount(_ count: Int) -> RoundPlayerCount? {
@@ -96,7 +99,7 @@ nonisolated struct TeamRuleChoice: Decodable, Hashable, Identifiable {
 extension RoundOptionsResponse: Decodable {
     private enum CodingKeys: String, CodingKey {
         case playerCounts, roundFormats, scoringModes, teamHandicapModes, teamRules
-        case soloSkipsSideGames, maxPlayers
+        case soloSkipsSideGames, maxPlayers, supportEmail
     }
 
     init(from decoder: Decoder) throws {
@@ -112,6 +115,7 @@ extension RoundOptionsResponse: Decodable {
         teamHandicapModes = list(CodingKeys.teamHandicapModes, as: TeamHandicapMode.self)
         teamRules = list(CodingKeys.teamRules, as: TeamRuleChoice.self)
         maxPlayers = (try? container.decodeIfPresent(Int.self, forKey: .maxPlayers)) ?? 8
+        supportEmail = (try? container.decodeIfPresent(String.self, forKey: .supportEmail)) ?? nil
     }
 
     /// Wrapper so one malformed row never sinks the array.

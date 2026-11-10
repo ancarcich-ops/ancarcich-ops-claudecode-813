@@ -61,6 +61,9 @@ struct MatchDetailView: View {
     @State private var showsReopenConfirm = false
     @State private var isDeleting = false
     @State private var actionError: String?
+    /// Slice 93: a reaction push's parked scroll target, consumed once
+    /// the detail has loaded — hole-level keys scroll to Highlights.
+    @State private var pendingScrollTarget: String?
 
     init(match: MatchSummary, session: SessionStore) {
         self.match = match
@@ -80,46 +83,60 @@ struct MatchDetailView: View {
         ZStack {
             Color.sticksBg.ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    header
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        header
 
-                    switch viewModel.phase {
-                    case .loading:
-                        loadingCard
-                    case .failed(let message, let statusCode):
-                        failedCard(message, statusCode: statusCode)
-                    case .loaded:
-                        if let detail = viewModel.detail {
-                            // Slice 54: the tab switcher only exists when
-                            // the match is priced — solo/unpriced rounds
-                            // have no Market, so no tab bar at all.
-                            if isMarketPriced(detail) {
-                                detailTabBar(detail)
-                            }
-                            if selectedTab == .liveOdds,
-                               isMarketPriced(detail),
-                               let odds = viewModel.response?.odds {
-                                // Live odds tab: the Market only.
-                                MarketCard(
-                                    detail: detail,
-                                    odds: odds,
-                                    sideGameSeries: viewModel.response?.sideGameSeries,
-                                    viewModel: viewModel,
-                                    session: session
-                                )
-                            } else {
-                                scorecardTabContent(detail)
+                        switch viewModel.phase {
+                        case .loading:
+                            loadingCard
+                        case .failed(let message, let statusCode):
+                            failedCard(message, statusCode: statusCode)
+                        case .loaded:
+                            if let detail = viewModel.detail {
+                                // Slice 54: the tab switcher only exists when
+                                // the match is priced — solo/unpriced rounds
+                                // have no Market, so no tab bar at all.
+                                if isMarketPriced(detail) {
+                                    detailTabBar(detail)
+                                }
+                                if selectedTab == .liveOdds,
+                                   isMarketPriced(detail),
+                                   let odds = viewModel.response?.odds {
+                                    // Live odds tab: the Market only.
+                                    MarketCard(
+                                        detail: detail,
+                                        odds: odds,
+                                        sideGameSeries: viewModel.response?.sideGameSeries,
+                                        viewModel: viewModel,
+                                        session: session
+                                    )
+                                } else {
+                                    scorecardTabContent(detail)
+                                }
                             }
                         }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 40)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 40)
-            }
-            .refreshable {
-                await viewModel.load(session: session, quiet: true)
+                .refreshable {
+                    await viewModel.load(session: session, quiet: true)
+                }
+                // Slice 93: a reaction push that pointed at a scored hole
+                // scrolls to the highlights card once content lands.
+                .onChange(of: viewModel.phase) { _, phase in
+                    guard case .loaded = phase, let target = pendingScrollTarget else { return }
+                    pendingScrollTarget = nil
+                    guard target.hasPrefix("hole:") else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation(.easeOut(duration: 0.4)) {
+                            proxy.scrollTo(HighlightScrollAnchor.id, anchor: .top)
+                        }
+                    }
+                }
             }
         }
         // Slice 36: the shared app header replaces the system nav bar
@@ -237,6 +254,9 @@ struct MatchDetailView: View {
             Text(actionError ?? "")
         }
         .task {
+            // Slice 93: claim any reaction push's scroll target before
+            // loading, so the phase change below can act on it.
+            pendingScrollTarget = PendingHighlightScroll.consume(matchId: match.id)
             await viewModel.load(session: session)
             // 30s poll while this screen is up; only fires when foregrounded.
             while !Task.isCancelled {
@@ -673,6 +693,10 @@ struct MatchDetailView: View {
                 currentHoleIndex: currentHoleIndex(detail)
             )
         }
+        // Slice 93: reactions + highlights — the round's five-emoji row
+        // plus the server's highlight feed when it has entries. Anyone
+        // who can SEE the round can react; no canScore gate.
+        reactionsCard(detail)
         // Slice 72: per-round alert override — the "I want to follow
         // THIS match" switch. Spectators only (seated players never get
         // pushes for their own round) and never on finished rounds.
@@ -732,6 +756,68 @@ struct MatchDetailView: View {
         if hasMenuActions {
             roundActionsCard
         }
+    }
+
+    // MARK: - Reactions (slice 93)
+
+    /// The round's reaction row (top) and — when the server has
+    /// highlights — the HIGHLIGHTS feed, each row rendered exactly as
+    /// sent with its own per-hole reaction row. Empty highlights render
+    /// no section at all.
+    private func reactionsCard(_ detail: MatchDetail) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if !detail.highlights.isEmpty {
+                Text("HIGHLIGHTS")
+                    .font(SticksFont.label(11, weight: .semibold))
+                    .kerning(1.4)
+                    .foregroundStyle(Color.sticksFaint)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(detail.highlights.enumerated()), id: \.offset) { index, highlight in
+                        if index > 0 {
+                            Rectangle()
+                                .fill(Color.sticksHairline.opacity(0.6))
+                                .frame(height: 1)
+                        }
+                        HighlightRow(
+                            highlight: highlight,
+                            tallies: detail.tallies(for: highlight.reactionKey),
+                            emojiSet: detail.emojiSet
+                        ) { emoji in
+                            Task { await viewModel.toggleReaction(
+                                emoji: emoji,
+                                targetKey: highlight.reactionKey,
+                                session: session
+                            ) }
+                        }
+                    }
+                }
+
+                Rectangle()
+                    .fill(Color.sticksHairline)
+                    .frame(height: 1)
+            }
+
+            ReactionRow(
+                emojis: detail.emojiSet,
+                tallies: detail.tallies(for: ReactionTarget.roundKey)
+            ) { emoji in
+                Task { await viewModel.toggleReaction(
+                    emoji: emoji,
+                    targetKey: ReactionTarget.roundKey,
+                    session: session
+                ) }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+        .id(HighlightScrollAnchor.id)
     }
 
     // MARK: - Scorecard

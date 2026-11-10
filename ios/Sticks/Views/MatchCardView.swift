@@ -22,6 +22,11 @@ struct MatchCardView: View {
     /// where the whole card is a NavigationLink and nested taps wouldn't
     /// land.
     var showsPicks: Bool = false
+    /// Slice 93: the round-level reaction row under the card's content —
+    /// nil hides the row (group feed, other surfaces). Cards render the
+    /// client's emoji constant since the list payload carries tallies
+    /// only.
+    var onToggleReaction: ((String) -> Void)? = nil
 
     private var pickStore: RoundPickStore { .shared }
 
@@ -49,6 +54,19 @@ struct MatchCardView: View {
                 }
             case .completed:
                 finalBody
+            }
+
+            // Slice 93: round reactions — the five emoji ARE the
+            // affordance, no add button anywhere.
+            if let onToggleReaction {
+                Rectangle()
+                    .fill(Color.sticksHairline)
+                    .frame(height: 1)
+                ReactionRow(
+                    emojis: Reaction.fallbackEmojiSet,
+                    tallies: match.reactions,
+                    onToggle: onToggleReaction
+                )
             }
         }
         .padding(16)

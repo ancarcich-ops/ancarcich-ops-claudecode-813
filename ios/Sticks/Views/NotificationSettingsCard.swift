@@ -26,35 +26,14 @@ struct NotificationSettingsCard: View {
             panelCard {
                 statusRow
 
-                toggleRow(
-                    label: "ROUND STARTS",
-                    caption: "When someone you follow or share a group with tees off.",
-                    keyPath: \.roundStarts
-                )
-                hairline
-                toggleRow(
-                    label: "BIRDIES & BETTER",
-                    caption: "Birdies, eagles, and aces as they land.",
-                    keyPath: \.birdiesAndBetter
-                )
-                hairline
-                toggleRow(
-                    label: "FRONT 9 SCORES",
-                    caption: "When a player makes the turn.",
-                    keyPath: \.frontNineScores
-                )
-                hairline
-                toggleRow(
-                    label: "FINAL SCORES",
-                    caption: "Full-round results when a round wraps.",
-                    keyPath: \.finalScores
-                )
-                hairline
-                toggleRow(
-                    label: "FOLLOW REQUESTS",
-                    caption: "New follow requests and accepts.",
-                    keyPath: \.followRequests
-                )
+                // Slice 93: every category the server can send, in the
+                // app's display order — unknown keys render too (with a
+                // humanized label), so a new server category is never a
+                // missing toggle.
+                ForEach(Array(prefRows.enumerated()), id: \.element.key) { index, row in
+                    if index > 0 { hairline }
+                    toggleRow(label: row.label, caption: row.caption, key: row.key)
+                }
 
                 Text("Round alerts cover everyone you follow and everyone you share a group with — any round they play, never your own scores.")
                     .font(SticksFont.sans(12))
@@ -135,10 +114,31 @@ struct NotificationSettingsCard: View {
 
     // MARK: - Category toggles
 
+    /// The rows to render: the app's known categories in display order,
+    /// then any server keys the app doesn't know yet (sorted, with a
+    /// humanized label and a generic caption).
+    private var prefRows: [(key: String, label: String, caption: String)] {
+        let known = PushPrefs.categories
+        let knownKeys = Set(known.map(\.key))
+        let extras = push.prefs.values.keys
+            .filter { !knownKeys.contains($0) }
+            .sorted()
+            .map { key in
+                (
+                    key: key,
+                    label: key
+                        .replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
+                        .uppercased(),
+                    caption: "Get notified when this happens."
+                )
+            }
+        return known + extras
+    }
+
     private func toggleRow(
         label: String,
         caption: String,
-        keyPath: WritableKeyPath<PushPrefs, Bool>
+        key: String
     ) -> some View {
         let enabled = push.authState != .denied
         return VStack(alignment: .leading, spacing: 3) {
@@ -150,7 +150,7 @@ struct NotificationSettingsCard: View {
 
                 Spacer()
 
-                Toggle("", isOn: prefBinding(keyPath))
+                Toggle("", isOn: prefBinding(key))
                     .labelsHidden()
                     .tint(Color.sticksGreen)
                     .disabled(!enabled)
@@ -165,10 +165,10 @@ struct NotificationSettingsCard: View {
         .opacity(enabled ? 1 : 0.5)
     }
 
-    private func prefBinding(_ keyPath: WritableKeyPath<PushPrefs, Bool>) -> Binding<Bool> {
+    private func prefBinding(_ key: String) -> Binding<Bool> {
         Binding(
-            get: { push.prefs[keyPath: keyPath] },
-            set: { push.setPref(keyPath, to: $0) }
+            get: { push.prefs[key] },
+            set: { push.setPref(key, to: $0) }
         )
     }
 

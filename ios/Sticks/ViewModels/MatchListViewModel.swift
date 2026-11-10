@@ -58,6 +58,10 @@ final class MatchListViewModel {
     /// stale response must never overwrite a newer filter's results.
     private var loadGeneration = 0
 
+    /// Slice 93: "matchId:emoji" pairs with an in-flight reaction toggle
+    /// — a second tap on the same chip waits instead of double-firing.
+    private var pendingReactions: Set<String> = []
+
     private let api: APIClient
 
     init(api: APIClient = .shared) {
@@ -122,6 +126,52 @@ final class MatchListViewModel {
     func markAttentionHandled(_ matchId: String) {
         Self.alertedMatchIds.insert(matchId)
         refreshAttentionMatches()
+    }
+
+    // MARK: - Reactions (slice 93)
+
+    /// Toggles the caller's round-level reaction on a feed card:
+    /// optimistic flip first, then the POST, then reconciliation with
+    /// the server's full post-toggle tally. A failure reverts to the
+    /// pre-tap tallies; a 401 signs out.
+    func toggleReaction(matchId: String, emoji: String, session: SessionStore) async {
+        guard let token = session.token else {
+            session.signOut()
+            return
+        }
+        let pendingKey = "\(matchId):\(emoji)"
+        guard !pendingReactions.contains(pendingKey),
+              let index = matches.firstIndex(where: { $0.id == matchId })
+        else { return }
+
+        pendingReactions.insert(pendingKey)
+        defer { pendingReactions.remove(pendingKey) }
+
+        let original = matches[index].reactions
+        matches[index].reactions = Self.toggled(original, emoji: emoji)
+
+        do {
+            let result = try await api.toggleReaction(matchId: matchId, emoji: emoji, token: token)
+            if let updatedIndex = matches.firstIndex(where: { $0.id == matchId }) {
+                matches[updatedIndex].reactions = result.reactions
+            }
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+        } catch {
+            if let revertedIndex = matches.firstIndex(where: { $0.id == matchId }) {
+                matches[revertedIndex].reactions = original
+            }
+        }
+    }
+
+    /// The optimistic flip of one emoji's tally in a target's list.
+    private static func toggled(_ tallies: [Reaction], emoji: String) -> [Reaction] {
+        if let index = tallies.firstIndex(where: { $0.emoji == emoji }) {
+            var updated = tallies
+            updated[index] = tallies[index].toggled()
+            return updated
+        }
+        return tallies + [Reaction(emoji: emoji, count: 1, mine: true)]
     }
 
     // MARK: - Stale (abandoned) live rounds

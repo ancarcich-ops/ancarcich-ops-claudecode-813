@@ -155,6 +155,11 @@ final class CreateMatchViewModel {
     /// payload when the fetch fails, so the form is never blank.
     private(set) var roundOptions: RoundOptionsResponse = .fallback
 
+    /// Slice 94: the signed-in player's saved round setups, newest
+    /// first (server-ordered, capped at 8). An empty list renders
+    /// nothing at all — no header, no empty-state copy.
+    private(set) var roundTemplates: [RoundTemplate] = []
+
     /// Formats the current player count can actually play, in server
     /// order. A format below its minPlayers is HIDDEN, not disabled —
     /// the website's behavior. The current selection always stays in
@@ -502,6 +507,10 @@ final class CreateMatchViewModel {
         // Slice 92: the Round step's labels and rules — server-owned so
         // the app matches the website. Failure keeps the bundled mirror.
         async let options = try? api.roundOptions(token: token)
+        // Slice 94: the player's saved round setups. Create mode only —
+        // edit mode never shows template chips. A failed or empty fetch
+        // leaves the list empty, which the Round step renders as nothing.
+        async let templates: [RoundTemplate]? = isEditing ? nil : try? api.roundTemplates(token: token)
 
         if let response = await suggest {
             recentPartners = response.players
@@ -522,6 +531,9 @@ final class CreateMatchViewModel {
             // The fetched registry may gate the held format differently
             // than the fallback did — re-check the selection.
             enforceFormatValidity()
+        }
+        if let list = await templates, !list.isEmpty {
+            roundTemplates = list
         }
     }
 
@@ -648,6 +660,86 @@ final class CreateMatchViewModel {
     /// Tapping a collapsed chip re-opens that group (web's StepChip).
     func reopenRoundGroup(_ group: Int) {
         openRoundGroup = group
+    }
+
+    // MARK: - Templates (slice 94)
+
+    /// A template is a pre-fill, not a commitment: every answer it
+    /// carries goes into the form and all groups collapse to chips —
+    /// the user can still edit anything before creating. Order matters
+    /// here: the course and holes setters both reset the shotgun tee,
+    /// so the starting hole is applied LAST.
+    func applyTemplate(_ template: RoundTemplate, session: SessionStore) {
+        guard !isEditing else { return }
+
+        if let name = template.courseName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            selectedCourse = CourseResult(
+                id: name,
+                name: name,
+                city: nil,
+                holes: template.holes ?? 18,
+                access: nil,
+                distanceMi: nil
+            )
+            loadTees(for: name, session: session)
+        }
+
+        if let holes = template.holes, holes == 9 || holes == 18 {
+            holesChoice = holes == 9 ? .front9 : .full18
+        }
+
+        if let mode = template.scoringMode?.uppercased(),
+           mode == "NET" || mode == "GROSS" || mode == "CUSTOM" {
+            scoringMode = mode
+        }
+
+        if let count = template.playerCount, count >= 1 {
+            setPlayerCount(min(count, 8))
+        }
+
+        // The handicap is a string on the wire — set it verbatim on my
+        // seat rather than round-tripping it through a number.
+        if let handicap = template.handicap?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !handicap.isEmpty,
+           let index = seats.firstIndex(where: { $0.isMe }) {
+            seats[index].handicapText = handicap
+        }
+
+        // Named side games apply directly (sanitized against the now-
+        // current holes and party); a bare sideGameCount is summary
+        // copy only — the form never guesses WHICH games were meant.
+        if let kinds = template.sideGames?.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }),
+           !kinds.isEmpty {
+            let known = Set(CreateMatchViewModel.sideGameOptions.map(\.kind))
+            let wanted = Set(kinds).intersection(known)
+            if !wanted.isEmpty {
+                sideGames = wanted
+                if wanted.contains(Self.teamVsTeam) {
+                    if seats.count < 2, canAddSeat { addSeat() }
+                    seedTeamsIfNeeded()
+                }
+                sanitizeSideGames()
+            }
+        }
+
+        // Any hole 1–18 — a shotgun template teeing off 7 lands as 7,
+        // never clamped to the Hole 1 / Hole 10 presets. Custom opens
+        // for anything the presets don't cover, so the picker tells
+        // the truth about its own value.
+        if let hole = template.startingHole, (1 ... 18).contains(hole) {
+            startingHole = hole
+            startTeeCustom = holes == 18 && hole != 1 && hole != 10
+        }
+
+        if let date = template.scheduledAt {
+            teeTime = date
+        }
+
+        // Everything the template touches is answered — collapse to
+        // chips like the web's roundStep 3.
+        roundStage = 3
+        openRoundGroup = nil
     }
 
     // MARK: - Tees

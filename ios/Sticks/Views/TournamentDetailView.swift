@@ -660,7 +660,8 @@ struct TournamentDetailView: View {
             tickerItems: [],
             myCall: nil,
             wagerCounts: [:],
-            hasCallData: false
+            hasCallData: false,
+            reactions: []
         )
     }
 

@@ -179,11 +179,15 @@ struct MainTabView: View {
     private func routePendingPushDeepLink() {
         guard let link = PushNotificationService.shared.consumePendingDeepLink() else { return }
         switch link {
-        case .match(let id):
+        case .match(let id, let targetKey):
+            var userInfo: [String: String] = ["matchId": id]
+            if let targetKey {
+                userInfo["targetKey"] = targetKey
+            }
             NotificationCenter.default.post(
                 name: .sticksOpenMatch,
                 object: nil,
-                userInfo: ["matchId": id]
+                userInfo: userInfo
             )
         case .people:
             selection = .settings

@@ -554,6 +554,25 @@ nonisolated struct APIClient {
         let _: OkResponse = try await perform(request)
     }
 
+    /// POST /matches/:id/reactions — toggles the caller's reaction on
+    /// the round (no target fields) or a scored hole (matchPlayerId +
+    /// hole TOGETHER — the server 400s a hole without a player). The
+    /// response carries the target's FULL post-toggle tally, so callers
+    /// reconcile instead of counting locally.
+    func toggleReaction(
+        matchId: String,
+        emoji: String,
+        matchPlayerId: String? = nil,
+        hole: Int? = nil,
+        token: String
+    ) async throws -> ReactionToggleResponse {
+        var request = makeRequest(path: "matches/\(matchId)/reactions", method: "POST", token: token)
+        request.httpBody = try encoder.encode(
+            ReactionRequest(emoji: emoji, matchPlayerId: matchPlayerId, hole: hole)
+        )
+        return try await perform(request)
+    }
+
     /// POST /matches/:id/complete — marks the round finished. No body;
     /// idempotent, so re-posting on an already-completed match is safe.
     func postComplete(matchId: String, token: String) async throws {
@@ -708,6 +727,15 @@ nonisolated struct APIClient {
     func roundOptions(token: String) async throws -> RoundOptionsResponse {
         let request = makeRequest(path: "round-options", method: "GET", token: token)
         return try await perform(request)
+    }
+
+    /// GET /round-templates — the signed-in player's saved round setups,
+    /// newest first in the server's order (never re-sorted locally).
+    /// Capped at 8, matching the web. Slice 94.
+    func roundTemplates(token: String) async throws -> [RoundTemplate] {
+        let request = makeRequest(path: "round-templates", method: "GET", token: token)
+        let response: RoundTemplatesResponse = try await perform(request)
+        return Array(response.templates.prefix(8))
     }
 
     /// GET /tournaments/:id — full tournament detail with rounds,

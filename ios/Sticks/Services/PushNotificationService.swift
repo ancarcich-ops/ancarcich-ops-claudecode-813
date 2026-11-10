@@ -24,7 +24,10 @@ import UserNotifications
 
 /// Where a tapped notification should land in the app.
 enum PushDeepLink: Equatable {
-    case match(id: String)
+    /// A round push; slice 93 reaction pushes also carry the target
+    /// key ("round" or "hole:<matchPlayerId>:<hole>") the detail
+    /// screen scrolls to.
+    case match(id: String, targetKey: String? = nil)
     case people
 }
 
@@ -33,11 +36,21 @@ enum PushDeepLink: Equatable {
 nonisolated struct PushPayload: Sendable {
     let type: String?
     let matchId: String?
+    /// Slice 93: which reaction target the push points at — read from
+    /// the payload root or the nested "data" object, whichever carries
+    /// it.
+    let targetKey: String?
 
     init(userInfo: [AnyHashable: Any]) {
-        type = userInfo["type"] as? String
-        let id = userInfo["matchId"] as? String
-        matchId = (id?.isEmpty == false) ? id : nil
+        // Some sends nest the fields under "data" — read both shapes.
+        let nested = userInfo["data"] as? [AnyHashable: Any]
+        func field(_ key: String) -> String? {
+            let value = (userInfo[key] as? String) ?? (nested?[key] as? String)
+            return (value?.isEmpty == false) ? value : nil
+        }
+        type = field("type")
+        matchId = field("matchId")
+        targetKey = field("targetKey")
     }
 }
 
@@ -185,10 +198,11 @@ final class PushNotificationService {
 
     // MARK: - Preferences
 
-    /// Flips one category: saved locally right away, mirrored to the
-    /// server best-effort (the server gates fanout on its copy).
-    func setPref(_ keyPath: WritableKeyPath<PushPrefs, Bool>, to value: Bool) {
-        prefs[keyPath: keyPath] = value
+    /// Flips one category (by server key): saved locally right away,
+    /// mirrored to the server best-effort (the server gates fanout on
+    /// its copy).
+    func setPref(_ key: String, to value: Bool) {
+        prefs[key] = value
         saveLocalPrefs()
         Task { await mirrorPrefsToServer() }
     }
@@ -247,7 +261,7 @@ final class PushNotificationService {
 
     private static func deepLink(for payload: PushPayload) -> PushDeepLink? {
         if let matchId = payload.matchId {
-            return .match(id: matchId)
+            return .match(id: matchId, targetKey: payload.targetKey)
         }
         if payload.type == "follow_request" || payload.type == "follow_accept" {
             return .people

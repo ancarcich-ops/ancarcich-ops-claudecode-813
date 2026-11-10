@@ -106,6 +106,9 @@ nonisolated struct MatchSummary: Identifiable, Hashable {
     /// True when the payload actually included market/call fields, so the
     /// client can tell "no pick" apart from "server didn't say".
     let hasCallData: Bool
+    /// Slice 93: per-emoji tallies for the round. Mutable so an
+    /// optimistic reaction toggle updates the card in place.
+    var reactions: [Reaction]
 
     /// Absolute hole number for round index `index`, honoring startingHole
     /// with wraparound past 18 (shotgun/back-nine starts).
@@ -167,7 +170,7 @@ extension MatchSummary: Decodable {
         case startingHole, scoringMode, format, tournamentId
         case pars, strokeIndex, probabilities
         case myMatchPlayerId, groupId, players, tickerItems
-        case myCall, wagerCounts
+        case myCall, wagerCounts, reactions
     }
 
     init(from decoder: Decoder) throws {
@@ -192,6 +195,7 @@ extension MatchSummary: Decodable {
         myCall = try? container.decodeIfPresent(String.self, forKey: .myCall)
         wagerCounts = (try? container.decode([String: Int].self, forKey: .wagerCounts)) ?? [:]
         hasCallData = container.contains(.myCall) || container.contains(.wagerCounts)
+        reactions = (try? container.decodeIfPresent([Reaction].self, forKey: .reactions)) ?? []
     }
 }
 

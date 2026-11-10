@@ -32,6 +32,10 @@ final class MatchDetailViewModel {
     /// inline on the claim card. Cleared on the next attempt/success.
     private(set) var claimError: String?
 
+    /// Slice 93: "targetKey:emoji" pairs with an in-flight reaction —
+    /// a second tap on the same chip waits instead of double-firing.
+    private var pendingReactions: Set<String> = []
+
     private let api: APIClient
     private let matchId: String
     /// The format string the round was opened with. Tournament rounds are
@@ -567,6 +571,65 @@ final class MatchDetailViewModel {
             session.signOut()
             throw error
         }
+    }
+
+    // MARK: - Reactions (slice 93)
+
+    /// True while that chip's toggle is in flight.
+    func isReactionPending(emoji: String, targetKey: String) -> Bool {
+        pendingReactions.contains("\(targetKey):\(emoji)")
+    }
+
+    /// Toggles the caller's reaction on the round or a scored hole:
+    /// optimistic flip first, then the POST, then reconciliation with
+    /// the server's full post-toggle tally. Hole-level targets parse
+    /// their matchPlayerId + hole out of the key — the two ride along
+    /// together or neither (the server 400s any other mix). A failure
+    /// quiet-refetches to restore the truth; a 401 signs out.
+    func toggleReaction(emoji: String, targetKey: String, session: SessionStore) async {
+        guard let token = session.token else {
+            session.signOut()
+            return
+        }
+        let pendingKey = "\(targetKey):\(emoji)"
+        guard !pendingReactions.contains(pendingKey) else { return }
+
+        pendingReactions.insert(pendingKey)
+        defer { pendingReactions.remove(pendingKey) }
+
+        applyOptimisticTally(emoji: emoji, targetKey: targetKey)
+
+        let holeTarget = ReactionTarget.holePlayerId(forKey: targetKey)
+        do {
+            let result = try await api.toggleReaction(
+                matchId: matchId,
+                emoji: emoji,
+                matchPlayerId: holeTarget?.matchPlayerId,
+                hole: holeTarget?.hole,
+                token: token
+            )
+            if var updated = response {
+                updated.match.reactions[targetKey] = result.reactions
+                response = updated
+            }
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+        } catch {
+            await load(session: session, quiet: true)
+        }
+    }
+
+    /// The optimistic flip of one emoji's tally under a target key.
+    private func applyOptimisticTally(emoji: String, targetKey: String) {
+        guard var updated = response else { return }
+        var tallies = updated.match.reactions[targetKey] ?? []
+        if let index = tallies.firstIndex(where: { $0.emoji == emoji }) {
+            tallies[index] = tallies[index].toggled()
+        } else {
+            tallies.append(Reaction(emoji: emoji, count: 1, mine: true))
+        }
+        updated.match.reactions[targetKey] = tallies
+        response = updated
     }
 
     /// Slice 89: resolves a tournament format id from the navigation

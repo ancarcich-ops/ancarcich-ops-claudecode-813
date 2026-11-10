@@ -48,6 +48,10 @@ struct CreateMatchView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: CreateMatchViewModel
     @State private var step: Step
+    /// Slice 94: whether the templates chip is expanded into its list.
+    /// Collapsed by default — one chip with a count, expanding to one
+    /// tappable row per saved setup.
+    @State private var isTemplateListOpen = false
     /// True while moving forward — drives the slide direction.
     @State private var isAdvancing = true
     @FocusState private var focusedSeat: UUID?
@@ -322,6 +326,8 @@ struct CreateMatchView: View {
     /// tappable chips that re-open on tap.
     private var roundRevealSections: some View {
         VStack(alignment: .leading, spacing: 18) {
+            templateSection
+
             courseGroup
 
             if viewModel.roundStage >= 1 {
@@ -335,6 +341,150 @@ struct CreateMatchView: View {
         }
         .animation(.easeOut(duration: 0.22), value: viewModel.roundStage)
         .animation(.easeOut(duration: 0.22), value: viewModel.openRoundGroup)
+    }
+
+    // MARK: - Templates (slice 94)
+
+    /// The player's saved round setups. A collapsed chip with the count
+    /// that expands to one tappable row per template; applying one is a
+    /// pre-fill, not a commitment — every answer stays editable. An
+    /// empty list renders NOTHING: no header, no empty-state copy.
+    @ViewBuilder private var templateSection: some View {
+        if !viewModel.isEditing, !viewModel.roundTemplates.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                if isTemplateListOpen {
+                    templateListCard
+                } else {
+                    templateChip
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: isTemplateListOpen)
+        }
+    }
+
+    private var templateChip: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeOut(duration: 0.22)) {
+                isTemplateListOpen = true
+            }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("TEMPLATES")
+                        .font(SticksFont.mono(9))
+                        .kerning(1.1)
+                        .foregroundStyle(Color.sticksGreen)
+
+                    Text("\(viewModel.roundTemplates.count) saved setup\(viewModel.roundTemplates.count == 1 ? "" : "s")")
+                        .font(SticksFont.sans(14.5, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.sticksMuted)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("\(viewModel.roundTemplates.count) saved round templates. Double tap to show them.")
+    }
+
+    private var templateListCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("TEMPLATES")
+                    .font(SticksFont.mono(10.5))
+                    .kerning(1.47)
+                    .foregroundStyle(Color.sticksGreen)
+
+                Spacer(minLength: 8)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        isTemplateListOpen = false
+                    }
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.sticksMuted)
+                        .frame(width: 28, height: 28)
+                        .background(Color.sticksPanel2)
+                        .clipShape(.circle)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel("Hide templates")
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Rectangle().fill(Color.sticksHairline).frame(height: 1)
+
+            ForEach(Array(viewModel.roundTemplates.enumerated()), id: \.element.id) { index, template in
+                if index > 0 {
+                    Rectangle().fill(Color.sticksHairline).frame(height: 1)
+                }
+                templateRow(template)
+            }
+        }
+        .background(Color.sticksCard)
+        .clipShape(.rect(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.sticksHairline, lineWidth: 1)
+        )
+    }
+
+    /// One saved setup — the summary line replays the round as saved
+    /// ("Rustic Canyon Golf Course 11/10/26 / 18H · Net · 2 players ·
+    /// 1 side game"); tapping it pre-fills the form and collapses the
+    /// list back to a chip.
+    private func templateRow(_ template: RoundTemplate) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeOut(duration: 0.22)) {
+                isTemplateListOpen = false
+                viewModel.applyTemplate(template, session: session)
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text(template.summaryLine.isEmpty ? "Saved round" : template.summaryLine)
+                    .font(SticksFont.sans(13.5, weight: .medium))
+                    .foregroundStyle(Color.sticksInk)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 8)
+
+                Text("USE")
+                    .font(SticksFont.mono(10))
+                    .kerning(0.8)
+                    .foregroundStyle(Color.sticksGreen)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.sticksGreen.opacity(0.1))
+                    .clipShape(.capsule)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(.rect)
+        }
+        .buttonStyle(RowPressStyle())
+        .accessibilityLabel("Use template: \(template.summaryLine)")
     }
 
     @ViewBuilder private var courseGroup: some View {
@@ -712,8 +862,46 @@ struct CreateMatchView: View {
                     }
                     .padding(.leading, 4)
                 }
+
+                // Slice 95: the escape hatch for a course the search
+                // doesn't know — a mailto link to the server's support
+                // address with a pre-filled subject. Never hard-coded,
+                // and hidden entirely when the server sends no address.
+                if let email = viewModel.roundOptions.supportEmail?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !email.isEmpty {
+                    addCourseNote(email: email)
+                }
             }
         }
+    }
+
+    /// "Can't find your course? Ask us to add it →" — opens the mail
+    /// composer with the subject pre-filled so the request is one tap.
+    private func addCourseNote(email: String) -> some View {
+        Button {
+            var components = URLComponents()
+            components.scheme = "mailto"
+            components.path = email
+            components.queryItems = [URLQueryItem(name: "subject", value: "Add a course")]
+            if let url = components.url {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            (
+                Text("Can't find your course? ")
+                    .foregroundStyle(Color.sticksMuted)
+                + Text("Ask us to add it →")
+                    .foregroundStyle(Color.sticksGreen)
+                    .underline()
+            )
+            .font(SticksFont.sans(13))
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 2)
+        .accessibilityLabel("Can't find your course? Email \(email) to add it")
     }
 
     private var courseSearchField: some View {

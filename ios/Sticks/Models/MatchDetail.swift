@@ -147,6 +147,17 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     /// nil unless the round is a scramble. Edit mode prefills the picker
     /// from this.
     let teamHandicapMode: String?
+    /// Slice 93: the server's emoji render order — reaction rows MUST
+    /// render in exactly this order. Empty on older payloads (cards fall
+    /// back to Reaction.fallbackEmojiSet).
+    let reactionEmoji: [String]
+    /// Slice 93: tallies keyed by target — "round", or
+    /// "hole:<matchPlayerId>:<hole>". Mutable so optimistic toggles
+    /// reconcile in place from the POST response.
+    var reactions: [String: [Reaction]]
+    /// Slice 93: server-computed score highlights, already sorted —
+    /// rendered as-is, never recomputed client-side.
+    var highlights: [MatchHighlight]
     let isCreator: Bool
     let myMatchPlayerId: String?
     /// Slice 61: true when the caller holds no seat AND at least one seat
@@ -167,6 +178,7 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, status, holes, startingHole
         case scoringMode, format, uiFormat, teamHandicapMode
+        case reactionEmoji, reactions, highlights
         case isCreator, myMatchPlayerId, canClaimSeat
         case pars, strokeIndex, players
         case createdByUsername, createdBy, creator
@@ -190,6 +202,9 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
         format = try container.decode(String.self, forKey: .format)
         uiFormat = try container.decodeIfPresent(String.self, forKey: .uiFormat)
         teamHandicapMode = try container.decodeIfPresent(String.self, forKey: .teamHandicapMode)
+        reactionEmoji = (try? container.decodeIfPresent([String].self, forKey: .reactionEmoji)) ?? []
+        reactions = (try? container.decodeIfPresent([String: [Reaction]].self, forKey: .reactions)) ?? [:]
+        highlights = (try? container.decodeIfPresent([MatchHighlight].self, forKey: .highlights)) ?? []
         isCreator = try container.decode(Bool.self, forKey: .isCreator)
         myMatchPlayerId = try container.decodeIfPresent(String.self, forKey: .myMatchPlayerId)
         canClaimSeat = (try? container.decode(Bool.self, forKey: .canClaimSeat)) ?? false
@@ -217,6 +232,17 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     /// True when the caller holds a seat in this round — i.e. they're one
     /// of the golfers actually playing it.
     var isSeated: Bool { myMatchPlayerId != nil }
+
+    /// Slice 93: emoji order for reaction rows — the server's when the
+    /// payload carries it, the client constant otherwise.
+    var emojiSet: [String] {
+        reactionEmoji.isEmpty ? Reaction.fallbackEmojiSet : reactionEmoji
+    }
+
+    /// A target key's tallies — empty when the server sent none for it.
+    func tallies(for key: String) -> [Reaction] {
+        reactions[key] ?? []
+    }
 
     /// Score entry is allowed only for golfers seated in the round —
     /// creating a round without playing in it doesn't grant scoring.

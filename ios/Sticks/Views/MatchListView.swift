@@ -97,10 +97,13 @@ struct MatchListView: View {
             Task { await viewModel.load(session: session, group: groupFilter.groupQueryValue) }
         }
         // A round created from a non-Home tab: reload and push its detail,
-        // exactly like Home's own create flow.
+        // exactly like Home's own create flow. Slice 93: a reaction push
+        // rides the same note with a targetKey the detail screen scrolls
+        // to once its content loads.
         .onReceive(NotificationCenter.default.publisher(for: .sticksOpenMatch)) { note in
             guard let matchId = note.userInfo?["matchId"] as? String else { return }
-            Task { await openCreatedMatch(id: matchId) }
+            let targetKey = note.userInfo?["targetKey"] as? String
+            Task { await openCreatedMatch(id: matchId, targetKey: targetKey) }
         }
         // Slice 42: the welcome flow's "New round" CTA opens the create
         // wizard, exactly like + New round in the header.
@@ -191,14 +194,22 @@ struct MatchListView: View {
     /// After a successful POST /matches: refresh the list and push the
     /// new match's detail so the GPS screen is one tap away. If the
     /// active scope excludes the new round (e.g. Public only + a group
-    /// round), a one-off unscoped fetch still finds it to open.
-    private func openCreatedMatch(id: String) async {
+    /// round), a one-off unscoped fetch still finds it to open. A
+    /// non-nil `targetKey` (slice 93 reaction push) is parked for the
+    /// detail screen to scroll to after load.
+    private func openCreatedMatch(id: String, targetKey: String? = nil) async {
         await viewModel.load(session: session, group: groupFilter.groupQueryValue)
         if let match = viewModel.matches.first(where: { $0.id == id }) {
+            if let targetKey {
+                PendingHighlightScroll.park(matchId: id, targetKey: targetKey)
+            }
             path.append(match)
         } else if let token = session.token,
                   let match = (try? await APIClient.shared.matches(token: token))?
                       .matches.first(where: { $0.id == id }) {
+            if let targetKey {
+                PendingHighlightScroll.park(matchId: id, targetKey: targetKey)
+            }
             path.append(match)
         }
     }
@@ -308,21 +319,21 @@ struct MatchListView: View {
             .padding(.leading, 4)
 
             ForEach(matches) { match in
-                // Live cards carry "+ PICK" chips, so the card can't be a
-                // NavigationLink (the link would swallow the chip taps) —
-                // a container tap gesture pushes the detail instead, and
-                // the deeper chip Buttons win their own taps.
-                if match.status == .inProgress {
-                    MatchCardView(match: match, showsPicks: true)
-                        .contentShape(.rect)
-                        .onTapGesture { path.append(match) }
-                        .accessibilityAddTraits(.isButton)
-                } else {
-                    NavigationLink(value: match) {
-                        MatchCardView(match: match)
-                    }
-                    .buttonStyle(MatchCardButtonStyle())
+                // Live cards carry "+ PICK" chips and every card now
+                // carries the slice-93 reaction row, so none of them can
+                // be a NavigationLink (the link would swallow the nested
+                // chip taps) — a container tap gesture pushes the detail
+                // instead, and the deeper chip Buttons win their own taps.
+                MatchCardView(match: match, showsPicks: match.status == .inProgress) { emoji in
+                    Task { await viewModel.toggleReaction(
+                        matchId: match.id,
+                        emoji: emoji,
+                        session: session
+                    ) }
                 }
+                .contentShape(.rect)
+                .onTapGesture { path.append(match) }
+                .accessibilityAddTraits(.isButton)
             }
         }
     }
@@ -412,15 +423,6 @@ private struct PulsingDot: View {
             .opacity(isPulsing ? 0.35 : 1)
             .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
             .onAppear { isPulsing = true }
-    }
-}
-
-private struct MatchCardButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
