@@ -68,6 +68,10 @@ final class CreateMatchViewModel {
     /// Last successful nearby fetch — restored whenever the search box
     /// empties so the step never goes blank after a cleared query.
     private var nearbyCache: [CourseResult] = []
+    /// The most recent location fix, kept so text searches can carry
+    /// lat/lng — without it the server returns every course's
+    /// distanceMi as null and the mileage badges all go blank.
+    private var lastFix: CLLocationCoordinate2D?
     /// The silent open-of-flow nearby load runs at most once.
     private var didAutoLoadNearby = false
 
@@ -528,7 +532,16 @@ final class CreateMatchViewModel {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled, let token = session.token else { return }
             do {
-                let response = try await api.searchCourses(query: query, token: token)
+                // Send the last location fix along — the server computes
+                // distanceMi only for requests carrying lat/lng, and a
+                // blank badge on every searched row reads as missing
+                // data rather than "far away".
+                let response = try await api.searchCourses(
+                    query: query,
+                    lat: lastFix?.latitude,
+                    lng: lastFix?.longitude,
+                    token: token
+                )
                 guard !Task.isCancelled else { return }
                 courseResults = response.courses
             } catch {
@@ -551,6 +564,7 @@ final class CreateMatchViewModel {
             nearMeFailed = true
             return
         }
+        lastFix = coordinate
         guard let token = session.token else { return }
         do {
             let response = try await api.nearbyCourses(
@@ -585,6 +599,7 @@ final class CreateMatchViewModel {
 
         guard let coordinate = await locationProvider.requestFix(),
               let token = session.token else { return }
+        lastFix = coordinate
         guard let response = try? await api.nearbyCourses(
             lat: coordinate.latitude,
             lng: coordinate.longitude,

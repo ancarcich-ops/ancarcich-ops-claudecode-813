@@ -977,12 +977,25 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
-    /// GET /courses?q= — course search by name.
-    func searchCourses(query: String, token: String) async throws -> CoursesResponse {
+    /// GET /courses?q= — course search by name. Pass the device's fix
+    /// when one is known: the server computes distanceMi only for
+    /// requests carrying lat/lng, so without it every row's badge is
+    /// blank no matter how far the course is.
+    func searchCourses(
+        query: String,
+        lat: Double? = nil,
+        lng: Double? = nil,
+        token: String
+    ) async throws -> CoursesResponse {
+        var items = [URLQueryItem(name: "q", value: query)]
+        if let lat, let lng {
+            items.append(URLQueryItem(name: "lat", value: String(lat)))
+            items.append(URLQueryItem(name: "lng", value: String(lng)))
+        }
         let request = makeRequest(
             path: "courses",
             method: "GET",
-            queryItems: [URLQueryItem(name: "q", value: query)],
+            queryItems: items,
             token: token
         )
         return try await perform(request)
