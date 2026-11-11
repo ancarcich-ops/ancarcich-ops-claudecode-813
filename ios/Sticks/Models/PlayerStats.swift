@@ -184,13 +184,16 @@ nonisolated struct StatsCourseRecord: Identifiable, Hashable {
     let courseName: String
     let gross: Int?
     let net: Double?
+    /// Holes in the best round (18 or 9) — optional and accepted under
+    /// either key until the server's field name is confirmed on the wire.
+    let holesPlayed: Int?
 
     var id: String { courseName }
 }
 
 extension StatsCourseRecord: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case courseName, gross, net
+        case courseName, gross, net, holesPlayed, holes
     }
 
     init(from decoder: Decoder) throws {
@@ -198,6 +201,8 @@ extension StatsCourseRecord: Decodable {
         courseName = try container.decodeIfPresent(String.self, forKey: .courseName) ?? ""
         gross = try container.decodeIfPresent(Int.self, forKey: .gross)
         net = try container.decodeIfPresent(Double.self, forKey: .net)
+        holesPlayed = try container.decodeIfPresent(Int.self, forKey: .holesPlayed)
+            ?? container.decodeIfPresent(Int.self, forKey: .holes)
     }
 }
 

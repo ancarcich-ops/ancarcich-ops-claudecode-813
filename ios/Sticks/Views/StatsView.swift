@@ -106,6 +106,11 @@ struct StatsView: View {
 
                 StatsHeroCard(stats: stats)
 
+                if stats.matchesPlayed > 0 {
+                    AtAGlanceGrid(stats: stats)
+                    WinsByGameGrid(wins: stats.winsByGame)
+                }
+
                 if stats.rounds.count >= 2 {
                     RoundsOverTimeCard(
                         rounds: Array(stats.rounds.suffix(20)),
@@ -121,11 +126,6 @@ struct StatsView: View {
                         baselines: viewModel.baselines,
                         selection: $baselineSelection
                     )
-                }
-
-                if stats.matchesPlayed > 0 {
-                    AtAGlanceGrid(stats: stats)
-                    WinsByGameGrid(wins: stats.winsByGame)
                 }
 
                 if !stats.courseRecords.isEmpty {
@@ -306,33 +306,37 @@ extension StatsSectionCard where Accessory == EmptyView {
 
 // MARK: - Baseline selection
 
-/// A fixed comparison handicap, or the player's own index ("HI") —
-/// shared by the chart and the scoring analysis so both stay in sync.
+/// A fixed comparison handicap, or the player's own index (shown as
+/// "My index" in the picker) — shared by the chart and the scoring
+/// analysis so both stay in sync.
 /// Internal: the member profile (slice 63) reuses it too.
 enum BaselineSelection: Equatable {
     case hcp(Int)
     case myIndex
 }
 
-/// The compact "VS HI [10 ▾]" control — a bordered capsule showing the
+/// The compact "VS A [10 ▾]" control — a bordered capsule showing the
 /// selected comparison handicap; tapping opens a menu of the fixed
-/// baselines plus HI (the player's own index). Selection applies
-/// instantly — the baselines are already local.
+/// baselines plus the player's own index. Selection applies instantly
+/// — the baselines are already local.
 struct BaselinePickerControl: View {
     @Binding var selection: BaselineSelection
     let baselines: [StatsBaseline]
     let hasIndex: Bool
+    /// The player's own index — shown as the capsule's value when the
+    /// selection points at it.
+    let index: Double?
 
     private var selectedLabel: String {
         switch selection {
         case .hcp(let value): return "\(value)"
-        case .myIndex: return "HI"
+        case .myIndex: return index.map { String(format: "%.1f", $0) } ?? "—"
         }
     }
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("VS HI")
+            Text("VS A")
                 .font(SticksFont.mono(9))
                 .kerning(0.8)
                 .foregroundStyle(Color.sticksFaint)
@@ -355,9 +359,9 @@ struct BaselinePickerControl: View {
                         selection = .myIndex
                     } label: {
                         if selection == .myIndex {
-                            Label("HI — my index", systemImage: "checkmark")
+                            Label("My index", systemImage: "checkmark")
                         } else {
-                            Text("HI — my index")
+                            Text("My index")
                         }
                     }
                 }
@@ -452,7 +456,7 @@ struct RoundsOverTimeCard: View {
                 }
 
                 if hasBaseline, let baselineName {
-                    Text("Dotted line = \(baselineName) HI baseline")
+                    Text("Dotted line = \(handicapWithArticle(baselineName)) handicap")
                         .font(SticksFont.mono(9))
                         .kerning(0.4)
                         .foregroundStyle(Color.sticksFaint)
@@ -478,7 +482,8 @@ struct RoundsOverTimeCard: View {
                 BaselinePickerControl(
                     selection: $selection,
                     baselines: baselines,
-                    hasIndex: index != nil
+                    hasIndex: index != nil,
+                    index: index
                 )
             }
 
@@ -625,9 +630,17 @@ struct RoundsOverTimeCard: View {
 
 // MARK: - Scoring analysis
 
-/// Strokes-gained par cards + track-and-triangle distribution rows,
-/// compared against a selectable handicap baseline. The compact VS HI
-/// picker sits in the header; "HI" compares against the player's own
+/// "a 10" vs "an 8.4" — the article follows how the number is spoken.
+private func handicapWithArticle(_ name: String) -> String {
+    if name.hasPrefix("8") || name.hasPrefix("11") || name.hasPrefix("18") {
+        return "an \(name)"
+    }
+    return "a \(name)"
+}
+
+/// Par-average cards + track-and-triangle distribution rows, compared
+/// against a selectable handicap baseline. The compact VS A picker
+/// sits in the header; "My index" compares against the player's own
 /// index. Selection is shared with the chart above.
 /// Internal: reused by the read-only member profile (slice 63).
 struct ScoringAnalysisCard: View {
@@ -657,7 +670,7 @@ struct ScoringAnalysisCard: View {
         switch selection {
         case .hcp(let value): return "\(value)"
         case .myIndex:
-            return stats.index.map { String(format: "%.1f", $0) } ?? "HI"
+            return stats.index.map { String(format: "%.1f", $0) } ?? "your index"
         }
     }
 
@@ -667,7 +680,8 @@ struct ScoringAnalysisCard: View {
                 BaselinePickerControl(
                     selection: $selection,
                     baselines: baselines,
-                    hasIndex: stats.index != nil
+                    hasIndex: stats.index != nil,
+                    index: stats.index
                 )
             }
         } content: {
@@ -678,10 +692,17 @@ struct ScoringAnalysisCard: View {
                     parCard(title: "PAR 5S", bucket: stats.par5, expected: baseline?.avgScores.par5)
                 }
 
+                if baseline != nil {
+                    Text("Strokes per hole, against \(handicapWithArticle(baselineName)) handicap.")
+                        .font(SticksFont.sans(11))
+                        .foregroundStyle(Color.sticksFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 distributionRows
 
                 if baseline != nil {
-                    Text("Per 18 holes vs a \(baselineName) HI baseline. Triangle = baseline, bar = your average.")
+                    Text("Per 18 holes, against \(handicapWithArticle(baselineName)) handicap. Triangle = the baseline, bar = your average.")
                         .font(SticksFont.sans(11))
                         .foregroundStyle(Color.sticksFaint)
                         .fixedSize(horizontal: false, vertical: true)
@@ -692,8 +713,9 @@ struct ScoringAnalysisCard: View {
 
     // MARK: Par cards
 
-    /// "PAR 3S / 4.0 / Avg. Score / -0.5 SG / Hole" — strokes gained per
-    /// hole vs the baseline (baseline expected avg − player avg).
+    /// "PAR 3S / 4.0 / Avg. Score / 0.4 worse" — the player's average
+    /// against the baseline handicap's expected average (strokes per
+    /// hole; the unit is stated once beneath the three cards).
     private func parCard(title: String, bucket: ParBucket, expected: Double?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
@@ -711,9 +733,8 @@ struct ScoringAnalysisCard: View {
                 .foregroundStyle(Color.sticksMuted)
 
             if let sg = strokesGained(bucket: bucket, expected: expected) {
-                Text(String(format: "%+.1f SG / Hole", sg))
-                    .font(SticksFont.mono(9))
-                    .kerning(0.2)
+                Text(comparisonText(sg))
+                    .font(SticksFont.sans(10))
                     .foregroundStyle(sgColor(sg))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -728,6 +749,14 @@ struct ScoringAnalysisCard: View {
     private func strokesGained(bucket: ParBucket, expected: Double?) -> Double? {
         guard let avg = bucket.avgScore, let expected, expected > 0 else { return nil }
         return expected - avg
+    }
+
+    /// Plain-English verdict: "0.4 better", "0.4 worse", or "about the
+    /// same" inside the ±0.05 rounding-flat band.
+    private func comparisonText(_ sg: Double) -> String {
+        if sg > 0.049 { return String(format: "%.1f better", sg) }
+        if sg < -0.049 { return String(format: "%.1f worse", -sg) }
+        return "about the same"
     }
 
     /// Gaining strokes reads green, losing reads danger; a rounding-flat
@@ -1002,6 +1031,13 @@ struct CourseBestsCard: View {
                 .font(SticksFont.sans(13, weight: .semibold))
                 .foregroundStyle(Color.sticksInk)
                 .lineLimit(1)
+
+            if let holesPlayed = record.holesPlayed {
+                Text("· \(holesPlayed)H")
+                    .font(SticksFont.mono(11))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.sticksFaint)
+            }
 
             Spacer(minLength: 8)
 
