@@ -578,10 +578,26 @@ struct MatchDetailView: View {
         let format: String
         if let resolved = viewModel.tournamentFormat {
             format = resolved.label
+        } else if let ui = detail?.uiFormat {
+            // uiFormat separates a plain individual round from an
+            // Individual-and-Team one — format reads INDIVIDUAL for both
+            // (the team half rides a TEAM_VS_TEAM side game).
+            format = Self.uiFormatLabel(ui)
         } else {
             format = detail?.format ?? match.format
         }
         return "\(holes) HOLES · \(mode.uppercased()) · \(format.replacingOccurrences(of: "_", with: " ").uppercased())"
+    }
+
+    /// INDIVIDUAL → Individual, SCRAMBLE → Teams, BOTH → Individual and
+    /// Team; anything unexpected keeps its raw value.
+    private static func uiFormatLabel(_ value: String) -> String {
+        switch value.uppercased() {
+        case "SCRAMBLE": return "Teams"
+        case "BOTH": return "Individual and Team"
+        case "INDIVIDUAL": return "Individual"
+        default: return value
+        }
     }
 
     // MARK: - Tabs (slice 54)
