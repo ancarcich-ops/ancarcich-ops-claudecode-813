@@ -34,7 +34,8 @@ extension Reaction {
     /// Card fallback set — the list payload carries tallies only, not
     /// the server's emoji order, so home cards render this constant.
     /// Detail screens use the server's `reactionEmoji` instead.
-    static let fallbackEmojiSet = ["❤️", "🔥", "😂", "👏", "😬"]
+    /// v2 set per docs/reactions-v2-spec.md (💀 replaces 😬, 🍺 added).
+    static let fallbackEmojiSet = ["❤️", "🔥", "😂", "👏", "💀", "🍺"]
 }
 
 /// POST /matches/:id/reactions body — nil fields are omitted, so the
