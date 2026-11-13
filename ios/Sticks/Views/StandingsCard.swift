@@ -30,6 +30,10 @@ struct StandingsCard: View {
     /// points, Snake stake) — called with the canonical game key. Nil
     /// hides the controls — non-creators and completed rounds.
     var onOpenSettings: ((String) -> Void)? = nil
+    /// Slice 98: opens the Edit side games sheet from the empty state —
+    /// the app adds/removes side games mid-round, so the copy no longer
+    /// points at the web. Nil keeps the plain spectator copy.
+    var onEditSideGames: (() -> Void)? = nil
 
     /// Game keys with a slice-57/58 settings editor.
     private static let configEditorKeys: Set<String> = ["STABLEFORD", "BBB", "SNAKE", "NASSAU"]
@@ -40,6 +44,28 @@ struct StandingsCard: View {
 
     /// nil = Overall; otherwise a side-game kind.
     @State private var selectedKind: String?
+
+    /// Empty-standings copy. Tappable when the viewer can manage the
+    /// round — it opens the Edit side games sheet.
+    private var emptySideGamesLabel: some View {
+        HStack(spacing: 6) {
+            Text("No side games on this round")
+            if onEditSideGames != nil {
+                Text("— add Skins, Snake and more")
+                    .foregroundStyle(Color.sticksGreen)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.sticksGreen)
+            } else {
+                Text("— ask the round's creator to add them")
+            }
+        }
+        .font(SticksFont.mono(10))
+        .kerning(0.5)
+        .foregroundStyle(onEditSideGames != nil ? Color.sticksInk : Color.sticksMuted)
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
 
     private var showsWin: Bool {
         !probabilities.isEmpty && detail.players.count > 1
@@ -67,12 +93,14 @@ struct StandingsCard: View {
             .padding(.top, 10)
 
             if sideGames.isEmpty {
-                Text("No side games on this round — set them up on the web.")
-                    .font(SticksFont.mono(10))
-                    .kerning(0.5)
-                    .foregroundStyle(Color.sticksMuted)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
+                if let onEditSideGames {
+                    Button(action: onEditSideGames) {
+                        emptySideGamesLabel
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    emptySideGamesLabel
+                }
             }
 
             Color.clear.frame(height: 14)

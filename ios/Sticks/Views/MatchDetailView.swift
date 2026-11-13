@@ -736,7 +736,8 @@ struct MatchDetailView: View {
                     : nil,
                 onOpenSettings: detail.canManageRound && detail.status != .completed
                     ? { kind in configEditorKind = SideGameConfigKind(rawValue: kind) }
-                    : nil
+                    : nil,
+                onEditSideGames: canEditSideGames ? { showsEditSideGames = true } : nil
             )
         }
         // Slice 52/53: one prominent "score it" card per
