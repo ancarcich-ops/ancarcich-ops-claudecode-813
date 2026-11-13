@@ -544,6 +544,7 @@ private struct WinBar: View {
 
 /// Pulsing accent dot for the REPRICING badge.
 private struct RepricingDot: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPulsing = false
 
     var body: some View {
@@ -551,7 +552,17 @@ private struct RepricingDot: View {
             .fill(Color.sticksGreen)
             .frame(width: 5, height: 5)
             .opacity(isPulsing ? 0.35 : 1)
-            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
-            .onAppear { isPulsing = true }
+            .task {
+                // Pulse a few times on appear, then hold at full opacity:
+                // an endless animation never lets the UI go idle, which
+                // churns accessibility tooling and motion-sensitive users.
+                guard !reduceMotion else { return }
+                for _ in 0..<6 {
+                    withAnimation(.easeInOut(duration: 0.9)) { isPulsing.toggle() }
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                }
+            }
+            // Decorative — hidden from VoiceOver.
+            .accessibilityHidden(true)
     }
 }

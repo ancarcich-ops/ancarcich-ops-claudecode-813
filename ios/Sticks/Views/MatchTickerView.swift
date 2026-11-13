@@ -78,14 +78,25 @@ struct MatchTickerView: View {
             .mask(edgeFade)
             .onPreferenceChange(TickerWidthKey.self) { width in
                 guard width > 0, abs(width - contentWidth) > 0.5 else { return }
-                // Restart the loop cleanly whenever the measured width changes.
+                // Restart cleanly whenever the measured width changes.
                 isScrolling = false
                 contentWidth = width
-                withAnimation(
-                    .linear(duration: Self.loopDuration)
-                        .repeatForever(autoreverses: false)
-                ) {
+                // One full pass, then rest. The content is doubled, so the
+                // end frame is pixel-identical to the start — the snap back
+                // is seamless. An endless marquee never lets the UI go
+                // idle, which churns accessibility tooling; reduce-motion
+                // users already get the static strip.
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: Self.loopDuration)) {
                     isScrolling = true
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(
+                        nanoseconds: UInt64((Self.loopDuration + 0.3) * 1_000_000_000)
+                    )
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { isScrolling = false }
                 }
             }
     }

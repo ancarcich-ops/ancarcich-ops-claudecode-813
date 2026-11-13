@@ -795,7 +795,10 @@ private struct MarketPulseHalo: View {
                 .scaleEffect(isPulsing ? 2.2 : 1)
                 .opacity(isPulsing ? 0 : 0.5)
                 .animation(
-                    .easeOut(duration: 1.4).repeatForever(autoreverses: false),
+                    // Ripple a few times, then hold hidden — an endless
+                    // animation never lets the UI go idle, which churns
+                    // accessibility tooling and motion-sensitive users.
+                    .easeOut(duration: 1.4).repeatCount(4, autoreverses: false),
                     value: isPulsing
                 )
 
@@ -804,5 +807,7 @@ private struct MarketPulseHalo: View {
                 .frame(width: 7, height: 7)
         }
         .onAppear { isPulsing = true }
+        // Decorative — hidden from VoiceOver.
+        .accessibilityHidden(true)
     }
 }

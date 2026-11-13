@@ -427,6 +427,7 @@ struct MatchListView: View {
 // MARK: - Pieces
 
 private struct PulsingDot: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPulsing = false
 
     var body: some View {
@@ -434,11 +435,17 @@ private struct PulsingDot: View {
             .fill(Color.sticksGreen)
             .frame(width: 8, height: 8)
             .opacity(isPulsing ? 0.35 : 1)
-            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
-            .onAppear { isPulsing = true }
-            // Decorative — hidden from VoiceOver, and kept out of the
-            // accessibility tree so its ~1Hz opacity pulse can't churn
-            // tree consumers (focus, settle detection).
+            .task {
+                // Pulse a few times on appear, then hold at full opacity.
+                // An endless animation never lets the UI go idle, which
+                // churns accessibility tooling and motion-sensitive users.
+                guard !reduceMotion else { return }
+                for _ in 0..<6 {
+                    withAnimation(.easeInOut(duration: 0.9)) { isPulsing.toggle() }
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                }
+            }
+            // Decorative — hidden from VoiceOver.
             .accessibilityHidden(true)
     }
 }
