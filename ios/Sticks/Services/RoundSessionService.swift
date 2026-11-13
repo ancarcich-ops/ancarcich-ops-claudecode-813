@@ -31,6 +31,11 @@ final class RoundSessionService {
     /// Match the active round session belongs to — nil when no round.
     private(set) var activeMatchId: String?
 
+    /// When the round session started. The GPS screen uses it to show
+    /// the services disclosure only while the round is fresh — the
+    /// explanation matters once, not for the whole round.
+    private(set) var beganAt: Date?
+
     /// Last hole displayed on the GPS screen (index into the round).
     /// Advanced by score entry, manual rail picks, and — slice 7.2 — GPS
     /// auto-advance when the player walks off a finished hole toward the
@@ -105,6 +110,7 @@ final class RoundSessionService {
         if isActive { endRound() }
 
         activeMatchId = detail.id
+        beganAt = Date()
         self.viewModel = viewModel
         self.session = session
         self.holeIndex = holeIndex
@@ -146,6 +152,7 @@ final class RoundSessionService {
         guard isActive else { return }
         generation += 1
         activeMatchId = nil
+        beganAt = nil
         viewModel = nil
         session = nil
         suggestedScoreIndex = nil

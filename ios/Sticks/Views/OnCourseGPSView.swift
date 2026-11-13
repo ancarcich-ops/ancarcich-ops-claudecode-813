@@ -57,6 +57,10 @@ struct OnCourseGPSView: View {
     // programmatic jump (e.g. resuming mid-round) never reads as "you
     // walked off a hole" — consumed by the holeIndex onChange.
     @State private var isInitialHoleAssignment = false
+    // The GPS/Health services disclosure shows only while the round
+    // session is fresh — the explanation matters once, then the panel
+    // gives its height back to the score/finish controls.
+    @State private var servicesDisclosureVisible = false
 
     // Slice 66: which satellite imagery the 2D map renders — Esri (the
     // default) or the original Apple `Map`. Persisted; read live so a
@@ -300,6 +304,11 @@ struct OnCourseGPSView: View {
         // itself never arrived, otherwise give the tile stream a full 25s
         // before dropping to 2D. Cancelled automatically on mode/hole
         // change and on disappear.
+        // Services disclosure: fade in for a new round's first minute,
+        // fade out after (see syncServicesDisclosure).
+        .task(id: RoundSessionService.shared.activeMatchId) {
+            await syncServicesDisclosure()
+        }
         .task(id: "\(cameraMode.rawValue)-\(holeIndex)") {
             guard cameraMode == .threeD else { return }
             try? await Task.sleep(for: .seconds(10))
@@ -516,8 +525,9 @@ struct OnCourseGPSView: View {
 
             statusRow(detail: detail, anchor: anchor)
 
-            if isRoundSessionLive(detail) {
+            if isRoundSessionLive(detail), servicesDisclosureVisible {
                 roundServicesRow
+                    .transition(.opacity)
             }
 
             if canFinishRound(detail) {
@@ -742,6 +752,28 @@ struct OnCourseGPSView: View {
     /// HKWorkoutSession — without one, say so instead of claiming it.
     private var watchWorkoutActive: Bool {
         WatchPairingState.current().isReady
+    }
+
+    /// How long the disclosure stays up once a round starts.
+    private static let servicesDisclosureWindow: TimeInterval = 60
+
+    /// Keeps the disclosure's visibility in sync with the round
+    /// session's age: up for the first minute of a NEW round, faded out
+    /// after; re-opening the screen later in the round (or mid-round
+    /// resume) shows nothing — the copy was either read or missed.
+    /// Re-runs when the active match (read off the observable session
+    /// service) changes.
+    private func syncServicesDisclosure() async {
+        guard let beganAt = RoundSessionService.shared.beganAt else {
+            withAnimation(.easeOut(duration: 0.3)) { servicesDisclosureVisible = false }
+            return
+        }
+        let remaining = Self.servicesDisclosureWindow - Date().timeIntervalSince(beganAt)
+        if remaining > 0 {
+            withAnimation(.easeIn(duration: 0.3)) { servicesDisclosureVisible = true }
+            try? await Task.sleep(for: .seconds(remaining))
+        }
+        withAnimation(.easeOut(duration: 0.3)) { servicesDisclosureVisible = false }
     }
 
     private func servicePill(icon: String, text: String, isActive: Bool) -> some View {
