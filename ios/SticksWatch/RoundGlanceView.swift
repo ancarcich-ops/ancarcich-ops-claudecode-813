@@ -4,10 +4,11 @@
 //
 //  Direction A — "Rangefinder". The purest read: no ring, no ornament.
 //  Course name · hole switcher pill · hero center yardage · flanks ·
-//  score pill · OVERALL to-par at the base. The Digital Crown scrubs
-//  holes (haptic detent per hole) alongside the chevrons; switching is
-//  optimistic and reverts on failure. In always-on wrist-down the chrome
-//  recedes and the yardage + to-par persist, dimmed.
+//  score pill · OVERALL to-par at the base. Holes switch via the
+//  chevron pills or a horizontal swipe (the crown is left alone — too
+//  sensitive for hole jumps); switching is optimistic and reverts on
+//  failure. In always-on wrist-down the chrome recedes and the yardage
+//  + to-par persist, dimmed.
 //
 
 import SwiftUI
@@ -21,12 +22,9 @@ struct RoundGlanceView: View {
 
     /// Round index a hole switch is optimistically showing while the
     /// command is in flight — reverted on error/timeout, replaced by the
-    /// reply snapshot on success.
+    /// reply snapshot on success. Shared by the chevrons and swipes;
+    /// debounced so fast taps or repeated swipes send one command.
     @State private var pendingHoleIndex: Int?
-    /// Crown position in round-index space; drives the same optimistic
-    /// switch path as the chevrons, debounced so scrubbing several holes
-    /// sends one command.
-    @State private var crownHole: Double = 0
     @State private var commitTask: Task<Void, Never>?
     @State private var commitGeneration = 0
     /// Brief command failure notice ("CAN'T REACH IPHONE") shown in the
@@ -40,8 +38,9 @@ struct RoundGlanceView: View {
     /// Snapshots older than this are treated as stale — the yardage is no
     /// longer trustworthy and must not be presented as live.
     private static let staleAfter: TimeInterval = 3 * 60
-    /// How long the crown rests on a hole before the switch is committed.
-    private static let crownSettleDelay: Duration = .milliseconds(350)
+    /// How long a switch target rests before the command is committed —
+    /// collapses chevron taps or swipes in quick succession into one.
+    private static let switchSettleDelay: Duration = .milliseconds(350)
 
     var body: some View {
         // TimelineView re-evaluates staleness as time passes, even when no
@@ -49,29 +48,6 @@ struct RoundGlanceView: View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
             let isStale = context.date.timeIntervalSince(snapshot.updatedAt) > Self.staleAfter
             content(isStale: isStale)
-        }
-        .focusable()
-        .digitalCrownRotation(
-            $crownHole,
-            from: 0,
-            through: Double(max(snapshot.totalHoles - 1, 0)),
-            by: 1,
-            sensitivity: .low,
-            isContinuous: false,
-            isHapticFeedbackEnabled: true
-        )
-        .onChange(of: crownHole) { _, newValue in
-            crownMoved(to: newValue)
-        }
-        .onChange(of: snapshot.holeIndex) { _, newIndex in
-            // The phone settled the hole (reply or its own push) — resync
-            // the crown unless the wearer is mid-scrub.
-            if pendingHoleIndex == nil {
-                crownHole = Double(newIndex)
-            }
-        }
-        .onAppear {
-            crownHole = Double(snapshot.holeIndex)
         }
         .sheet(isPresented: $showScoreEntry) {
             WatchScoreEntryView(
@@ -149,6 +125,7 @@ struct RoundGlanceView: View {
             .animation(.easeInOut(duration: 0.3), value: isStale)
             .animation(.easeInOut(duration: 0.2), value: pendingHoleIndex)
         }
+        .simultaneousGesture(holeSwipeGesture)
     }
 
     /// Stale and pending both dim the live numbers; wrist-down dims them
@@ -207,7 +184,7 @@ struct RoundGlanceView: View {
         let disabled = target < 0 || target >= snapshot.totalHoles
         return Button {
             WKInterfaceDevice.current().play(.click)
-            crownHole = Double(target)
+            queueHoleSwitch(to: target)
         } label: {
             Image(systemName: systemName)
                 .font(.system(size: 12, weight: .bold))
@@ -220,22 +197,35 @@ struct RoundGlanceView: View {
         .opacity(disabled ? 0.3 : 1)
     }
 
-    // MARK: - Hole switching (crown + chevrons share this path)
+    // MARK: - Hole switching (swipes + chevrons share this path)
 
     private var displayedHoleIndex: Int {
         pendingHoleIndex ?? snapshot.holeIndex
     }
 
-    /// Optimistic label immediately; the command fires once the crown
-    /// settles so scrubbing 7 holes sends one setHole, not seven.
-    private func crownMoved(to value: Double) {
-        let target = min(max(Int(value.rounded()), 0), max(snapshot.totalHoles - 1, 0))
+    /// Swipe left/right moves a hole, like paging. Horizontal-dominant
+    /// drags only, so vertical scrolling through the round screen (score
+    /// pill, OVERALL) still scrolls; the crown plays no part.
+    private var holeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let horizontal = value.translation.width
+                guard abs(horizontal) > abs(value.translation.height) * 1.5 else { return }
+                WKInterfaceDevice.current().play(.click)
+                queueHoleSwitch(to: displayedHoleIndex + (horizontal < 0 ? 1 : -1))
+            }
+    }
+
+    /// Optimistic label immediately; the command fires once the target
+    /// settles so rapid swipes send one setHole, not one per swipe.
+    private func queueHoleSwitch(to rawTarget: Int) {
+        let target = min(max(rawTarget, 0), max(snapshot.totalHoles - 1, 0))
         guard target != displayedHoleIndex else { return }
         transientError = nil
         pendingHoleIndex = target
         commitTask?.cancel()
         commitTask = Task {
-            try? await Task.sleep(for: Self.crownSettleDelay)
+            try? await Task.sleep(for: Self.switchSettleDelay)
             guard !Task.isCancelled else { return }
             await commit(target)
         }
@@ -258,7 +248,6 @@ struct RoundGlanceView: View {
             // The optimistic label never survives a failed send.
             if generation == commitGeneration {
                 pendingHoleIndex = nil
-                crownHole = Double(snapshot.holeIndex)
                 showTransientError(for: error)
             }
         }
