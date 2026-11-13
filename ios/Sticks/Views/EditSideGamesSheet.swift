@@ -2,16 +2,20 @@
 //  EditSideGamesSheet.swift
 //  Sticks
 //
-//  Slice 29: creator-only side-game add/remove — toggles for the
-//  selectable kinds, pre-checked from the match's current side games.
-//  Save posts the FULL desired set. NASSAU is 18-hole only; an existing
-//  TEAM_VS_TEAM shows as a read-only row (teams are edited on the web)
-//  and is preserved in the sent set.
+//  Slice 99: the server-driven side-games editor, reached from the
+//  round detail's CTA (creator, not completed). The GET
+//  /matches/:id/side-games payload owns the game list, blurbs and
+//  eligibility — the app never hard-codes a game the scorer will
+//  refuse. Saving posts the FULL desired set of kinds; the response's
+//  `kinds` is reconciled back (the server drops ineligible games and
+//  preserves a configured team-vs-team).
 //
-//  Slice 82: BBB posts as "BBB" — the long "BINGO_BANGO_BONGO" spelling
-//  is a display alias the server doesn't know, and this sheet was the
-//  one place it reached the wire. SIXES now hides unless the round can
-//  actually play it.
+//  Slice 99 rule the user asked for: on a round already underway, Save
+//  shows a confirmation first — turning a game on mid-round back-fills
+//  every hole already logged, which should never be a surprise.
+//
+//  Game settings (Stableford scale, BBB points, Snake stake, Nassau
+//  presses) open as a nested sheet reusing the slice-57/58 editors.
 //
 
 import SwiftUI
@@ -19,107 +23,93 @@ import UIKit
 
 struct EditSideGamesSheet: View {
     let detail: MatchDetail
-    let currentKinds: [String]
     let viewModel: MatchDetailViewModel
     let session: SessionStore
 
     @Environment(\.dismiss) private var dismiss
-    @State private var selected: Set<String>
+    @State private var picker: SideGamesPicker?
+    @State private var loadFailed: String?
+    /// Local on/off state keyed by kind — rebuilt from each GET (and
+    /// reconciled from each POST response).
+    @State private var onState: [String: Bool] = [:]
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showsMidRoundConfirm = false
+    /// The slice-57/58 settings editor open on top of this sheet.
+    @State private var configKind: SideGameConfigKind?
 
-    /// Selectable kinds in display order with short blurbs.
-    private static let options: [(kind: String, label: String, blurb: String)] = [
-        ("SKINS", "Skins", "Win a hole outright to take the skin — ties carry over"),
-        ("STABLEFORD", "Stableford", "Points per hole against par"),
-        ("NASSAU", "Nassau", "Front nine, back nine, and overall"),
-        ("WOLF", "Wolf", "Rotating captain picks a partner — or goes lone wolf"),
-        ("BBB", "Bingo Bango Bongo", "First on, closest to the pin, first in"),
-        ("SNAKE", "Snake", "Last three-putt holds the snake"),
-        ("SIXES", "Sixes", "Partners rotate every six holes"),
-    ]
+    private var editable: Bool { picker?.editable == true }
 
-    init(detail: MatchDetail, currentKinds: [String], viewModel: MatchDetailViewModel, session: SessionStore) {
-        self.detail = detail
-        self.currentKinds = currentKinds
-        self.viewModel = viewModel
-        self.session = session
-        let selectable = Set(Self.options.map(\.kind))
-        _selected = State(initialValue: Set(currentKinds.map { $0.uppercased() }).intersection(selectable))
-    }
+    /// Turning a game on mid-round back-fills every hole already
+    /// logged — that's the caption, and the reason for the confirm.
+    private var isUnderway: Bool { detail.status == .inProgress }
 
-    /// TEAM_VS_TEAM can't be rebuilt on mobile — shown read-only and
-    /// preserved in the sent set when already enabled.
-    private var hasTeams: Bool {
-        currentKinds.contains { $0.uppercased() == "TEAM_VS_TEAM" }
-    }
-
-    /// NASSAU needs a full 18 — the server drops it otherwise, so
-    /// don't offer it on shorter rounds. SIXES needs a full 18 AND
-    /// exactly four players: switched on for a threesome it produces a
-    /// board that can never resolve.
-    private var visibleOptions: [(kind: String, label: String, blurb: String)] {
-        Self.options.filter { option in
-            switch option.kind {
-            case "NASSAU": return detail.holes == 18
-            case "SIXES": return detail.holes == 18 && detail.players.count == 4
-            default: return true
-            }
-        }
-    }
+    /// Games with a native settings editor (slice 57/58).
+    private var configKeys: Set<String> { ["STABLEFORD", "BBB", "SNAKE", "NASSAU"] }
 
     var body: some View {
         VStack(spacing: 0) {
             header
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(visibleOptions.enumerated()), id: \.element.kind) { position, option in
-                        if position > 0 {
-                            Rectangle()
-                                .fill(Color.sticksHairline.opacity(0.6))
-                                .frame(height: 1)
-                                .padding(.leading, 14)
-                        }
-                        toggleRow(option)
+            if let loadFailed {
+                loadErrorView(loadFailed)
+            } else if let picker {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        rowsView(picker)
                     }
+                    .background(Color.sticksCard)
+                    .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
+                            .stroke(Color.sticksHairline, lineWidth: 1)
+                    )
+                    .padding(.horizontal, 20)
 
-                    if hasTeams {
-                        Rectangle()
-                            .fill(Color.sticksHairline.opacity(0.6))
-                            .frame(height: 1)
-                            .padding(.leading, 14)
-                        teamsRow
-                    }
+                    Text("Sticks only keeps score — no money is collected, held, or paid through the app. Anything owed is sorted out between you.")
+                        .font(SticksFont.mono(10))
+                        .kerning(0.3)
+                        .foregroundStyle(Color.sticksFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 10)
+                        .padding(.bottom, 16)
                 }
-                .background(Color.sticksCard)
-                .clipShape(.rect(cornerRadius: SticksMetrics.cardRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: SticksMetrics.cardRadius)
-                        .stroke(Color.sticksHairline, lineWidth: 1)
-                )
-                .padding(.horizontal, 20)
 
-                Text("Fine-tune stakes & rotation on the website.")
-                    .font(SticksFont.mono(10.5))
-                    .foregroundStyle(Color.sticksFaint)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 10)
-
-                Text("Sticks only keeps score — no money is collected, held, or paid through the app. Anything owed is sorted out between you.")
-                    .font(SticksFont.mono(10))
-                    .kerning(0.3)
-                    .foregroundStyle(Color.sticksFaint)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 6)
-                    .padding(.bottom, 16)
+                if editable {
+                    footer
+                }
+            } else {
+                VStack {
+                    ProgressView()
+                        .tint(Color.sticksMuted)
+                        .padding(.top, 60)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
             }
-
-            footer
         }
+        .sheet(item: $configKind) { kind in
+            // Slice 57/58 house-rule editors, opened from a game's row.
+            switch kind {
+            case .stableford:
+                StablefordConfigView(viewModel: viewModel, session: session)
+            case .bbb:
+                BbbConfigView(viewModel: viewModel, session: session)
+            case .snake:
+                SnakeConfigView(viewModel: viewModel, session: session)
+            case .nassau:
+                NassauConfigView(viewModel: viewModel, session: session)
+            }
+        }
+        .alert("Change side games on a live round?", isPresented: $showsMidRoundConfirm) {
+            Button("Save side games") { save() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every game's board recomputes from the strokes already logged — turning one on back-fills all of them.")
+        }
+        .task { await reload() }
         .presentationBackground(Color.sticksBg)
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isSaving)
@@ -129,13 +119,25 @@ struct EditSideGamesSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("Edit side games")
+            Text("Side games")
                 .font(SticksFont.display(26, weight: .bold))
                 .foregroundStyle(Color.sticksInk)
 
-            Text("Standings and per-game boards recompute from the scores already in.")
-                .font(SticksFont.sans(12.5))
-                .foregroundStyle(Color.sticksMuted)
+            if let picker, !picker.editable, let reason = picker.reason {
+                // Read-only — non-creator or a final round. The server's
+                // reason is the explanation ("This round is final.").
+                Text(reason)
+                    .font(SticksFont.sans(12.5))
+                    .foregroundStyle(Color.sticksMuted)
+            } else if isUnderway {
+                Text("Round's underway. You can add or remove side games here — scores recompute from the strokes already logged.")
+                    .font(SticksFont.sans(12.5))
+                    .foregroundStyle(Color.sticksMuted)
+            } else {
+                Text("Pick what this round plays. Standings and per-game boards build from the scores.")
+                    .font(SticksFont.sans(12.5))
+                    .foregroundStyle(Color.sticksMuted)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
@@ -143,58 +145,115 @@ struct EditSideGamesSheet: View {
         .padding(.bottom, 14)
     }
 
-    private func toggleRow(_ option: (kind: String, label: String, blurb: String)) -> some View {
-        Toggle(isOn: binding(for: option.kind)) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(option.label)
-                    .font(SticksFont.sans(15, weight: .semibold))
-                    .foregroundStyle(Color.sticksInk)
-
-                Text(option.blurb)
-                    .font(SticksFont.sans(12))
-                    .foregroundStyle(Color.sticksMuted)
+    private func rowsView(_ picker: SideGamesPicker) -> some View {
+        ForEach(Array(picker.games.enumerated()), id: \.element.kind) { position, game in
+            if position > 0 {
+                Rectangle()
+                    .fill(Color.sticksHairline.opacity(0.6))
+                    .frame(height: 1)
+                    .padding(.leading, 14)
             }
+            gameRow(game)
         }
-        .tint(Color.sticksGreen)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 
-    /// Read-only teams row — present but not toggleable.
-    private var teamsRow: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Teams (edit on web)")
-                    .font(SticksFont.sans(15, weight: .semibold))
-                    .foregroundStyle(Color.sticksMuted)
-
-                Text("Team assignments can't be rebuilt on mobile — it stays on.")
-                    .font(SticksFont.sans(12))
-                    .foregroundStyle(Color.sticksFaint)
-            }
-
-            Spacer(minLength: 8)
-
-            Image(systemName: "lock.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.sticksFaint)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private func binding(for kind: String) -> Binding<Bool> {
-        Binding(
-            get: { selected.contains(kind) },
+    private func gameRow(_ game: SideGameOption) -> some View {
+        let isOn = Binding<Bool>(
+            get: { onState[game.kind] ?? game.on },
             set: { isOn in
-                if isOn {
-                    selected.insert(kind)
-                } else {
-                    selected.remove(kind)
-                }
+                onState[game.kind] = isOn
                 UISelectionFeedbackGenerator().selectionChanged()
             }
         )
+        let disabled = !editable || game.locked || !game.eligible
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Toggle(isOn: isOn) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(game.label)
+                            .font(SticksFont.sans(15, weight: .semibold))
+                            .foregroundStyle(disabled ? Color.sticksMuted : Color.sticksInk)
+                        if game.locked {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.sticksFaint)
+                        }
+                    }
+
+                    Text(game.blurb)
+                        .font(SticksFont.sans(12))
+                        .foregroundStyle(Color.sticksMuted)
+                        .opacity(disabled ? 0.7 : 1)
+
+                    if !game.eligible, let reason = game.ineligibleReason {
+                        Text(reason)
+                            .font(SticksFont.sans(11.5))
+                            .foregroundStyle(Color.sticksError)
+                            .padding(.top, 2)
+                    }
+                }
+            }
+            .tint(Color.sticksGreen)
+            .disabled(disabled)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            if onState[game.kind] ?? game.on {
+                underRow(game)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// What shows beneath a game that's on: its settings entry, when
+    /// one exists and can be used.
+    @ViewBuilder
+    private func underRow(_ game: SideGameOption) -> some View {
+        let hasEditor = configKeys.contains(game.kind)
+        if hasEditor {
+            Button {
+                configKind = SideGameConfigKind(rawValue: game.kind)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Game settings")
+                        .font(SticksFont.mono(11))
+                        .kerning(0.4)
+                }
+                .foregroundStyle(Color.sticksGreen)
+            }
+            .buttonStyle(.plain)
+            .disabled(!editable)
+            .opacity(editable ? 1 : 0.5)
+            .padding(.leading, 28)
+            .padding(.bottom, 10)
+        }
+    }
+
+    private func loadErrorView(_ message: String) -> some View {
+        VStack(spacing: 14) {
+            Text(message)
+                .font(SticksFont.sans(13))
+                .foregroundStyle(Color.sticksMuted)
+                .multilineTextAlignment(.center)
+
+            Button {
+                loadFailed = nil
+                Task { await reload() }
+            } label: {
+                Text("TRY AGAIN")
+                    .font(SticksFont.mono(12))
+                    .kerning(0.6)
+                    .foregroundStyle(Color.sticksGreen)
+            }
+            .buttonStyle(PressableButtonStyle())
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
     }
 
     private var footer: some View {
@@ -207,7 +266,13 @@ struct EditSideGamesSheet: View {
             }
 
             Button {
-                save()
+                // The user's rule: a live round confirms before it
+                // re-counts. Upcoming rounds save straight through.
+                if isUnderway {
+                    showsMidRoundConfirm = true
+                } else {
+                    save()
+                }
             } label: {
                 Group {
                     if isSaving {
@@ -231,20 +296,46 @@ struct EditSideGamesSheet: View {
         .padding(.bottom, 10)
     }
 
-    /// POST /matches/:id/side-games with the FULL desired set (in display
-    /// order, plus a preserved TEAM_VS_TEAM), then quiet refresh → dismiss.
+    // MARK: - Data
+
+    /// GETs the picker and rebuilds the local on/off state from it.
+    private func reload() async {
+        do {
+            let fresh = try await viewModel.sideGamesPicker(session: session)
+            picker = fresh
+            var state: [String: Bool] = [:]
+            for game in fresh.games {
+                state[game.kind] = game.on
+            }
+            onState = state
+        } catch let error as APIError {
+            loadFailed = error.message
+        } catch {
+            loadFailed = "Can't reach Sticks. Check your connection and try again."
+        }
+    }
+
+    /// POSTs the FULL desired set (locked-on games ride along), then
+    /// reconciles against the response's kinds — the server legitimately
+    /// drops games this round can't play. Quiet-refreshes the detail
+    /// behind the sheet so standings move as soon as it dismisses.
     private func save() {
-        guard !isSaving else { return }
-        var kinds = Self.options.map(\.kind).filter { selected.contains($0) }
-        if hasTeams {
-            kinds.append("TEAM_VS_TEAM")
+        guard !isSaving, let picker else { return }
+        var kinds = picker.games.map(\.kind).filter { onState[$0] ?? false }
+        for game in picker.games where game.locked && game.on && !kinds.contains(game.kind) {
+            kinds.append(game.kind)
         }
         isSaving = true
         errorMessage = nil
         Task {
             defer { isSaving = false }
             do {
-                try await viewModel.setSideGames(kinds: kinds, session: session)
+                let finalKinds = try await viewModel.setSideGamesReturning(kinds: kinds, session: session)
+                var state: [String: Bool] = [:]
+                for game in picker.games {
+                    state[game.kind] = finalKinds.contains(game.kind)
+                }
+                onState = state
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 dismiss()
             } catch let error as APIError {

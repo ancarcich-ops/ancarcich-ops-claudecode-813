@@ -607,6 +607,27 @@ nonisolated struct APIClient {
         return response.kinds
     }
 
+    /// GET /matches/:id/side-games — the server-driven games picker:
+    /// which games exist, their blurbs, what's on, and eligibility
+    /// (editable/reason gate the whole screen; locked marks the
+    /// team-vs-team row that can't be turned off). Slice 99.
+    func sideGamesPicker(matchId: String, token: String) async throws -> SideGamesPicker {
+        let request = makeRequest(path: "matches/\(matchId)/side-games", method: "GET", token: token)
+        return try await perform(request)
+    }
+
+    /// POST /matches/:id/scoring — round scoring mid-round (slice 100):
+    /// scoring mode, posted group, and per-player handicaps by
+    /// matchPlayerId. Creator-only, refused once the round is final.
+    /// Every field optional — send only what changed. Reconcile against
+    /// the response: the server drops an unrecognised mode and falls an
+    /// unknown group back to public.
+    func setRoundScoring(matchId: String, body: ScoringUpdate, token: String) async throws -> ScoringResponse {
+        var request = makeRequest(path: "matches/\(matchId)/scoring", method: "POST", token: token)
+        request.httpBody = try encoder.encode(body)
+        return try await perform(request)
+    }
+
     /// POST /matches/:id/side-game-event — records one event for an
     /// event-driven side game: THREE_PUTT toggles a Snake 3-putt,
     /// BINGO/BANGO/BONGO assign (or clear, with nil matchPlayerId) a BBB

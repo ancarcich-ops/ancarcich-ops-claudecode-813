@@ -354,6 +354,64 @@ final class MatchDetailViewModel {
         await load(session: session, quiet: true)
     }
 
+    /// GETs the side-games picker state (slice 99) — which games exist,
+    /// their blurbs, what's on, eligibility. The server owns the list so
+    /// the app never offers a game the scorer will refuse. Throws
+    /// APIError; 401 signs out.
+    func sideGamesPicker(session: SessionStore) async throws -> SideGamesPicker {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            return try await api.sideGamesPicker(matchId: matchId, token: token)
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+    }
+
+    /// POSTs round-scoring changes (slice 100) — scoring mode, posted
+    /// group, per-player handicaps — then quiet-refetches so every
+    /// leaderboard re-derives from the strokes already logged. Returns
+    /// the afterwards-state to reconcile against (the server drops an
+    /// unrecognised mode and falls an unknown group back to public).
+    /// Throws APIError; 403 (non-creator) and 400 (round final) show
+    /// verbatim; 401 signs out.
+    func setRoundScoring(_ body: ScoringUpdate, session: SessionStore) async throws -> ScoringResponse {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            let response = try await api.setRoundScoring(matchId: matchId, body: body, token: token)
+            await load(session: session, quiet: true)
+            return response
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+    }
+
+    /// POSTs the full desired set of side-game kinds and returns the
+    /// reconciled set actually on afterwards (slice 99) — the server
+    /// drops games the round can't play. The detail quiet-refetches
+    /// behind the caller's dismiss.
+    func setSideGamesReturning(kinds: [String], session: SessionStore) async throws -> [String] {
+        guard let token = session.token else {
+            session.signOut()
+            throw APIError(message: "You've been signed out.", statusCode: 401)
+        }
+        do {
+            let finalKinds = try await api.setSideGames(matchId: matchId, kinds: kinds, token: token)
+            await load(session: session, quiet: true)
+            return finalKinds
+        } catch let error as APIError where error.isUnauthorized {
+            session.signOut()
+            throw error
+        }
+    }
+
     /// POSTs one game's settings (Targets stat/target/ante, Wolf
     /// rotation/push rule), then quiet-refetches so the leaderboards
     /// recompute against the new config. Throws APIError — 403

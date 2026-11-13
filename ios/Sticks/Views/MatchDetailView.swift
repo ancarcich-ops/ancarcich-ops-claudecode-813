@@ -46,6 +46,9 @@ struct MatchDetailView: View {
     @State private var showsCreate = false
     @State private var showsEditPars = false
     @State private var showsEditSideGames = false
+    /// Slice 100: the round-scoring editor (mode, posted group,
+    /// handicaps) — creator, live round only.
+    @State private var showsRoundScoring = false
     /// Slice 50: the event-driven side game whose per-hole editor sheet
     /// is open (Snake, BBB, Match press).
     @State private var eventEditorGame: SideGame?
@@ -185,10 +188,14 @@ struct MatchDetailView: View {
             if let detail = viewModel.detail {
                 EditSideGamesSheet(
                     detail: detail,
-                    currentKinds: viewModel.response?.sideGames.map(\.kind) ?? [],
                     viewModel: viewModel,
                     session: session
                 )
+            }
+        }
+        .sheet(isPresented: $showsRoundScoring) {
+            if let detail = viewModel.detail {
+                RoundScoringSheet(detail: detail, viewModel: viewModel, session: session)
             }
         }
         .fullScreenCover(isPresented: $showsCreate) {
@@ -290,6 +297,14 @@ struct MatchDetailView: View {
         return detail.isSeated && detail.status == .inProgress
     }
 
+    /// Slice 100: round-scoring edits (mode, posted group, handicaps)
+    /// mid-round — creator, not completed. Upcoming rounds use the full
+    /// Edit details flow instead; completed rounds need Reopen first.
+    private var canEditScoring: Bool {
+        guard let detail = viewModel.detail else { return false }
+        return detail.canManageRound && detail.status == .inProgress
+    }
+
     /// Reopen a finished round — seated creator, COMPLETED only. The
     /// server reverts it to IN_PROGRESS (or UPCOMING if it had no scores).
     private var canReopen: Bool {
@@ -302,7 +317,7 @@ struct MatchDetailView: View {
     }
 
     private var hasMenuActions: Bool {
-        canEditDetails || canMarkFinal || canReopen || canDelete
+        canEditDetails || canEditScoring || canMarkFinal || canReopen || canDelete
     }
 
     /// The big gold FINISH ROUND moment — live round, every hole scored.
@@ -317,6 +332,13 @@ struct MatchDetailView: View {
                     showsEdit = true
                 } label: {
                     Label("Edit details", systemImage: "pencil")
+                }
+            }
+            if canEditScoring {
+                Button {
+                    showsRoundScoring = true
+                } label: {
+                    Label("Round settings", systemImage: "slider.horizontal.3")
                 }
             }
             if canMarkFinal {
