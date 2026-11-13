@@ -994,6 +994,10 @@ private struct CardPulsingDot: View {
             .opacity(isPulsing ? 0.35 : 1)
             .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
             .onAppear { isPulsing = true }
+            // Decorative — hidden from VoiceOver, and kept out of the
+            // accessibility tree so its ~1Hz opacity pulse can't churn
+            // tree consumers (focus, settle detection).
+            .accessibilityHidden(true)
     }
 }
 
