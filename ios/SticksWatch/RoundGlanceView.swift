@@ -89,15 +89,17 @@ struct RoundGlanceView: View {
                 .padding(.top, 5)
                 .opacity(heroOpacity(isStale: isStale))
 
-                // Spectators (no seat) never see score entry; wrist-down
-                // drops it too — chrome recedes in always-on.
-                if snapshot.isSeated && !isLuminanceReduced {
-                    scoreButton
-                        .padding(.top, 8)
+                // Score and overall share one line so the whole round
+                // read fits the screen without scrolling. Spectators (no
+                // seat) get the overall alone; wrist-down drops the score
+                // button — chrome recedes in always-on.
+                HStack(spacing: 14) {
+                    if snapshot.isSeated && !isLuminanceReduced {
+                        scoreButton
+                    }
+                    overallScore
                 }
-
-                overallScore
-                    .padding(.top, 8)
+                .padding(.top, 8)
             }
             .frame(maxWidth: .infinity)
             .animation(.easeInOut(duration: 0.3), value: isStale)
