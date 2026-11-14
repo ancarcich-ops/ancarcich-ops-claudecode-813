@@ -1187,31 +1187,21 @@ struct CreateMatchView: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("TEAM GAME")
 
-            let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
+            let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                teamGameChip(id: "SCRAMBLE", label: "Scramble")
+                teamGameChip(
+                    id: "SCRAMBLE", label: "Scramble",
+                    blurb: "Both play their own balls, the better lie is taken each shot — one ball per side is recorded.")
                 ForEach(viewModel.teamRuleChoices) { rule in
-                    teamGameChip(id: rule.id, label: rule.label)
+                    teamGameChip(id: rule.id, label: rule.label, blurb: rule.blurb)
                 }
                 vegasRuleRow
             }
-
-            Text(selectedGameBlurb)
-                .font(SticksFont.mono(10.5, weight: .regular))
-                .foregroundStyle(Color.sticksFaint)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 4)
     }
 
-    private var selectedGameBlurb: String {
-        if viewModel.teamsGame == "SCRAMBLE" {
-            return "Both play their own balls, the better lie is taken each shot — one ball per side is recorded."
-        }
-        return viewModel.roundOptions.teamRule(id: viewModel.teamsGame)?.blurb ?? ""
-    }
-
-    private func teamGameChip(id: String, label: String) -> some View {
+    private func teamGameChip(id: String, label: String, blurb: String) -> some View {
         let isActive = viewModel.teamsGame == id
         return Button {
             withAnimation(.easeOut(duration: 0.18)) {
@@ -1219,22 +1209,36 @@ struct CreateMatchView: View {
             }
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
-            Text(label)
-                .font(SticksFont.sans(13.5, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .foregroundStyle(isActive ? Color.sticksCream : Color.sticksMuted)
-                .frame(maxWidth: .infinity)
-                .frame(height: 42)
-                .background(isActive ? Color.sticksGreen : Color.sticksPanel2)
-                .clipShape(.rect(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isActive ? Color.clear : Color.sticksHairline, lineWidth: 1)
-                )
-                .contentShape(.rect)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(label)
+                        .font(SticksFont.sans(13.5, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .foregroundStyle(isActive ? Color.sticksGreen : Color.sticksMuted)
+
+                Text(blurb)
+                    .font(SticksFont.sans(11))
+                    .foregroundStyle(Color.sticksFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
+            .background(isActive ? Color.sticksGreen.opacity(0.1) : Color.sticksPanel2)
+            .clipShape(.rect(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isActive ? Color.sticksGreen.opacity(0.45) : Color.sticksHairline, lineWidth: 1)
+            )
+            .contentShape(.rect)
         }
         .buttonStyle(PressableButtonStyle())
+        .animation(.easeOut(duration: 0.12), value: isActive)
         .accessibilityLabel("Team game \(label)")
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
@@ -1295,18 +1299,29 @@ struct CreateMatchView: View {
     }
 
     /// Vegas carries its own options (birdie flip, doubling holes,
-    /// stake) — shown but unselectable until that panel ships.
+    /// stake) — shown but unselectable until that panel ships. The
+    /// blurb still prints, so both sections' grids read the same.
     private var vegasRuleRow: some View {
         Group {
             if let vegas = viewModel.roundOptions.teamRules.first(where: \.hasOptions) {
-                HStack(spacing: 6) {
-                    Image(systemName: "circle")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(vegas.label)
-                        .font(SticksFont.sans(13.5, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "circle")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(vegas.label)
+                            .font(SticksFont.sans(13.5, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(Color.sticksFaint)
+
+                    Text(vegas.blurb)
+                        .font(SticksFont.sans(11))
+                        .foregroundStyle(Color.sticksFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .foregroundStyle(Color.sticksFaint)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 9)
                 .background(Color.sticksPanel2.opacity(0.5))
