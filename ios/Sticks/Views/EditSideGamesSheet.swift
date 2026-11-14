@@ -14,8 +14,13 @@
 //  shows a confirmation first — turning a game on mid-round back-fills
 //  every hole already logged, which should never be a surprise.
 //
-//  Game settings (Stableford scale, BBB points, Snake stake, Nassau
-//  presses) open as a nested sheet reusing the slice-57/58 editors.
+//  Game settings: Stableford/BBB/Snake/Nassau open the slice-57/58
+//  native editors as a nested sheet. Every other game renders its
+//  served `settings` schema inline (choice/boolean/number/money,
+//  `dependsOn` honoured, `settingsComplete: false` → "set this up on
+//  the web") and posts drafts through side-game-config on save — the
+//  app never guesses a field name, and a non-empty `dropped` response
+//  surfaces as an error rather than a setting that silently no-ops.
 //
 
 import SwiftUI
@@ -32,6 +37,10 @@ struct EditSideGamesSheet: View {
     /// Local on/off state keyed by kind — rebuilt from each GET (and
     /// reconciled from each POST response).
     @State private var onState: [String: Bool] = [:]
+    /// Local settings drafts keyed kind → setting key → value, seeded
+    /// from the GET (stored config, falling back to each setting's
+    /// default) and posted through side-game-config on save.
+    @State private var drafts: [String: [String: SideGameConfigValue]] = [:]
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showsMidRoundConfirm = false
@@ -44,7 +53,9 @@ struct EditSideGamesSheet: View {
     /// logged — that's the caption, and the reason for the confirm.
     private var isUnderway: Bool { detail.status == .inProgress }
 
-    /// Games with a native settings editor (slice 57/58).
+    /// Games with a native settings editor (slices 57/58 and the
+    /// Wolf/Targets editors live on the round screen). Every other game
+    /// renders its served `settings` inline.
     private var configKeys: Set<String> { ["STABLEFORD", "BBB", "SNAKE", "NASSAU"] }
 
     var body: some View {
@@ -207,11 +218,11 @@ struct EditSideGamesSheet: View {
     }
 
     /// What shows beneath a game that's on: its settings entry, when
-    /// one exists and can be used.
+    /// one exists and can be used. Controls render from the served
+    /// `settings` schema — never a guessed field name.
     @ViewBuilder
     private func underRow(_ game: SideGameOption) -> some View {
-        let hasEditor = configKeys.contains(game.kind)
-        if hasEditor {
+        if configKeys.contains(game.kind) {
             Button {
                 configKind = SideGameConfigKind(rawValue: game.kind)
             } label: {
@@ -229,7 +240,135 @@ struct EditSideGamesSheet: View {
             .opacity(editable ? 1 : 0.5)
             .padding(.leading, 28)
             .padding(.bottom, 10)
+        } else if !editable || game.settings.isEmpty {
+            // Read-only viewers see the game as-is, no controls.
+        } else if !game.settingsComplete {
+            Text("Set this up on the web — this game needs more than a quick form.")
+                .font(SticksFont.sans(11.5))
+                .foregroundStyle(Color.sticksMuted)
+                .padding(.leading, 28)
+                .padding(.trailing, 14)
+                .padding(.bottom, 10)
+        } else {
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(game.settings) { setting in
+                    settingControl(game, setting)
+                }
+            }
+            .padding(.leading, 28)
+            .padding(.trailing, 14)
+            .padding(.bottom, 10)
         }
+    }
+
+    /// One served settings field under its game's row. A number or
+    /// money field can depend on a boolean sibling — hidden while that
+    /// sibling is off, since it can't mean anything yet.
+    @ViewBuilder
+    private func settingControl(_ game: SideGameOption, _ setting: SideGameSetting) -> some View {
+        if setting.dependsOn != nil, drafts[game.kind]?[setting.dependsOn ?? ""]?.boolValue != true {
+            EmptyView()
+        } else {
+            HStack(spacing: 10) {
+                Text(setting.label)
+                    .font(SticksFont.sans(12.5))
+                    .foregroundStyle(Color.sticksMuted)
+                Spacer(minLength: 8)
+
+                switch setting.type {
+                case "boolean":
+                    Toggle("", isOn: flagBinding(game, setting))
+                        .tint(Color.sticksGreen)
+                        .labelsHidden()
+                        .scaleEffect(0.82, anchor: .trailing)
+                case "choice":
+                    choiceMenu(game, setting)
+                case "number", "money":
+                    HStack(spacing: 5) {
+                        if setting.type == "money" {
+                            Text("$")
+                                .font(SticksFont.mono(12))
+                                .foregroundStyle(Color.sticksMuted)
+                        }
+                        TextField("0", value: numberBinding(game, setting), format: .number)
+                            .font(SticksFont.mono(12.5))
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.decimalPad)
+                            .frame(width: 56)
+                            .padding(.vertical, 5)
+                            .padding(.horizontal, 8)
+                            .background(Color.sticksBg)
+                            .clipShape(.rect(cornerRadius: 7))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .stroke(Color.sticksHairline, lineWidth: 1)
+                            )
+                    }
+                default:
+                    // A type this build doesn't know — render nothing
+                    // rather than a control that guesses.
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    /// Choice fields pick from the served options in a menu — the same
+    /// pattern as the scoring sheet's group picker. The selected
+    /// option's label shows; its blurb, if any, is the checkmark row's
+    /// subtitle the menu reveals on tap.
+    private func choiceMenu(_ game: SideGameOption, _ setting: SideGameSetting) -> some View {
+        let choices = setting.choices ?? []
+        let current = drafts[game.kind]?[setting.key]
+        let selectedLabel = choices.first(where: { $0.value == current })?.label
+            ?? choices.first(where: { $0.value == setting.defaultValue })?.label
+            ?? "—"
+        return Menu {
+            ForEach(Array(choices.enumerated()), id: \.element.label) { _, choice in
+                Button {
+                    drafts[game.kind]?[setting.key] = choice.value
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    let text = choice.blurb.map { "\(choice.label) — \($0)" } ?? choice.label
+                    if choice.value == current {
+                        Label(text, systemImage: "checkmark")
+                    } else {
+                        Text(text)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(selectedLabel)
+                    .font(SticksFont.sans(12.5, weight: .medium))
+                    .foregroundStyle(Color.sticksInk)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.sticksMuted)
+            }
+            .padding(.vertical, 5)
+            .padding(.horizontal, 9)
+            .background(Color.sticksBg)
+            .clipShape(.rect(cornerRadius: 7))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+        }
+    }
+
+    private func flagBinding(_ game: SideGameOption, _ setting: SideGameSetting) -> Binding<Bool> {
+        Binding(
+            get: { drafts[game.kind]?[setting.key]?.boolValue ?? setting.defaultValue?.boolValue ?? false },
+            set: { drafts[game.kind]?[setting.key] = .flag($0) }
+        )
+    }
+
+    private func numberBinding(_ game: SideGameOption, _ setting: SideGameSetting) -> Binding<Double> {
+        Binding(
+            get: { drafts[game.kind]?[setting.key]?.numberValue ?? setting.defaultValue?.numberValue ?? 0 },
+            set: { drafts[game.kind]?[setting.key] = .number($0) }
+        )
     }
 
     private func loadErrorView(_ message: String) -> some View {
@@ -298,16 +437,24 @@ struct EditSideGamesSheet: View {
 
     // MARK: - Data
 
-    /// GETs the picker and rebuilds the local on/off state from it.
+    /// GETs the picker and rebuilds the local on/off and settings-draft
+    /// state from it.
     private func reload() async {
         do {
             let fresh = try await viewModel.sideGamesPicker(session: session)
             picker = fresh
             var state: [String: Bool] = [:]
+            var freshDrafts: [String: [String: SideGameConfigValue]] = [:]
             for game in fresh.games {
                 state[game.kind] = game.on
+                var draft: [String: SideGameConfigValue] = [:]
+                for setting in game.settings {
+                    draft[setting.key] = game.config?[setting.key] ?? setting.defaultValue
+                }
+                freshDrafts[game.kind] = draft
             }
             onState = state
+            drafts = freshDrafts
         } catch let error as APIError {
             loadFailed = error.message
         } catch {
@@ -317,8 +464,10 @@ struct EditSideGamesSheet: View {
 
     /// POSTs the FULL desired set (locked-on games ride along), then
     /// reconciles against the response's kinds — the server legitimately
-    /// drops games this round can't play. Quiet-refreshes the detail
-    /// behind the sheet so standings move as soon as it dismisses.
+    /// drops games this round can't play. Settings drafts that drifted
+    /// from what's stored go up afterwards, one side-game-config POST
+    /// per game that's still on. Quiet-refreshes the detail behind the
+    /// sheet so standings move as soon as it dismisses.
     private func save() {
         guard !isSaving, let picker else { return }
         var kinds = picker.games.map(\.kind).filter { onState[$0] ?? false }
@@ -336,6 +485,25 @@ struct EditSideGamesSheet: View {
                     state[game.kind] = finalKinds.contains(game.kind)
                 }
                 onState = state
+
+                // Settings ride after the kinds replacement — a game
+                // that just came on gets its draft applied too.
+                for game in picker.games where state[game.kind] == true && !game.settings.isEmpty {
+                    guard var draft = drafts[game.kind] else { continue }
+                    let stored = game.config ?? [:]
+                    // Drop untouched fields so a server default change
+                    // isn't frozen in by an old draft.
+                    draft = draft.filter { key, value in
+                        game.settings.first(where: { $0.key == key }) != nil && value != stored[key]
+                    }
+                    guard !draft.isEmpty else { continue }
+                    try await viewModel.setSideGameConfig(
+                        kind: game.kind,
+                        config: draft,
+                        session: session
+                    )
+                }
+
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 dismiss()
             } catch let error as APIError {

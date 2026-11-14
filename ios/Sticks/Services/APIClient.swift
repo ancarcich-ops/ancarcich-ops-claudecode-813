@@ -155,6 +155,14 @@ nonisolated struct SideGameConfigRequest<C: Encodable>: Encodable {
     let config: C
 }
 
+/// Response for POST /matches/:id/side-game-config — `dropped` names
+/// the keys that didn't survive, which means the app sent a field the
+/// server doesn't know. A bug to fix, never a warning to ignore.
+nonisolated struct SideGameConfigResponse: Decodable {
+    let ok: Bool
+    let dropped: [String]?
+}
+
 nonisolated struct SharesResponse: Decodable {
     let shares: [RoundShare]
 }
@@ -644,11 +652,14 @@ nonisolated struct APIClient {
 
     /// POST /matches/:id/side-game-config — saves a game's settings
     /// (Targets stat/target/ante, Wolf rotation/push rule). Creator-only;
-    /// 400/403 carry server messages shown verbatim.
-    func setSideGameConfig<C: Encodable>(matchId: String, kind: String, config: C, token: String) async throws {
+    /// 400/403 carry server messages shown verbatim. Returns the keys
+    /// the server dropped — non-empty means the app sent an unknown
+    /// field name and the setting silently did nothing.
+    func setSideGameConfig<C: Encodable>(matchId: String, kind: String, config: C, token: String) async throws -> [String] {
         var request = makeRequest(path: "matches/\(matchId)/side-game-config", method: "POST", token: token)
         request.httpBody = try encoder.encode(SideGameConfigRequest(kind: kind, config: config))
-        let _: OkResponse = try await perform(request)
+        let response: SideGameConfigResponse = try await perform(request)
+        return response.dropped ?? []
     }
 
     /// GET /matches/:id/shares — the caller's live share links for a round.

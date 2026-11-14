@@ -416,13 +416,21 @@ final class MatchDetailViewModel {
     /// rotation/push rule), then quiet-refetches so the leaderboards
     /// recompute against the new config. Throws APIError — 403
     /// (non-creator) shows the server message verbatim; 401 signs out.
+    /// A non-empty `dropped` means the app posted a field name the
+    /// server doesn't know — surfaced as an error, never ignored.
     func setSideGameConfig<C: Encodable>(kind: String, config: C, session: SessionStore) async throws {
         guard let token = session.token else {
             session.signOut()
             throw APIError(message: "You've been signed out.", statusCode: 401)
         }
         do {
-            try await api.setSideGameConfig(matchId: matchId, kind: kind, config: config, token: token)
+            let dropped = try await api.setSideGameConfig(matchId: matchId, kind: kind, config: config, token: token)
+            if !dropped.isEmpty {
+                throw APIError(
+                    message: "Some settings for this game didn't save — update Sticks and try again.",
+                    statusCode: 400
+                )
+            }
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
             throw error

@@ -29,13 +29,20 @@ nonisolated struct SideGameOption: Decodable, Identifiable, Hashable {
     /// disabled and the game stays on; unchecking it appears to work
     /// and then comes back after the round trip.
     let locked: Bool
-    /// The game's stored settings, or nil.
-    let config: SideGameConfigValue?
+    /// The game's stored settings as served, or nil. Keys come from the
+    /// game's `settings` schema — never guessed (an invented key is
+    /// dropped silently, which is how a setting "doesn't stick").
+    let config: [String: SideGameConfigValue]?
+    /// The fields this game takes, served — render controls from this.
+    let settings: [SideGameSetting]
+    /// False when a game needs more than a flat form (Match's per-player
+    /// strokes, Team vs team's rules) — show "set this up on the web".
+    let settingsComplete: Bool
 
     var id: String { kind }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, label, blurb, on, eligible, ineligibleReason, locked, config
+        case kind, label, blurb, on, eligible, ineligibleReason, locked, config, settings, settingsComplete
     }
 
     init(from decoder: Decoder) throws {
@@ -47,7 +54,9 @@ nonisolated struct SideGameOption: Decodable, Identifiable, Hashable {
         eligible = (try? container.decode(Bool.self, forKey: .eligible)) ?? true
         ineligibleReason = try? container.decodeIfPresent(String.self, forKey: .ineligibleReason)
         locked = (try? container.decode(Bool.self, forKey: .locked)) ?? false
-        config = try? container.decodeIfPresent(SideGameConfigValue.self, forKey: .config)
+        config = try? container.decodeIfPresent([String: SideGameConfigValue].self, forKey: .config)
+        settings = (try? container.decodeIfPresent([SideGameSetting].self, forKey: .settings)) ?? []
+        settingsComplete = (try? container.decode(Bool.self, forKey: .settingsComplete)) ?? true
     }
 }
 
@@ -71,21 +80,74 @@ nonisolated struct SideGamesPicker: Decodable {
     }
 }
 
-/// A game's stored settings — decoded leniently; only fields the app
-/// actually renders are typed. (The server currently strips Skins'
-/// `carryOver` — the field is here so it lights up when the server
-/// round-trips it.)
-nonisolated struct SideGameConfigValue: Decodable, Hashable {
-    let carryOver: Bool?
+/// A JSON scalar in a game's stored config or a setting's default —
+/// choice values are strings, targets and stakes are numbers, toggles
+/// are booleans. Encodable so a draft can be posted back verbatim.
+nonisolated enum SideGameConfigValue: Decodable, Encodable, Hashable {
+    case text(String)
+    case number(Double)
+    case flag(Bool)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let flag = try? container.decode(Bool.self) {
+            self = .flag(flag)
+        } else if let number = try? container.decode(Double.self) {
+            self = .number(number)
+        } else {
+            self = .text((try? container.decode(String.self)) ?? "")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .flag(let value): try container.encode(value)
+        }
+    }
+
+    var stringValue: String? { if case .text(let value) = self { return value }; return nil }
+    var numberValue: Double? { if case .number(let value) = self { return value }; return nil }
+    var boolValue: Bool? { if case .flag(let value) = self { return value }; return nil }
+}
+
+/// One settings field a game takes, served by the GET — the app renders
+/// controls from this and never from a guessed field name. Types are
+/// `choice`, `boolean`, `number` and `money`; a field may `dependOn` a
+/// boolean sibling that has to be on for it to mean anything.
+nonisolated struct SideGameSetting: Decodable, Identifiable, Hashable {
+    let key: String
+    let label: String
+    let type: String
+    let defaultValue: SideGameConfigValue?
+    let choices: [SideGameSettingChoice]?
+    let dependsOn: String?
+
+    var id: String { key }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, label, type, choices, dependsOn
+        case defaultValue = "default"
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        carryOver = try? container.decodeIfPresent(Bool.self, forKey: .carryOver)
+        key = (try? container.decode(String.self, forKey: .key)) ?? ""
+        label = (try? container.decode(String.self, forKey: .label)) ?? ""
+        type = (try? container.decode(String.self, forKey: .type)) ?? "choice"
+        defaultValue = try? container.decodeIfPresent(SideGameConfigValue.self, forKey: .defaultValue)
+        choices = try? container.decodeIfPresent([SideGameSettingChoice].self, forKey: .choices)
+        dependsOn = try? container.decodeIfPresent(String.self, forKey: .dependsOn)
     }
+}
 
-    private enum CodingKeys: String, CodingKey {
-        case carryOver
-    }
+/// One option of a `choice` setting.
+nonisolated struct SideGameSettingChoice: Decodable, Hashable {
+    let value: SideGameConfigValue
+    let label: String
+    let blurb: String?
 }
 
 /// Body for POST /matches/:id/scoring — every field optional, send only
