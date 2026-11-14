@@ -302,6 +302,15 @@ final class CreateMatchViewModel {
     // MARK: Side games / group
 
     var sideGames: Set<String> = []
+    /// Settings the user changed on the create step, keyed by game kind
+    /// then by the served setting key. Only touched fields live here —
+    /// untouched ones fall through to the stored config (edit mode) and
+    /// then the served default, so a server default change is never
+    /// frozen in by the app.
+    private(set) var sideGameDrafts: [String: [String: SideGameConfigValue]] = [:]
+    /// Edit mode only: each game's stored config, parsed from the
+    /// round's raw sideGameConfigs JSON.
+    private var storedSideGameConfigs: [String: [String: SideGameConfigValue]] = [:]
     /// Team-vs-team scoring rules, keyed exactly as the server names
     /// them. Defaults to Best Ball; edit mode prefills the round's
     /// stored rules. The create gate still demands ≥1 on Both.
@@ -313,6 +322,8 @@ final class CreateMatchViewModel {
 
     private(set) var isCreating = false
     private(set) var createError: String?
+    /// True when the round saved but a side-game settings POST didn't.
+    private(set) var settingsSaveFailed = false
 
     /// Set = the form is editing an existing round (PATCH on submit)
     /// instead of creating one (POST).
@@ -372,6 +383,11 @@ final class CreateMatchViewModel {
             format = resolved == "INDIVIDUAL" && kinds.contains(Self.teamVsTeam) ? "BOTH" : resolved
         }
         sideGames = kinds
+        for (kind, raw) in editing.sideGameConfigs {
+            if let config = try? JSONDecoder().decode([String: SideGameConfigValue].self, from: Data(raw.utf8)) {
+                storedSideGameConfigs[kind] = config
+            }
+        }
         // Prefill the stored team rules so edit mode shows what's live
         // on the round — and the "pick at least one" gate doesn't force
         // a re-pick of rules that are already running. (Init assignments
@@ -927,7 +943,7 @@ final class CreateMatchViewModel {
         SideGameOption(
             kind: "SKINS",
             label: "Skins",
-            blurb: "Win a hole outright to take the skin — ties carry over."
+            blurb: "Win a hole outright to take the skin."
         ),
         SideGameOption(
             kind: "STABLEFORD",
@@ -1064,6 +1080,86 @@ final class CreateMatchViewModel {
         }
     }
 
+    // MARK: - Side-game settings
+
+    /// The settings `kind` takes — served on /round-options when the
+    /// server ships it there, else the bundled copy of the live schema.
+    func sideGameSchema(for kind: String) -> SideGameSchema? {
+        roundOptions.sideGameSchemas.first { $0.kind == kind }
+            ?? SideGameSchema.fallback.first { $0.kind == kind }
+    }
+
+    /// What a field currently reads: the user's edit, else the round's
+    /// stored value (edit mode), else the served default.
+    func settingValue(kind: String, _ setting: SideGameSetting) -> SideGameConfigValue? {
+        sideGameDrafts[kind]?[setting.key]
+            ?? storedSideGameConfigs[kind]?[setting.key]
+            ?? setting.defaultValue
+    }
+
+    func setSetting(kind: String, key: String, to value: SideGameConfigValue) {
+        sideGameDrafts[kind, default: [:]][key] = value
+    }
+
+    /// A dependent field (Nassau's "Press at") only means something
+    /// while its boolean sibling is on — hidden, and never posted, off.
+    func isSettingActive(kind: String, _ setting: SideGameSetting, in schema: SideGameSchema) -> Bool {
+        guard let parentKey = setting.dependsOn else { return true }
+        guard let parent = schema.settings.first(where: { $0.key == parentKey }) else { return true }
+        return settingValue(kind: kind, parent)?.boolValue == true
+    }
+
+    /// The config to POST for `kind` after the round saves, or empty
+    /// when nothing changed. POST side-game-config REPLACES the stored
+    /// config (verified live: posting only autoPressThreshold wiped the
+    /// stake), so once any field changed the WHOLE config goes up —
+    /// every active field at its current value. A dependent field whose
+    /// switch is off is left out; the server discards it anyway.
+    func pendingConfig(for kind: String) -> [String: SideGameConfigValue] {
+        guard let schema = sideGameSchema(for: kind), schema.settingsComplete,
+              let drafts = sideGameDrafts[kind] else { return [:] }
+        let changed = schema.settings.contains { setting in
+            guard let value = drafts[setting.key] else { return false }
+            let baseline = storedSideGameConfigs[kind]?[setting.key] ?? setting.defaultValue
+            if baseline == nil, value.numberValue == 0 { return false }
+            return value != baseline
+        }
+        guard changed else { return [:] }
+        var out: [String: SideGameConfigValue] = [:]
+        for setting in schema.settings where isSettingActive(kind: kind, setting, in: schema) {
+            if let value = settingValue(kind: kind, setting) {
+                out[setting.key] = value
+            }
+        }
+        return out
+    }
+
+    /// POSTs each picked game's changed settings once the round exists.
+    /// Retries a failure once; returns true when every config landed
+    /// with nothing dropped.
+    private func postSideGameConfigs(matchId: String, kinds: Set<String>, token: String) async -> Bool {
+        var allLanded = true
+        for kind in kinds.sorted() {
+            let config = pendingConfig(for: kind)
+            guard !config.isEmpty else { continue }
+            var landed = false
+            for _ in 0..<2 where !landed {
+                if let dropped = try? await api.setSideGameConfig(matchId: matchId, kind: kind, config: config, token: token) {
+                    landed = true
+                    if !dropped.isEmpty {
+                        print("[CreateMatch] \(kind) config dropped keys: \(dropped)")
+                        allLanded = false
+                    }
+                }
+            }
+            if !landed {
+                print("[CreateMatch] \(kind) config failed to save")
+                allLanded = false
+            }
+        }
+        return allLanded
+    }
+
     /// Toggles a team rule. Unchecking down to zero is allowed — the
     /// round then asks for at least one before it can be created (the
     /// canCreate gate), which reads more honestly than a chip that
@@ -1176,7 +1272,12 @@ final class CreateMatchViewModel {
             } else {
                 response = try await api.createMatch(request, token: token)
             }
-            return response.match.id
+            let matchId = response.match.id
+            // POST /matches ignores inline configs, so settings go up
+            // now that the round exists. The round itself is saved
+            // either way; a miss is flagged for the round screen.
+            settingsSaveFailed = !(await postSideGameConfigs(matchId: matchId, kinds: games, token: token))
+            return matchId
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
             return nil

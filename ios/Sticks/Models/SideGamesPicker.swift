@@ -124,11 +124,18 @@ nonisolated struct SideGameSetting: Decodable, Identifiable, Hashable {
     let defaultValue: SideGameConfigValue?
     let choices: [SideGameSettingChoice]?
     let dependsOn: String?
+    /// One line of help under the label ("Empty or 0 means no money.").
+    let blurb: String?
+    /// Bounds for number/money fields — steppers and clamps use these
+    /// rather than invented limits.
+    let min: Double?
+    let max: Double?
+    let step: Double?
 
     var id: String { key }
 
     private enum CodingKeys: String, CodingKey {
-        case key, label, type, choices, dependsOn
+        case key, label, type, choices, dependsOn, blurb, min, max, step
         case defaultValue = "default"
     }
 
@@ -140,6 +147,10 @@ nonisolated struct SideGameSetting: Decodable, Identifiable, Hashable {
         defaultValue = try? container.decodeIfPresent(SideGameConfigValue.self, forKey: .defaultValue)
         choices = try? container.decodeIfPresent([SideGameSettingChoice].self, forKey: .choices)
         dependsOn = try? container.decodeIfPresent(String.self, forKey: .dependsOn)
+        blurb = try? container.decodeIfPresent(String.self, forKey: .blurb)
+        min = try? container.decodeIfPresent(Double.self, forKey: .min)
+        max = try? container.decodeIfPresent(Double.self, forKey: .max)
+        step = try? container.decodeIfPresent(Double.self, forKey: .step)
     }
 }
 

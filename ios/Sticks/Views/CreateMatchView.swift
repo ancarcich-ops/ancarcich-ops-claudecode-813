@@ -56,6 +56,10 @@ struct CreateMatchView: View {
     @State private var isAdvancing = true
     @FocusState private var focusedSeat: UUID?
     @FocusState private var isCourseFieldFocused: Bool
+    /// "KIND.key" of the side-game money field being typed in.
+    @FocusState private var focusedSetting: String?
+    @State private var showsSettingsSaveAlert = false
+    @State private var createdMatchId: String?
 
     init(
         user: User,
@@ -94,6 +98,13 @@ struct CreateMatchView: View {
                 .transition(stepTransition)
             }
             .scrollDismissesKeyboard(.interactively)
+            .alert("Round saved", isPresented: $showsSettingsSaveAlert) {
+                Button("OK") {
+                    if let createdMatchId { onCreated(createdMatchId) }
+                }
+            } message: {
+                Text("Some side-game settings didn't save. Open Side games on the round to set them.")
+            }
         }
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) { footerBar }
@@ -1576,7 +1587,13 @@ struct CreateMatchView: View {
                             .frame(height: 1)
                             .padding(.leading, 42)
                     }
-                    sideGameRow(option)
+                    VStack(spacing: 0) {
+                        sideGameRow(option)
+                        if viewModel.isSideGameOn(option.kind), option.kind != CreateMatchViewModel.teamVsTeam {
+                            sideGameSettings(option)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
                 }
             }
             .background(Color.sticksCard)
@@ -1650,6 +1667,237 @@ struct CreateMatchView: View {
         .disabled(isDisabled)
         .opacity(isDisabled && !isOn ? 0.62 : 1)
         .animation(.easeOut(duration: 0.12), value: isOn)
+    }
+
+    // MARK: Side-game settings (create step)
+
+    /// The picked game's served settings, inline under its row — the
+    /// same schema the mid-round editor renders, so a game is set up
+    /// here instead of after the round starts. Choices show every
+    /// option on screen (carry vs no carry is the whole decision).
+    @ViewBuilder
+    private func sideGameSettings(_ option: CreateMatchViewModel.SideGameOption) -> some View {
+        if let schema = viewModel.sideGameSchema(for: option.kind) {
+            if !schema.settingsComplete {
+                Text("Extra setup for this game, like per-player strokes, lives on the web once the round is created.")
+                    .font(SticksFont.sans(11.5))
+                    .foregroundStyle(Color.sticksFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 46)
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 12)
+            } else if !schema.settings.isEmpty {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(schema.settings) { setting in
+                        if viewModel.isSettingActive(kind: option.kind, setting, in: schema) {
+                            settingField(kind: option.kind, setting)
+                                .transition(.opacity)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.sticksPanel2.opacity(0.55))
+                .clipShape(.rect(cornerRadius: 10))
+                .padding(.leading, 46)
+                .padding(.trailing, 14)
+                .padding(.bottom, 12)
+                .animation(.easeOut(duration: 0.15), value: viewModel.sideGameDrafts)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func settingField(kind: String, _ setting: SideGameSetting) -> some View {
+        switch setting.type {
+        case "choice":
+            VStack(alignment: .leading, spacing: 7) {
+                settingLabel(setting.label)
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(Array((setting.choices ?? []).enumerated()), id: \.offset) { _, choice in
+                        settingChoiceChip(kind: kind, setting: setting, choice: choice)
+                    }
+                }
+                if let blurb = setting.blurb { settingBlurb(blurb) }
+            }
+        case "boolean":
+            let isOn = Binding<Bool>(
+                get: { viewModel.settingValue(kind: kind, setting)?.boolValue ?? false },
+                set: {
+                    viewModel.setSetting(kind: kind, key: setting.key, to: .flag($0))
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
+            )
+            Toggle(isOn: isOn) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(setting.label)
+                        .font(SticksFont.sans(13.5, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                    if let blurb = setting.blurb { settingBlurb(blurb) }
+                }
+            }
+            .tint(Color.sticksGreen)
+        case "number":
+            settingStepper(kind: kind, setting)
+        case "money":
+            settingMoney(kind: kind, setting)
+        default:
+            // A type this build doesn't know — nothing, never a guess.
+            EmptyView()
+        }
+    }
+
+    private func settingLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(SticksFont.mono(9.5))
+            .kerning(1)
+            .foregroundStyle(Color.sticksMuted)
+    }
+
+    private func settingBlurb(_ text: String) -> some View {
+        Text(text)
+            .font(SticksFont.sans(11))
+            .foregroundStyle(Color.sticksFaint)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func settingChoiceChip(kind: String, setting: SideGameSetting, choice: SideGameSettingChoice) -> some View {
+        let isOn = viewModel.settingValue(kind: kind, setting) == choice.value
+        return Button {
+            viewModel.setSetting(kind: kind, key: setting.key, to: choice.value)
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            HStack(alignment: .top, spacing: 7) {
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isOn ? Color.sticksGreen : Color.sticksFaint)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(choice.label)
+                        .font(SticksFont.sans(13, weight: .semibold))
+                        .foregroundStyle(Color.sticksInk)
+                    if let blurb = choice.blurb {
+                        Text(blurb)
+                            .font(SticksFont.sans(11))
+                            .foregroundStyle(Color.sticksFaint)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(isOn ? Color.sticksGreen.opacity(0.1) : Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 9))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(isOn ? Color.sticksGreen.opacity(0.45) : Color.sticksHairline, lineWidth: 1)
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("\(setting.label): \(choice.label)")
+        .accessibilityHint(choice.blurb ?? "")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    private func settingStepper(kind: String, _ setting: SideGameSetting) -> some View {
+        let step = setting.step ?? 1
+        let lower = setting.min ?? 0
+        let upper = setting.max ?? 99
+        let value = viewModel.settingValue(kind: kind, setting)?.numberValue ?? lower
+        let shown = Int(value.rounded())
+        return HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(setting.label)
+                    .font(SticksFont.sans(13.5, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
+                if let blurb = setting.blurb { settingBlurb(blurb) }
+            }
+            Spacer(minLength: 6)
+            HStack(spacing: 0) {
+                stepperButton("minus", enabled: value - step >= lower) {
+                    viewModel.setSetting(kind: kind, key: setting.key, to: .number(max(lower, value - step)))
+                }
+                Text("\(shown)")
+                    .font(SticksFont.mono(15, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
+                    .monospacedDigit()
+                    .frame(minWidth: 30)
+                    .contentTransition(.numericText(value: value))
+                    .animation(.snappy(duration: 0.2), value: value)
+                stepperButton("plus", enabled: value + step <= upper) {
+                    viewModel.setSetting(kind: kind, key: setting.key, to: .number(min(upper, value + step)))
+                }
+            }
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.sticksHairline, lineWidth: 1))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(setting.label)
+        .accessibilityValue("\(shown)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                viewModel.setSetting(kind: kind, key: setting.key, to: .number(min(upper, value + step)))
+            case .decrement:
+                viewModel.setSetting(kind: kind, key: setting.key, to: .number(max(lower, value - step)))
+            @unknown default: break
+            }
+        }
+    }
+
+    private func stepperButton(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(enabled ? Color.sticksGreen : Color.sticksFaint)
+                .frame(width: 34, height: 32)
+                .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(!enabled)
+    }
+
+    /// Money: blank and 0 both mean "no money" (the server stores a
+    /// stake only above zero), so clearing the field posts 0.
+    private func settingMoney(kind: String, _ setting: SideGameSetting) -> some View {
+        let focusKey = "\(kind).\(setting.key)"
+        let current = viewModel.settingValue(kind: kind, setting)?.numberValue ?? 0
+        return HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(setting.label)
+                    .font(SticksFont.sans(13.5, weight: .semibold))
+                    .foregroundStyle(Color.sticksInk)
+                if let blurb = setting.blurb { settingBlurb(blurb) }
+            }
+            Spacer(minLength: 6)
+            HStack(spacing: 4) {
+                Text("$")
+                    .font(SticksFont.mono(13))
+                    .foregroundStyle(Color.sticksMuted)
+                MoneyAmountField(amount: current, minimum: setting.min ?? 0) { value in
+                    viewModel.setSetting(kind: kind, key: setting.key, to: .number(value))
+                }
+                .focused($focusedSetting, equals: focusKey)
+                .frame(width: 58)
+            }
+            .padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 9))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(focusedSetting == focusKey ? Color.sticksGreen.opacity(0.6) : Color.sticksHairline, lineWidth: 1)
+            )
+            .accessibilityLabel("\(setting.label), dollars")
+        }
     }
 
     /// Team vs team is scored per rule — the server publishes a board
@@ -1856,14 +2104,51 @@ struct CreateMatchView: View {
     private func create() {
         guard viewModel.canCreate else { return }
         focusedSeat = nil
+        focusedSetting = nil
         Task {
             if let matchId = await viewModel.create(session: session) {
+                if viewModel.settingsSaveFailed {
+                    // The round exists — say so, then carry on to it.
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    createdMatchId = matchId
+                    showsSettingsSaveAlert = true
+                    return
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 onCreated(matchId)
             } else if viewModel.createError != nil {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
+    }
+}
+
+// MARK: - Money field
+
+/// A dollar amount typed on a decimal pad. Commits on every keystroke —
+/// a decimal pad has no return key, so a value-formatted field could
+/// still be uncommitted when Create is tapped. Blank commits 0, which
+/// the server reads as "no money".
+private struct MoneyAmountField: View {
+    let amount: Double
+    let minimum: Double
+    let onChange: (Double) -> Void
+    @State private var text = ""
+
+    var body: some View {
+        TextField("0", text: $text)
+            .font(SticksFont.mono(14, weight: .semibold))
+            .foregroundStyle(Color.sticksInk)
+            .multilineTextAlignment(.trailing)
+            .keyboardType(.decimalPad)
+            .onAppear {
+                text = amount > 0 ? amount.formatted(.number.grouping(.never)) : ""
+            }
+            .onChange(of: text) { _, newValue in
+                let normalized = newValue.replacingOccurrences(of: ",", with: ".")
+                let parsed = Double(normalized) ?? 0
+                onChange(Swift.max(minimum, parsed))
+            }
     }
 }
 

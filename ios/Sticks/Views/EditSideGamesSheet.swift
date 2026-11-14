@@ -496,12 +496,15 @@ struct EditSideGamesSheet: View {
                 for game in picker.games where state[game.kind] == true && !game.settings.isEmpty {
                     guard var draft = drafts[game.kind] else { continue }
                     let stored = game.config ?? [:]
-                    // Drop untouched fields so a server default change
-                    // isn't frozen in by an old draft.
-                    draft = draft.filter { key, value in
-                        game.settings.first(where: { $0.key == key }) != nil && value != stored[key]
+                    draft = draft.filter { key, _ in
+                        game.settings.contains(where: { $0.key == key })
                     }
-                    guard !draft.isEmpty else { continue }
+                    // Skip games whose settings weren't touched, so a
+                    // server default change isn't frozen in. But once
+                    // anything changed, send the WHOLE config: the
+                    // endpoint replaces rather than merges (verified
+                    // live), so a partial post wipes the other fields.
+                    guard draft.contains(where: { key, value in value != stored[key] }) else { continue }
                     try await viewModel.setSideGameConfig(
                         kind: game.kind,
                         config: draft,
