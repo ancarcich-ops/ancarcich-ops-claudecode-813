@@ -173,8 +173,10 @@ struct MatchCardView: View {
                 Text("FINAL")
             }
         case .upcoming:
-            // Recomputed every 60s while visible.
-            TimelineView(.periodic(from: .now, by: 60)) { context in
+            // Ticks at the displayed granularity (minutes), on minute
+            // boundaries — never faster. The label stays the fixed tee
+            // time so a reader never hears a figure that's already stale.
+            TimelineView(.everyMinute) { context in
                 CardPill(
                     fill: Color(red: 14 / 255, green: 165 / 255, blue: 233 / 255),
                     text: Color(red: 2 / 255, green: 132 / 255, blue: 199 / 255),
@@ -183,7 +185,16 @@ struct MatchCardView: View {
                     Text(Self.countdownText(to: match.scheduledAt, now: context.date))
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Self.teeTimeLabel(for: match.scheduledAt))
         }
+    }
+
+    /// "Tee time Sat 4:25 PM" — stable, unlike the ticking pill text.
+    private static func teeTimeLabel(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = Calendar.current.isDateInToday(date) ? "h:mm a" : "EEEE h:mm a"
+        return "Tee time \(formatter.string(from: date))"
     }
 
     /// "IN 2H 14M" / "IN 3D 2H" / "NOW".
