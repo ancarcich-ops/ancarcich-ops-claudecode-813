@@ -36,6 +36,29 @@ final class MatchDetailViewModel {
     /// a second tap on the same chip waits instead of double-firing.
     private var pendingReactions: Set<String> = []
 
+    /// Slice 101: the post-round recap. `.none` is the 404 case — a
+    /// round with nothing scored has NO recap entry point at all.
+    enum RecapState {
+        case idle
+        case none
+        case loaded(RoundRecap)
+        case failed(String)
+    }
+
+    private(set) var recapState: RecapState = .idle
+
+    /// Whether the recap tab exists — a finished round with a recap.
+    var hasRecap: Bool {
+        if case .loaded = recapState { return true }
+        return false
+    }
+
+    /// The loaded recap payload, when there is one.
+    var recapPayload: RoundRecap? {
+        if case .loaded(let recap) = recapState { return recap }
+        return nil
+    }
+
     private let api: APIClient
     private let matchId: String
     /// The format string the round was opened with. Tournament rounds are
@@ -368,6 +391,25 @@ final class MatchDetailViewModel {
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
             throw error
+        }
+    }
+
+    /// Fetches the post-round recap (slice 101). A 404 means nothing is
+    /// scored yet — recap state becomes .none and the UI shows NO entry
+    /// point at all. A 403 (can't see the round) reads as none too; the
+    /// round itself is already failing visibly in that case.
+    func loadRecap(session: SessionStore) async {
+        guard let token = session.token else { return }
+        do {
+            recapState = .loaded(try await api.recap(matchId: matchId, token: token))
+        } catch let error as APIError where error.statusCode == 404 || error.statusCode == 403 {
+            recapState = .none
+        } catch let error as APIError {
+            // A finished round normally has a recap; a failure here gets
+            // a retry affordance, not a silent hole.
+            recapState = .failed(error.message)
+        } catch {
+            recapState = .failed("Can't reach Sticks. Check your connection and try again.")
         }
     }
 

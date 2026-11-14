@@ -59,6 +59,10 @@ struct MatchDetailView: View {
     /// Slice 54: which content tab is showing — Scorecard (default) or
     /// Live odds (the Market). Matches the web's match-page tabs.
     @State private var selectedTab: MatchDetailTab = .scorecard
+    /// Slice 101: the once-per-person post-round recap card, and the
+    /// one-time recap-tab default on a finished round.
+    @State private var showsRecapCard = false
+    @State private var didInitialRecapCheck = false
     @State private var showsDeleteConfirm = false
     @State private var showsFinalConfirm = false
     @State private var showsReopenConfirm = false
@@ -101,10 +105,15 @@ struct MatchDetailView: View {
                                 // Slice 54: the tab switcher only exists when
                                 // the match is priced — solo/unpriced rounds
                                 // have no Market, so no tab bar at all.
-                                if isMarketPriced(detail) {
+                                // Slice 101: a finished round with a recap
+                                // gets the switcher too (Scorecard | Recap).
+                                if isMarketPriced(detail) || viewModel.hasRecap {
                                     detailTabBar(detail)
                                 }
-                                if selectedTab == .liveOdds,
+                                if selectedTab == .recap, let recap = viewModel.recapPayload {
+                                    // Recap tab: the whole post-round recap.
+                                    RecapTabView(recap: recap, detail: detail)
+                                } else if selectedTab == .liveOdds,
                                    isMarketPriced(detail),
                                    let odds = viewModel.response?.odds {
                                     // Live odds tab: the Market only.
@@ -131,14 +140,23 @@ struct MatchDetailView: View {
                 // Slice 93: a reaction push that pointed at a scored hole
                 // scrolls to the highlights card once content lands.
                 .onChange(of: viewModel.phase) { _, phase in
-                    guard case .loaded = phase, let target = pendingScrollTarget else { return }
-                    pendingScrollTarget = nil
-                    guard target.hasPrefix("hole:") else { return }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        withAnimation(.easeOut(duration: 0.4)) {
-                            proxy.scrollTo(HighlightScrollAnchor.id, anchor: .top)
+                    guard case .loaded = phase else { return }
+                    if let target = pendingScrollTarget {
+                        pendingScrollTarget = nil
+                        guard target.hasPrefix("hole:") else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                proxy.scrollTo(HighlightScrollAnchor.id, anchor: .top)
+                            }
                         }
                     }
+                    handleLoadedDetail()
+                }
+                // Slice 101: a round marked final while this screen is
+                // up gets the same treatment as one opened final.
+                .onChange(of: viewModel.detail?.status) { _, status in
+                    guard status == .completed else { return }
+                    handleLoadedDetail()
                 }
             }
         }
@@ -196,6 +214,18 @@ struct MatchDetailView: View {
         .sheet(isPresented: $showsRoundScoring) {
             if let detail = viewModel.detail {
                 RoundScoringSheet(detail: detail, viewModel: viewModel, session: session)
+            }
+        }
+        .sheet(isPresented: $showsRecapCard) {
+            if let detail = viewModel.detail, let recap = viewModel.recapPayload {
+                RecapHeadlineCard(
+                    recap: recap,
+                    courseName: detail.courseName,
+                    isOwnSeat: recap.seat.matchPlayerId == detail.myMatchPlayerId
+                ) {
+                    // Tapping through lands on the full recap tab.
+                    selectTab(.recap)
+                }
             }
         }
         .fullScreenCover(isPresented: $showsCreate) {
@@ -643,6 +673,14 @@ struct MatchDetailView: View {
                 isActive: selectedTab == .scorecard
             ) { selectTab(.scorecard) }
 
+            if viewModel.hasRecap {
+                tabButton(
+                    title: "Recap",
+                    badge: nil,
+                    isActive: selectedTab == .recap
+                ) { selectTab(.recap) }
+            }
+
             tabButton(
                 title: "Live odds",
                 badge: callCount > 0 ? "\(callCount)" : nil,
@@ -661,6 +699,29 @@ struct MatchDetailView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.easeOut(duration: 0.15)) {
             selectedTab = tab
+        }
+    }
+
+    /// Slice 101: once the detail is loaded and the round is final,
+    /// fetch the recap, default the tab to it (first open of an
+    /// already-final round only — a round that goes final while this
+    /// screen is up announces itself with the card instead), and show
+    /// the headline card once per person per round.
+    private func handleLoadedDetail() {
+        guard let detail = viewModel.detail, detail.status == .completed else { return }
+        let isFirstLoad = !didInitialRecapCheck
+        didInitialRecapCheck = true
+        Task {
+            await viewModel.loadRecap(session: session)
+            guard viewModel.hasRecap else { return }
+            if isFirstLoad, selectedTab == .scorecard {
+                selectedTab = .recap
+            }
+            if let user = session.user,
+               !RecapCardStore.hasShown(userId: user.id, matchId: match.id) {
+                RecapCardStore.markShown(userId: user.id, matchId: match.id)
+                showsRecapCard = true
+            }
         }
     }
 
@@ -1308,10 +1369,12 @@ struct MatchDetailView: View {
 }
 
 /// Slice 54: the match-detail content tabs, mirroring the web's
-/// Scorecard | Live odds switcher.
+/// Scorecard | Live odds switcher. Slice 101 adds Recap, shown on
+/// finished rounds that have one.
 enum MatchDetailTab {
     case scorecard
     case liveOdds
+    case recap
 }
 
 /// Shared press-scale feedback for prominent buttons.

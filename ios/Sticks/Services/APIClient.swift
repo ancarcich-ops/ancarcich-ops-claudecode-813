@@ -662,6 +662,14 @@ nonisolated struct APIClient {
         return response.dropped ?? []
     }
 
+    /// GET /matches/:id/recap — the post-round recap, server-computed.
+    /// 404 when nothing is scored yet (no entry point should exist);
+    /// 403 when the caller can't see the round.
+    func recap(matchId: String, token: String) async throws -> RoundRecap {
+        let request = makeRequest(path: "matches/\(matchId)/recap", method: "GET", token: token)
+        return try await perform(request)
+    }
+
     /// GET /matches/:id/shares — the caller's live share links for a round.
     func listShares(matchId: String, token: String) async throws -> [RoundShare] {
         let request = makeRequest(path: "matches/\(matchId)/shares", method: "GET", token: token)
