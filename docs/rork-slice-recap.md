@@ -253,3 +253,42 @@ Verified live against a fully-scored finished probe round (NET, 2 players, 18 ho
   ("FINAL — PARK CITY GOLF COURSE", 91, +18, story, compact arc), does not return after
   dismissal; the Recap tab defaults on that first open, Scorecard on subsequent opens;
   settled line reads "83 (+10)" (net 83 / netToPar +10 from `netRecap.totals`).
+
+## Addendum 3 — the off-tenth probe (2026-11-14)
+
+`scripts/recap-tenth-probe.py` builds finished 18-hole rounds with
+`startingHole: 10`, scored in playing order (10…18 then 1…9), and checks
+the recap in both voices (own card and spectator, creator absent).
+
+What held:
+
+- Arc order is playing order: position 0 = hole 10, position 9 = hole 1,
+  positions sequential, last `toPar` == `totals.grossToPar`.
+- Swing rows run in playing order across the turn (holes 11, 3, 4),
+  swings are stroke differences so the par rotation cancels — sums tie.
+- Stretch naming renders "HOLES 4 THROUGH 7" etc. from hole labels; no
+  off-tenth crash or mislabel in the app's stretches.
+- Spectator story fix verified live: "Spectated A won by 2 — Spectated B
+  dropped 5 shots over holes 3–4." No first-person word in it; own card
+  keeps second person.
+
+The server bug the probe pins (**server side, not the app**):
+
+- The recap pairs the round's pars with the arc **by playing position**,
+  not by hole number. Live proof: a start-on-10 round with catalog pars
+  (hole 10 = par 5, per the match detail's hole-ordered `pars` array)
+  comes back with `arc[0].par == 4` — hole 1's par. All 18 holes fit the
+  rotation exactly (`arc[i].par == pars[(i + startingHole - 1) mod 18]`).
+- Effect: every par-relative number in the recap is wrong on any off-1
+  start — arc deltas, toPar, best/worst stretches, distribution, byPar,
+  difficulty, the story's "dropped N shots" — while player-vs-player
+  numbers (swing rows, stroke margins, "won by N") stay correct. A
+  player who plays posted-par golf shows scattered ±2s.
+- Fix on the server: index the pars array by `arc[i].hole - 1`, not by
+  the arc position. The probe's `recap pars indexed by hole number`
+  check is red until that ships and is the regression test for it.
+- One judgement call for the recap's author: the front/back split in
+  `netRecap.totals` is also positional (starting on 10 files holes
+  10–18 under "front"). If "front" means holes 1–9, that needs the same
+  hole-number fix; if it means the first nine played, it's fine and
+  worth a line in the spec.
