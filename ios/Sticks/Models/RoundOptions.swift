@@ -174,7 +174,7 @@ extension RoundOptionsResponse {
                 id: "NET",
                 label: "Net",
                 hint: "Handicap",
-                blurb: "Lowest gross minus handicap wins. Lower handicap is the market favorite at open."
+                blurb: "Handicap strokes come off each player's score — lowest net wins. The live odds open with lower handicaps favored."
             ),
             RoundScoringMode(
                 id: "GROSS",
