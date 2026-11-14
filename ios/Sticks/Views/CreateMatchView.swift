@@ -326,9 +326,9 @@ struct CreateMatchView: View {
     /// tappable chips that re-open on tap.
     private var roundRevealSections: some View {
         VStack(alignment: .leading, spacing: 18) {
-            templateSection
-
             courseGroup
+
+            templateSection
 
             if viewModel.roundStage >= 1 {
                 teeHolesGroup
@@ -343,12 +343,14 @@ struct CreateMatchView: View {
         .animation(.easeOut(duration: 0.22), value: viewModel.openRoundGroup)
     }
 
-    // MARK: - Templates (slice 94)
+    // MARK: - Saved setups (slice 94)
 
-    /// The player's saved round setups. A collapsed chip with the count
-    /// that expands to one tappable row per template; applying one is a
-    /// pre-fill, not a commitment — every answer stays editable. An
-    /// empty list renders NOTHING: no header, no empty-state copy.
+    /// The player's saved round setups — called "templates" on the wire,
+    /// never on screen: the word tests as jargon. A collapsed chip under
+    /// the course picker states what one IS, and expands to one tappable
+    /// row per setup; applying one is a pre-fill, not a commitment —
+    /// every answer stays editable. An empty list renders NOTHING: no
+    /// header, no empty-state copy.
     @ViewBuilder private var templateSection: some View {
         if !viewModel.isEditing, !viewModel.roundTemplates.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
@@ -371,7 +373,7 @@ struct CreateMatchView: View {
         } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("TEMPLATES")
+                    Text("REUSE A PAST SETUP")
                         .font(SticksFont.mono(9))
                         .kerning(1.1)
                         .foregroundStyle(Color.sticksGreen)
@@ -380,6 +382,11 @@ struct CreateMatchView: View {
                         .font(SticksFont.sans(14.5, weight: .semibold))
                         .foregroundStyle(Color.sticksInk)
                         .lineLimit(1)
+
+                    Text("Your usual course, format and side games, filled in and ready to go — every part stays editable.")
+                        .font(SticksFont.sans(11))
+                        .foregroundStyle(Color.sticksFaint)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 8)
@@ -399,13 +406,13 @@ struct CreateMatchView: View {
             .contentShape(.rect)
         }
         .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel("\(viewModel.roundTemplates.count) saved round templates. Double tap to show them.")
+        .accessibilityLabel("\(viewModel.roundTemplates.count) saved round setups. Double tap to show them.")
     }
 
     private var templateListCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("TEMPLATES")
+                Text("SAVED SETUPS")
                     .font(SticksFont.mono(10.5))
                     .kerning(1.47)
                     .foregroundStyle(Color.sticksGreen)
@@ -426,13 +433,21 @@ struct CreateMatchView: View {
                         .clipShape(.circle)
                 }
                 .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel("Hide templates")
+                .accessibilityLabel("Hide saved setups")
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
             .padding(.bottom, 8)
 
             Rectangle().fill(Color.sticksHairline).frame(height: 1)
+
+            Text("Each is a round you set up before, saved as-is. Tap USE to fill the form from it — then change anything.")
+                .font(SticksFont.sans(11))
+                .foregroundStyle(Color.sticksFaint)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
 
             ForEach(Array(viewModel.roundTemplates.enumerated()), id: \.element.id) { index, template in
                 if index > 0 {
@@ -484,7 +499,7 @@ struct CreateMatchView: View {
             .contentShape(.rect)
         }
         .buttonStyle(RowPressStyle())
-        .accessibilityLabel("Use template: \(template.summaryLine)")
+        .accessibilityLabel("Use saved setup: \(template.summaryLine)")
     }
 
     @ViewBuilder private var courseGroup: some View {
