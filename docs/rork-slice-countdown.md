@@ -107,3 +107,21 @@ Reminder on the contract, since it has caused this exact confusion
 before: **`format` alone cannot tell you a round is Individual-and-Team.**
 "BOTH" is never stored. Read `uiFormat` from the payload; don't
 re-derive the format from the `format` column.
+
+## Addendum — the label went relative (Nov 14)
+
+The stable label shipped as the relative phrase, not the absolute time:
+**"Tees off in about 3 hours."** — minutes under an hour, then whole
+hours, then days, rounded (2h58m reads "about 3 hours"). Reasons: it's
+true from anywhere without a per-course timezone (about a thousand
+courses, none with coordinates to derive one from), it's stale only
+harmlessly at that granularity, and it still reads as one stable item.
+It's computed once per render and deliberately not ticked; the visible
+pill keeps ticking per minute and still shows "NOW" under a minute out.
+Absolute times (the card's "SAT, NOV 14 · 1:03 PM" line) remain subject
+to the missing timezone — if those ever need to be right, that's the
+timezone-per-course work, unscoped until wanted.
+
+Live-checked in the simulator: the accessibility tree carried
+"Tees off in about …" as a single element, and the upcoming pill ticked
+on minute boundaries ("IN 2H 54M" → "IN 2H 50M" four minutes later).

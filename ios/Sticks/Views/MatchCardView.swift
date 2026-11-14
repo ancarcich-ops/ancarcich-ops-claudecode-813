@@ -174,8 +174,11 @@ struct MatchCardView: View {
             }
         case .upcoming:
             // Ticks at the displayed granularity (minutes), on minute
-            // boundaries — never faster. The label stays the fixed tee
-            // time so a reader never hears a figure that's already stale.
+            // boundaries — never faster. The accessibility label is a
+            // coarse relative phrase, computed once per render and
+            // deliberately not ticked: stable for a reader, and no
+            // absolute clock time to get wrong — the app has no
+            // per-course timezone to print one from.
             TimelineView(.everyMinute) { context in
                 CardPill(
                     fill: Color(red: 14 / 255, green: 165 / 255, blue: 233 / 255),
@@ -186,15 +189,29 @@ struct MatchCardView: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Self.teeTimeLabel(for: match.scheduledAt))
+            .accessibilityLabel(Self.teeTimeLabel(for: match.scheduledAt, now: .now))
         }
     }
 
-    /// "Tee time Sat 4:25 PM" — stable, unlike the ticking pill text.
-    private static func teeTimeLabel(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = Calendar.current.isDateInToday(date) ? "h:mm a" : "EEEE h:mm a"
-        return "Tee time \(formatter.string(from: date))"
+    /// "Tees off in about 3 hours." — a relative phrase, not an absolute
+    /// time. Rounds carry no per-course timezone (about a thousand
+    /// courses, none with coordinates to derive one from), so a printed
+    /// clock time could read wrong to someone in another zone; a coarse
+    /// relative figure is true from anywhere and stale only harmlessly.
+    private static func teeTimeLabel(for date: Date, now: Date) -> String {
+        let seconds = date.timeIntervalSince(now)
+        if seconds < 60 { return "Tees off now." }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 {
+            return "Tees off in about \(minutes) minute\(minutes == 1 ? "" : "s")."
+        }
+        // "About" rounds, so 2h58m reads "about 3 hours".
+        let hours = Int((Double(minutes) / 60).rounded())
+        if hours < 24 {
+            return "Tees off in about \(hours) hour\(hours == 1 ? "" : "s")."
+        }
+        let days = Int((Double(hours) / 24).rounded())
+        return "Tees off in about \(days) day\(days == 1 ? "" : "s")."
     }
 
     /// "IN 2H 14M" / "IN 3D 2H" / "NOW".
