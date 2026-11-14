@@ -364,6 +364,11 @@ struct EditSideGamesSheet: View {
         )
     }
 
+    /// Number/money fields send 0 for a clear — verified live on all
+    /// four money fields (SNAKE/NASSAU/SIXES stake, TARGETS ante): the
+    /// parsers store a stake only above zero, so 0, null and omitting
+    /// the key all land on the same stored config. Don't "fix" this
+    /// into sending null.
     private func numberBinding(_ game: SideGameOption, _ setting: SideGameSetting) -> Binding<Double> {
         Binding(
             get: { drafts[game.kind]?[setting.key]?.numberValue ?? setting.defaultValue?.numberValue ?? 0 },

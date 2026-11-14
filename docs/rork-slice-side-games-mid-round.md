@@ -263,3 +263,27 @@ That's the point, and it's why the web shows that caption. Keep it.
 - On a finished round: refused with the reopen message.
 - Course, holes and players stay locked — if those are editable on your
   screen mid-round, that's a bug.
+
+## Addendum — dropped semantics fixed, money clears with 0 (Nov 14)
+
+Two corrections, both server-side, both shipped and deployed:
+
+**`dropped` now means "this game has no such setting", not "a value
+didn't end up stored."** The original meaning broke two ordinary
+requests: clearing a money field reported the key as dropped, and
+turning Nassau's auto-press off 400'd (the parser stores `autoPress`
+only when true, so every key looked dropped). The app's guard — error
+on non-empty `dropped` — was written against the corrected meaning and
+is right as is.
+
+**A money field cleared to 0 IS a clear.** Verified live on all four
+(SNAKE/NASSAU/SIXES stake, TARGETS ante): every parser stores a stake
+only above zero, so `0`, `null` and omitting the key land on the same
+stored config. The app's number field sends 0 on clear, by design.
+The served descriptors now state this in the type and the blurbs.
+
+**`dependsOn` stays in sync by construction** — the server drops a
+dependent field whenever its boolean is off, and the app hides it in
+that same state. If a dependent field is ever added server-side that
+isn't dropped, the two would diverge silently; check that pairing when
+touching either side.
