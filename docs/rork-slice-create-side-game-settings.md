@@ -20,3 +20,13 @@ The iOS create flow now shows each picked game's settings inline (Skins carry / 
 
 ## Behaviour to know about (not a bug, but undocumented)
 `POST /matches/:id/side-game-config` **replaces** the stored config. It does not merge. Posting `{autoPressThreshold: 4}` to a Nassau stored as `{stake:5, autoPress:true, autoPressThreshold:3}` left `{}`. The response still said `dropped: []`, even though the stake and auto-press were discarded. The app now always sends the full config for a game. If merge was the intent, that's a server bug. If replace is the intent, please say so in the endpoint docs, and consider listing discarded-by-dependency keys in `dropped`.
+
+---
+
+## Resolved 2026-11-15 (server shipped all asks; verified live by `scripts/side-game-config-probe.py`, ALL PASS)
+
+- `GET /round-options` serves `sideGames` (same shape as the per-match picker, plus `requires18` / `requires4Players` stated, not applied). The app's bundled schema copy is deleted; blockers read the served flags.
+- Stableford and BBB now report `settingsComplete: false` (they carry points tables). The create step says they play the standard table and can be changed from the round, since the app has native editors for both.
+- `POST /matches` accepts `sideGameConfigs` keyed by kind. The app now sends picked settings inline on create; edit mode still POSTs per game after PATCH. An unparseable config leaves the game on and unconfigured; kinds that aren't enabled are ignored.
+- side-game-config REPLACE is intended and documented. `dropped` now names an unknown field, or a value that asked for something and got nothing. It stays silent for a value meaning "unset", and for a dependent field whose switch is sent off in the same payload.
+- Recap: pars indexed by hole number (four call sites, including highlights); front/back split by hole number (front = holes 1–9). `scripts/recap-tenth-probe.py` asserts both — ALL PASS.

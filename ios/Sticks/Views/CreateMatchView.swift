@@ -1679,7 +1679,12 @@ struct CreateMatchView: View {
     private func sideGameSettings(_ option: CreateMatchViewModel.SideGameOption) -> some View {
         if let schema = viewModel.sideGameSchema(for: option.kind) {
             if !schema.settingsComplete {
-                Text("Extra setup for this game, like per-player strokes, lives on the web once the round is created.")
+                // Stableford and BBB have in-app points editors on the
+                // round screen; the rest (Match strokes, team rules)
+                // are set up on the web.
+                Text(SideGameConfigKind(rawValue: option.kind) != nil
+                     ? "Plays the standard points table. Change it from the round once it's created."
+                     : "Extra setup for this game, like per-player strokes, lives on the web once the round is created.")
                     .font(SticksFont.sans(11.5))
                     .foregroundStyle(Color.sticksFaint)
                     .fixedSize(horizontal: false, vertical: true)

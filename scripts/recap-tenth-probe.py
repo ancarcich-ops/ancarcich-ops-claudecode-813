@@ -11,7 +11,7 @@ order explicitly:
   3. best/worst from/to are valid inclusive positions, and the stretch
      text the app would render ("holes 11 THROUGH 2") is sane
   4. swing rows sum to the margin; halved + swing rows == comparedHoles
-  5. netRecap totals present on NET
+  5. netRecap totals present on NET; front = holes 1-9, back = 10-18
   6. own-card story has no second-person slip; spectator story (creator
      not a player) names the seat — the deployed spectator-voice fix —
      and no first-person word survives in it either
@@ -187,6 +187,15 @@ print("swing hole labels:", [[h["hole"] for h in (sw.get("holes") or [])] for sw
 
 net = recap.get("netRecap") or {}
 check("netRecap totals present", bool(net.get("totals")), json.dumps(net.get("totals")))
+# Front/back split by HOLE NUMBER (server ruling 2026-11-15): front is
+# holes 1-9 whatever hole you teed off, like a scorecard's OUT box. Demo
+# bogeys every hole, so front gross = par(1-9) + 9, back = par(10-18) + 9.
+nt = net.get("totals") or {}
+want_front, want_back = sum(pars[:9]) + 9, sum(pars[9:]) + 9
+got_front = (nt.get("front") or {}).get("gross")
+got_back = (nt.get("back") or {}).get("gross")
+check("front/back split by hole number", got_front == want_front and got_back == want_back,
+      "front %s (want %d, holes 1-9), back %s (want %d)" % (got_front, want_front, got_back, want_back))
 
 own_story = json.dumps(recap.get("story") or recap.get("headline") or "")
 slips = SECOND_PERSON.findall(own_story) if not recap.get("seat", {}).get("matchPlayerId") else ["n/a (own seat: second person is correct)"]

@@ -1020,7 +1020,16 @@ final class CreateMatchViewModel {
     /// Why this round can't play `kind`, or nil when it can. Shown on a
     /// disabled row rather than hiding the game, so people still learn
     /// it exists — one pattern for every constrained game.
+    /// Hole and player requirements come from the served schema
+    /// (requires18 / requires4Players); the bundled rules cover a
+    /// round-options fetch that never landed.
     func blocker(for kind: String) -> String? {
+        if let schema = sideGameSchema(for: kind), schema.requires18 != nil || schema.requires4Players != nil {
+            if schema.requires18 == true, holes != 18 { return "18 holes only" }
+            if schema.requires4Players == true, seats.count != 4 { return "Needs 4 players" }
+            if kind == Self.teamVsTeam, seats.count < 2 { return "Needs 2 players" }
+            return nil
+        }
         switch kind {
         case "NASSAU":
             return holes == 18 ? nil : "18 holes only"
@@ -1082,11 +1091,11 @@ final class CreateMatchViewModel {
 
     // MARK: - Side-game settings
 
-    /// The settings `kind` takes — served on /round-options when the
-    /// server ships it there, else the bundled copy of the live schema.
+    /// The settings `kind` takes, as served on GET /round-options. Nil
+    /// until that loads (or when it fails) — the game is still pickable,
+    /// its settings just wait for the round screen.
     func sideGameSchema(for kind: String) -> SideGameSchema? {
         roundOptions.sideGameSchemas.first { $0.kind == kind }
-            ?? SideGameSchema.fallback.first { $0.kind == kind }
     }
 
     /// What a field currently reads: the user's edit, else the round's
@@ -1109,8 +1118,8 @@ final class CreateMatchViewModel {
         return settingValue(kind: kind, parent)?.boolValue == true
     }
 
-    /// The config to POST for `kind` after the round saves, or empty
-    /// when nothing changed. POST side-game-config REPLACES the stored
+    /// The config to send for `kind` (inline on create, per game after
+    /// an edit), or empty when nothing changed. POST side-game-config REPLACES the stored
     /// config (verified live: posting only autoPressThreshold wiped the
     /// stake), so once any field changed the WHOLE config goes up —
     /// every active field at its current value. A dependent field whose
@@ -1134,9 +1143,9 @@ final class CreateMatchViewModel {
         return out
     }
 
-    /// POSTs each picked game's changed settings once the round exists.
-    /// Retries a failure once; returns true when every config landed
-    /// with nothing dropped.
+    /// Edit mode: POSTs each picked game's changed settings after the
+    /// PATCH. Retries a failure once; returns true when every config
+    /// landed with nothing dropped.
     private func postSideGameConfigs(matchId: String, kinds: Set<String>, token: String) async -> Bool {
         var allLanded = true
         for kind in kinds.sorted() {
@@ -1251,7 +1260,7 @@ final class CreateMatchViewModel {
             let picked = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
             postedRules = picked.isEmpty ? nil : picked
         }
-        let request = CreateMatchRequest(
+        var request = CreateMatchRequest(
             courseName: course.name,
             holes: holes,
             startingHole: effectiveStartingHole,
@@ -1265,6 +1274,17 @@ final class CreateMatchViewModel {
             teamHandicapMode: handicapMode,
             teamRules: postedRules
         )
+        // A new round carries its settings inline (validated like
+        // side-game-config). A config the server can't parse leaves that
+        // game on with defaults rather than failing the round.
+        var inlineConfigs: [String: [String: SideGameConfigValue]] = [:]
+        if !isEditing {
+            for kind in games {
+                let config = pendingConfig(for: kind)
+                if !config.isEmpty { inlineConfigs[kind] = config }
+            }
+            request.sideGameConfigs = inlineConfigs.isEmpty ? nil : inlineConfigs
+        }
         do {
             let response: CreateMatchResponse
             if let editingMatchId {
@@ -1273,10 +1293,11 @@ final class CreateMatchViewModel {
                 response = try await api.createMatch(request, token: token)
             }
             let matchId = response.match.id
-            // POST /matches ignores inline configs, so settings go up
-            // now that the round exists. The round itself is saved
-            // either way; a miss is flagged for the round screen.
-            settingsSaveFailed = !(await postSideGameConfigs(matchId: matchId, kinds: games, token: token))
+            // Edits post settings per game once the PATCH lands. The
+            // round itself is saved either way; a miss is flagged.
+            if isEditing {
+                settingsSaveFailed = !(await postSideGameConfigs(matchId: matchId, kinds: games, token: token))
+            }
             return matchId
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()

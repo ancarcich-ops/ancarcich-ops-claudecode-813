@@ -23,7 +23,7 @@ nonisolated struct RoundOptionsResponse {
     /// link mails — server-owned, never hard-coded. Nil hides the link.
     var supportEmail: String?
     /// Per-game settings schema for the create step, when the server
-    /// serves it here (`sideGames`). Empty = use SideGameSchema.fallback.
+    /// serves it here (`sideGames`). Empty until /round-options loads.
     var sideGameSchemas: [SideGameSchema] = []
 
     /// The chosen count's blurb ("Solo round — no opponents, no odds.").

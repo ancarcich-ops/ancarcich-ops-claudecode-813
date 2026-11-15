@@ -179,6 +179,10 @@ nonisolated struct CreateMatchRequest: Encodable {
     /// only on Individual and Team, as a bare id list.
     let teamHandicapMode: String?
     let teamRules: [String]?
+    /// Each picked game's settings, keyed by kind — POST /matches only
+    /// (validated like side-game-config; kinds not enabled are ignored).
+    /// Edits still post per game after PATCH.
+    var sideGameConfigs: [String: [String: SideGameConfigValue]]? = nil
 }
 
 nonisolated struct CreatedMatch: Decodable {
