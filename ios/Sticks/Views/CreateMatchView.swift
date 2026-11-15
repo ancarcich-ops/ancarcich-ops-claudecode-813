@@ -60,6 +60,8 @@ struct CreateMatchView: View {
     @FocusState private var focusedSetting: String?
     @State private var showsSettingsSaveAlert = false
     @State private var createdMatchId: String?
+    /// Read by queued coach-mark tours: is the wizard still up?
+    @State private var tutorialPresence = TutorialPresence()
 
     init(
         user: User,
@@ -108,10 +110,49 @@ struct CreateMatchView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) { footerBar }
+        // The wizard is a full-screen cover: its own coach-mark surface,
+        // so tab tours wait until it closes.
+        .onAppear {
+            tutorialPresence.isVisible = true
+            TutorialCenter.shared.pushSurface()
+            requestTutorial(for: step)
+        }
+        .onDisappear {
+            tutorialPresence.isVisible = false
+            TutorialCenter.shared.popSurface()
+        }
+        .onChange(of: step) { _, newStep in
+            requestTutorial(for: newStep)
+        }
         .task {
             async let bootstrap: Void = viewModel.bootstrap(user: user, session: session)
             async let nearby: Void = viewModel.autoLoadNearby(session: session)
             _ = await (bootstrap, nearby)
+        }
+    }
+
+    // MARK: - Coach marks
+
+    /// First time on the Round step (new rounds only) and the first time
+    /// on Side games.
+    private func requestTutorial(for step: Step) {
+        guard !viewModel.isEditing else { return }
+        let presence = tutorialPresence
+        switch step {
+        case .round:
+            TutorialCenter.shared.request(
+                .createRound,
+                isRelevant: { presence.isVisible },
+                steps: TutorialTours.createRound
+            )
+        case .sideGames:
+            TutorialCenter.shared.request(
+                .createSideGames,
+                isRelevant: { presence.isVisible },
+                steps: TutorialTours.createSideGames
+            )
+        case .players:
+            break
         }
     }
 
@@ -216,6 +257,7 @@ struct CreateMatchView: View {
             }
 
             stepIndicator
+                .tutorialAnchor(TutorialAnchor.createSteps)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
@@ -517,6 +559,7 @@ struct CreateMatchView: View {
         if viewModel.openRoundGroup == 0 || viewModel.selectedCourse == nil {
             VStack(alignment: .leading, spacing: 10) {
                 courseSection
+                    .tutorialAnchor(TutorialAnchor.createCourse)
 
                 if viewModel.selectedCourse != nil, viewModel.roundStage >= 1 {
                     roundContinueButton(from: 0, label: "DONE")
@@ -1594,6 +1637,7 @@ struct CreateMatchView: View {
                     }
                     VStack(spacing: 0) {
                         sideGameRow(option)
+                            .tutorialAnchor(position == 0 ? TutorialAnchor.createSideGames : nil)
                         if viewModel.isSideGameOn(option.kind), option.kind != CreateMatchViewModel.teamVsTeam {
                             sideGameSettings(option)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -2080,6 +2124,7 @@ struct CreateMatchView: View {
                 .buttonStyle(CreateLedgeButtonStyle(showsLedge: isPrimaryEnabled))
                 .disabled(!isPrimaryEnabled)
                 .opacity(isPrimaryEnabled ? 1 : 0.5)
+                .tutorialAnchor(TutorialAnchor.createPrimary)
             }
         }
         .padding(.horizontal, 20)

@@ -139,25 +139,33 @@ struct GroupsView: View {
 
                 sectionHeader
 
-                if viewModel.groups.isEmpty {
-                    emptyCard
-                } else {
-                    VStack(spacing: 13) {
-                        ForEach(viewModel.groups) { group in
-                            GroupCard(group: group)
+                Group {
+                    if viewModel.groups.isEmpty {
+                        emptyCard
+                    } else if let first = viewModel.groups.first {
+                        VStack(spacing: 13) {
+                            ForEach(viewModel.groups) { group in
+                                GroupCard(group: group)
+                                    .tutorialAnchor(group.id == first.id ? TutorialAnchor.groupsList : nil)
+                            }
                         }
                     }
                 }
+                .tutorialAnchor(viewModel.groups.isEmpty ? TutorialAnchor.groupsList : nil)
 
                 TournamentsEntryCard()
+                    .tutorialAnchor(TutorialAnchor.groupsTournaments, scrollable: true)
 
                 CreateGroupCard(viewModel: viewModel, session: session)
+                    .tutorialAnchor(TutorialAnchor.groupsCreate, scrollable: true)
                 JoinGroupCard(viewModel: viewModel, session: session)
+                    .tutorialAnchor(TutorialAnchor.groupsJoin, scrollable: true)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 32)
         }
+        .tutorialScrollHost()
         .refreshable {
             await viewModel.load(session: session)
         }

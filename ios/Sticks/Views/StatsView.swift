@@ -105,9 +105,11 @@ struct StatsView: View {
                 identityHeader(stats)
 
                 StatsHeroCard(stats: stats)
+                    .tutorialAnchor(TutorialAnchor.statsHero, scrollable: true)
 
                 if stats.matchesPlayed > 0 {
                     AtAGlanceGrid(stats: stats)
+                        .tutorialAnchor(TutorialAnchor.statsGlance, scrollable: true)
                     WinsByGameGrid(wins: stats.winsByGame)
                 }
 
@@ -118,6 +120,7 @@ struct StatsView: View {
                         baselines: viewModel.baselines,
                         selection: $baselineSelection
                     )
+                    .tutorialAnchor(TutorialAnchor.statsTrend, scrollable: true)
                 }
 
                 if stats.distribution.totalHolesPlayed > 0 {
@@ -143,12 +146,14 @@ struct StatsView: View {
                             await viewModel.removeMyScores(matchId: round.matchId, session: session)
                         }
                     )
+                    .tutorialAnchor(TutorialAnchor.statsLogged, scrollable: true)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 32)
         }
+        .tutorialScrollHost()
         .refreshable {
             await viewModel.load(session: session)
         }
@@ -171,6 +176,7 @@ struct StatsView: View {
             Spacer(minLength: 8)
 
             sharePill(stats)
+                .tutorialAnchor(TutorialAnchor.statsShare, scrollable: true)
         }
     }
 

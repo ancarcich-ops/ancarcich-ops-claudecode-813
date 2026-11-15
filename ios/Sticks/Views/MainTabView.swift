@@ -28,6 +28,10 @@ extension Notification.Name {
     /// owns that stack pops it back to its root — the standard iOS
     /// "take me back to the top of this section" gesture.
     static let sticksPopToRoot = Notification.Name("sticksPopToRoot")
+
+    /// Settings' REPLAY TUTORIALS — flags are already cleared; the tab
+    /// root lands on Home and starts the tab tour again.
+    static let sticksReplayTutorials = Notification.Name("sticksReplayTutorials")
 }
 
 extension View {
@@ -80,7 +84,52 @@ struct MainTabView: View {
                 .zIndex(1)
             }
         }
+        // Coach marks wait while the welcome is up, then the tab tour
+        // runs; each tab's own tour runs the first time it's opened.
+        .onAppear {
+            TutorialCenter.shared.isSuspended = !welcomed
+            requestTutorials()
+        }
+        .onChange(of: welcomed) { _, isWelcomed in
+            TutorialCenter.shared.isSuspended = !isWelcomed
+            requestTutorials()
+        }
+        .onChange(of: selection) { _, _ in
+            requestTutorials()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sticksReplayTutorials)) { _ in
+            selection = .home
+            requestTutorials()
+        }
     }
+
+    /// Queues the tab tour, then the current tab's tour. Seen tours and
+    /// ones already queued are ignored by the center.
+    private func requestTutorials() {
+        guard welcomed else { return }
+        let center = TutorialCenter.shared
+        center.request(.tabs, steps: TutorialTours.tabs)
+
+        let tab = selection
+        let isRelevant: () -> Bool = { [tab] in
+            MainTabView.currentSelection == tab
+        }
+        MainTabView.currentSelection = tab
+        switch tab {
+        case .home:
+            break
+        case .groups:
+            center.request(.groups, isRelevant: isRelevant, steps: TutorialTours.groups)
+        case .stats:
+            center.request(.stats, isRelevant: isRelevant, steps: TutorialTours.stats)
+        case .settings:
+            center.request(.settings, isRelevant: isRelevant, steps: TutorialTours.settings)
+        }
+    }
+
+    /// The selected tab, readable from a queued tour's relevance check
+    /// (the closure can't see this view's @State later).
+    static var currentSelection: SticksTab = .home
 
     private var tabsWithBar: some View {
         ZStack {
@@ -206,9 +255,13 @@ struct SticksTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             tabButton(.home, icon: "house", label: "Home")
+                .tutorialAnchor(TutorialAnchor.tabHome)
             tabButton(.groups, icon: "person.2", label: "Groups")
+                .tutorialAnchor(TutorialAnchor.tabGroups)
             tabButton(.stats, icon: "chart.bar", label: "Stats")
+                .tutorialAnchor(TutorialAnchor.tabStats)
             tabButton(.settings, icon: "gearshape", label: "Settings")
+                .tutorialAnchor(TutorialAnchor.tabSettings)
         }
         .padding(.top, 8)
         .padding(.bottom, 6)

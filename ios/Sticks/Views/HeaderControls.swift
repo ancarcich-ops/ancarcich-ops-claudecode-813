@@ -58,6 +58,9 @@ struct HeaderControls: View {
     /// binding (match detail) — those links are omitted there.
     var tabSelection: Binding<SticksTab>? = nil
     var homePill: HomePillStyle = .text
+    /// Home's header only: tags New round and the switcher as coach-mark
+    /// targets (the cluster repeats on every tab, so just one owns them).
+    var tutorialAnchors: Bool = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -73,9 +76,11 @@ struct HeaderControls: View {
 
             newRoundButton
                 .layoutPriority(1)
+                .tutorialAnchor(tutorialAnchors ? TutorialAnchor.homeNewRound : nil)
 
             groupSwitcher
                 .layoutPriority(1)
+                .tutorialAnchor(tutorialAnchors ? TutorialAnchor.homeSwitcher : nil)
         }
     }
 

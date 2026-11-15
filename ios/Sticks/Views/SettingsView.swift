@@ -81,14 +81,18 @@ struct SettingsView: View {
                         profilePhotoCard
                         profileCard
                         handicapCard
+                            .tutorialAnchor(TutorialAnchor.settingsHandicap, scrollable: true)
                         peopleCard
+                            .tutorialAnchor(TutorialAnchor.settingsPeople, scrollable: true)
                         // Slice 96: the account's display prefs — next to
                         // the notification toggles, but a different store
                         // (/me/display-prefs vs /me/push-prefs): screen vs
                         // buzz.
                         DisplaySettingsCard(session: session)
                         NotificationSettingsCard()
+                            .tutorialAnchor(TutorialAnchor.settingsNotifications, scrollable: true)
                         WatchHealthCard()
+                            .tutorialAnchor(TutorialAnchor.settingsWatch, scrollable: true)
                         mapCard
                         accountCard
                     }
@@ -96,6 +100,7 @@ struct SettingsView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 32)
                 }
+                .tutorialScrollHost()
                 .refreshable {
                     await viewModel.load(session: session)
                     await viewModel.loadFollows(session: session)
@@ -590,6 +595,39 @@ struct SettingsView: View {
                     biometricRow
                     hairline
                 }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    TutorialCenter.shared.resetAll()
+                    NotificationCenter.default.post(name: .sticksReplayTutorials, object: nil)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("REPLAY TUTORIALS")
+                                .font(SticksFont.mono(12))
+                                .kerning(1.2)
+                                .foregroundStyle(Color.sticksGreen)
+
+                            Text("The tab tour now, each page's tips on your next visit.")
+                                .font(SticksFont.sans(11))
+                                .foregroundStyle(Color.sticksFaint)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "arrow.counterclockwise.circle")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.sticksGreen)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .frame(minHeight: 52)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .tutorialAnchor(TutorialAnchor.settingsReplay, scrollable: true)
+
+                hairline
 
                 Button {
                     welcomed = false

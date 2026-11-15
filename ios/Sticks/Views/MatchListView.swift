@@ -195,6 +195,11 @@ struct MatchListView: View {
     private var upcomingMatches: [MatchSummary] { viewModel.upcomingMatches }
     private var recentMatches: [MatchSummary] { viewModel.recentMatches }
 
+    /// The top card on screen — the tab tour's "Open a round" target.
+    private var firstVisibleMatchId: String? {
+        (liveMatches.first ?? upcomingMatches.first ?? recentMatches.first)?.id
+    }
+
     /// After a successful POST /matches: refresh the list and push the
     /// new match's detail so the GPS screen is one tap away. If the
     /// active scope excludes the new round (e.g. Public only + a group
@@ -271,7 +276,8 @@ struct MatchListView: View {
                 session: session,
                 showsCreate: $showsCreate,
                 tabSelection: $tabSelection,
-                homePill: homePill
+                homePill: homePill,
+                tutorialAnchors: true
             )
         }
     }
@@ -347,6 +353,7 @@ struct MatchListView: View {
                 .contentShape(.rect)
                 .onTapGesture { path.append(match) }
                 .accessibilityAddTraits(.isButton)
+                .tutorialAnchor(match.id == firstVisibleMatchId ? TutorialAnchor.homeFirstCard : nil)
             }
         }
     }

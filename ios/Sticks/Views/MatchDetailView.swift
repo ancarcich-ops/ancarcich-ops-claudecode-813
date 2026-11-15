@@ -42,6 +42,8 @@ struct MatchDetailView: View {
     @State private var viewModel: MatchDetailViewModel
     @State private var selectedCell: ScoreCellSelection?
     @State private var showsGPS = false
+    /// Read by the queued coach-mark tour: still on this screen?
+    @State private var tutorialPresence = TutorialPresence()
     @State private var showsEdit = false
     @State private var showsCreate = false
     @State private var showsEditPars = false
@@ -109,6 +111,7 @@ struct MatchDetailView: View {
                                 // gets the switcher too (Scorecard | Recap).
                                 if isMarketPriced(detail) || viewModel.hasRecap {
                                     detailTabBar(detail)
+                                        .tutorialAnchor(TutorialAnchor.matchTabs)
                                 }
                                 if selectedTab == .recap, let recap = viewModel.recapPayload {
                                     // Recap tab: the whole post-round recap.
@@ -134,6 +137,7 @@ struct MatchDetailView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 40)
                 }
+                .tutorialScrollHost()
                 .refreshable {
                     await viewModel.load(session: session, quiet: true)
                 }
@@ -226,6 +230,7 @@ struct MatchDetailView: View {
                     // Tapping through lands on the full recap tab.
                     selectTab(.recap)
                 }
+                .tutorialSurface()
             }
         }
         .fullScreenCover(isPresented: $showsCreate) {
@@ -290,11 +295,25 @@ struct MatchDetailView: View {
         } message: {
             Text(actionError ?? "")
         }
+        .onAppear { tutorialPresence.isVisible = true }
+        .onDisappear { tutorialPresence.isVisible = false }
         .task {
             // Slice 93: claim any reaction push's scroll target before
             // loading, so the phase change below can act on it.
             pendingScrollTarget = PendingHighlightScroll.consume(matchId: match.id)
             await viewModel.load(session: session)
+            // First visit: the round-screen coach marks. A finished
+            // round may pop its recap card first — give it a beat so the
+            // tour queues behind that sheet instead of under it.
+            if viewModel.detail?.status == .completed {
+                try? await Task.sleep(for: .seconds(1.5))
+            }
+            let presence = tutorialPresence
+            TutorialCenter.shared.request(
+                .match,
+                isRelevant: { presence.isVisible },
+                steps: TutorialTours.match
+            )
             // Slice 96: re-sync the account's display prefs (throttled
             // in the store) so a website flip lands here too.
             await DisplayPrefsStore.shared.refresh(session: session)
@@ -564,6 +583,7 @@ struct MatchDetailView: View {
 
                 if hasMenuActions {
                     actionsMenu
+                        .tutorialAnchor(TutorialAnchor.matchActions)
                 }
             }
 
@@ -784,6 +804,7 @@ struct MatchDetailView: View {
         // thing under the header.
         if detail.status != .completed {
             gpsButton(detail)
+                .tutorialAnchor(TutorialAnchor.matchGPS, scrollable: true)
         }
         // Slice 65: the Hero renders on any non-upcoming round, seated
         // or not — a spectator's nil seat shows em-dashes for the personal
@@ -806,6 +827,7 @@ struct MatchDetailView: View {
             RoundAlertsCard(matchId: match.id)
         }
         scorecardCard(detail)
+            .tutorialAnchor(TutorialAnchor.matchScorecard, scrollable: true)
         // Slice 65: Standings also renders on completed rounds (final
         // odds, winner at 100%). The inner onRecordEvents/onOpenSettings
         // gates keep editors off completed/spectator rounds.
@@ -822,6 +844,7 @@ struct MatchDetailView: View {
                     : nil,
                 onEditSideGames: canEditSideGames ? { showsEditSideGames = true } : nil
             )
+            .tutorialAnchor(TutorialAnchor.matchStandings, scrollable: true)
         }
         // Slice 52/53: one prominent "score it" card per
         // enabled game with a native editor (Snake, BBB,
@@ -849,6 +872,7 @@ struct MatchDetailView: View {
         }
         if detail.myMatchPlayerId != nil {
             ShareRoundCard(viewModel: viewModel, session: session)
+                .tutorialAnchor(TutorialAnchor.matchShare, scrollable: true)
         }
         if !detail.canEnterScores {
             Text("You're viewing as a spectator — only golfers in this round can enter scores.")
