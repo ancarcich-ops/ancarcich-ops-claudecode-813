@@ -1221,7 +1221,14 @@ struct CreateMatchView: View {
                 ForEach(viewModel.teamRuleChoices) { rule in
                     teamGameChip(id: rule.id, label: rule.label, blurb: rule.blurb)
                 }
-                vegasRuleRow
+            }
+
+            // The one picked game's options (Vegas's stake, birdie
+            // flip, doubling holes) right under the grid.
+            if viewModel.teamsGame != "SCRAMBLE",
+               let rule = viewModel.teamRuleChoices.first(where: { $0.id == viewModel.teamsGame }),
+               !rule.options.isEmpty {
+                teamRuleSettingsPanel(rule)
             }
         }
         .padding(.top, 4)
@@ -1313,7 +1320,16 @@ struct CreateMatchView: View {
                 ForEach(viewModel.teamRuleChoices) { rule in
                     teamRuleChip(rule)
                 }
-                vegasRuleRow
+            }
+
+            // Each picked rule with options gets its panel, in pick
+            // order — the multi-select twin of the side games' inline
+            // settings.
+            ForEach(Array(viewModel.teamRuleChoices
+                .filter { viewModel.teamRules.contains($0.id) && !$0.options.isEmpty }
+                .enumerated()), id: \.element.id) { _, rule in
+                teamRuleSettingsPanel(rule)
+                    .transition(.opacity)
             }
 
             Text("Every rule you pick gets its own board. Teams are set on the Players step.")
@@ -1322,43 +1338,32 @@ struct CreateMatchView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 4)
+        .animation(.easeOut(duration: 0.15), value: viewModel.teamRuleDrafts)
     }
 
-    /// Vegas carries its own options (birdie flip, doubling holes,
-    /// stake) — shown but unselectable until that panel ships. The
-    /// blurb still prints, so both sections' grids read the same.
-    private var vegasRuleRow: some View {
-        Group {
-            if let vegas = viewModel.roundOptions.teamRules.first(where: \.hasOptions) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "circle")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text(vegas.label)
-                            .font(SticksFont.sans(13.5, weight: .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    .foregroundStyle(Color.sticksFaint)
-
-                    Text(vegas.blurb)
-                        .font(SticksFont.sans(11))
-                        .foregroundStyle(Color.sticksFaint)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+    /// One picked team rule's served options — the side games' inline
+    /// renderer against the rule's own fields, stored under a
+    /// TEAM_RULE-namespaced kind.
+    private func teamRuleSettingsPanel(_ rule: TeamRuleChoice) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(rule.label.uppercased())
+                .font(SticksFont.mono(9.5))
+                .kerning(1)
+                .foregroundStyle(Color.sticksGreen)
+            ForEach(rule.options) { setting in
+                if viewModel.isSettingActive(
+                    kind: CreateMatchViewModel.teamRuleSettingKind(rule.id),
+                    setting, in: rule.options
+                ) {
+                    settingField(kind: CreateMatchViewModel.teamRuleSettingKind(rule.id), setting)
+                        .transition(.opacity)
                 }
-                .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 9)
-                .background(Color.sticksPanel2.opacity(0.5))
-                .clipShape(.rect(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.sticksHairline, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                )
-                .accessibilityLabel("\(vegas.label). Needs setup, coming soon.")
             }
         }
+        .padding(12)
+        .background(Color.sticksPanel2.opacity(0.55))
+        .clipShape(.rect(cornerRadius: 10))
+        .animation(.easeOut(duration: 0.15), value: viewModel.teamRuleDrafts)
     }
 
     // MARK: - Players
@@ -1918,12 +1923,20 @@ struct CreateMatchView: View {
                 }
             }
 
+            ForEach(Array(viewModel.teamRuleChoices
+                .filter { viewModel.teamRules.contains($0.id) && !$0.options.isEmpty }
+                .enumerated()), id: \.element.id) { _, rule in
+                teamRuleSettingsPanel(rule)
+                    .transition(.opacity)
+            }
+
             Text("Every rule you pick gets its own board. Teams are set on the Players step.")
                 .font(SticksFont.mono(10.5, weight: .regular))
                 .foregroundStyle(Color.sticksFaint)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 4)
+        .animation(.easeOut(duration: 0.15), value: viewModel.teamRuleDrafts)
     }
 
     private func teamRuleChip(_ rule: TeamRuleChoice) -> some View {

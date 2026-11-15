@@ -11,6 +11,10 @@
        - auto-press OFF with the threshold in the same payload -> []
        - threshold alone, switch absent -> ["autoPressThreshold"]
        - unknown field -> named
+  4. teamRules: every rule carries `options` (Vegas: stake,
+     birdieFlip, doubleHoles); hasOptions stays VEGAS-only; POST
+     /matches takes the FLAT object form and stores Vegas's fields
+     nested under "vegas" with the stake flat.
 
 Usage: python3 scripts/side-game-config-probe.py
 """
@@ -115,6 +119,38 @@ check("replace, not merge (stake gone)", "stake" not in (r.get("config") or {}),
 
 _, r = post({"stake": 5, "bogus": 1})
 check("unknown field named in dropped", "bogus" in (r.get("dropped") or []), json.dumps(r))
+
+# ---- 4. team rules: options served, flat in / nested stored ----
+_, opts2 = req("GET", "/round-options", TOKEN)
+rules_served = {r["id"]: r for r in opts2.get("teamRules") or []}
+check("every team rule carries options",
+      len(rules_served) == 7 and all(r.get("options") for r in rules_served.values()),
+      ", ".join("%s:%d" % (k, len(v.get("options") or [])) for k, v in sorted(rules_served.items())))
+vegas_keys = [o["key"] for o in rules_served["VEGAS"]["options"]]
+check("Vegas options are stake/birdieFlip/doubleHoles",
+      vegas_keys == ["stake", "birdieFlip", "doubleHoles"], str(vegas_keys))
+check("hasOptions stays VEGAS-only (older builds)",
+      [k for k, r in rules_served.items() if r.get("hasOptions")] == ["VEGAS"])
+
+P4 = [{"displayName": "A", "handicap": 5, "team": 0}, {"displayName": "B", "handicap": 9, "team": 0},
+      {"displayName": "C", "handicap": 3, "team": 1}, {"displayName": "D", "handicap": 7, "team": 1}]
+code, created = req("POST", "/matches", TOKEN, {
+    "courseName": cat["courses"][0]["name"], "holes": 18, "startingHole": 1,
+    "scheduledAt": sched.isoformat(), "scoringMode": "NET", "format": "BOTH", "players": P4,
+    "teamRules": [{"rule": "VEGAS", "stake": 0.25, "birdieFlip": True, "doubleHoles": "EXPONENTIAL"},
+                  {"rule": "BEST_BALL", "stake": 1}],
+})
+tmid = (created.get("match") or created).get("id") if isinstance(created, dict) else None
+check("create with flat teamRules objects", code in (200, 201) and tmid, "status %s" % code)
+if tmid:
+    _, sg = req("GET", "/matches/%s/side-games" % tmid, TOKEN)
+    rules_stored = next((g["config"]["rules"] for g in sg.get("games", [])
+                         if g["kind"] == "TEAM_VS_TEAM" and g.get("config")), [])
+    check("stake stored flat, Vegas fields nested",
+          {"rule": "VEGAS", "stake": 0.25, "vegas": {"birdieFlip": True, "doubleHoles": "EXPONENTIAL"}} in rules_stored
+          and {"rule": "BEST_BALL", "stake": 1} in rules_stored,
+          json.dumps(rules_stored))
+    print("\ncleanup:", req("DELETE", "/matches/" + tmid, TOKEN)[0])
 
 print("\ncleanup:", req("DELETE", "/matches/" + mid, TOKEN)[0])
 print("\n%s" % ("ALL PASS" if not failures else "FAILURES: %s" % failures))

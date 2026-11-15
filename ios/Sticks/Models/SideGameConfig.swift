@@ -275,7 +275,21 @@ nonisolated struct NassauConfig: Codable, Hashable {
 nonisolated struct TeamVsTeamConfig: Codable, Hashable {
     nonisolated struct Rule: Codable, Hashable {
         let rule: String
-        init(rule: String) { self.rule = rule }
+        /// Per-dot stake, when the round stored one.
+        var stake: Double?
+        /// Vegas's own fields, nested by the server on store.
+        var vegas: Vegas?
+
+        nonisolated struct Vegas: Codable, Hashable {
+            var birdieFlip: Bool?
+            var doubleHoles: String?
+        }
+
+        init(rule: String) {
+            self.rule = rule
+            self.stake = nil
+            self.vegas = nil
+        }
     }
 
     /// matchPlayerId lists keyed by team number ("0"/"1") — sent on

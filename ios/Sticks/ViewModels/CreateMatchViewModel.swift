@@ -178,11 +178,11 @@ final class CreateMatchViewModel {
     /// The chosen format's payload — nil for an unknown id.
     var selectedFormatOption: RoundFormatOption? { roundOptions.format(id: format) }
 
-    /// Team rules minus Vegas, whose options panel (birdie flip,
-    /// doubling holes, stake) hasn't shipped — the other six are
-    /// complete on their own.
+    /// Every served team rule — including Vegas, whose options the app
+    /// now renders inline. The offline fallback list stands in only
+    /// when GET /round-options never loaded.
     var teamRuleChoices: [TeamRuleChoice] {
-        let choices = roundOptions.teamRules.filter { !$0.hasOptions }
+        let choices = roundOptions.teamRules
         return choices.isEmpty
             ? CreateMatchViewModel.teamRuleOptions.map {
                 TeamRuleChoice(
@@ -195,6 +195,15 @@ final class CreateMatchViewModel {
             }
             : choices
     }
+
+    /// The kind string a team rule's settings fields use in the shared
+    /// settingValue/setSetting store — namespaced so a rule id can
+    /// never collide with a side-game kind.
+    static func teamRuleSettingKind(_ ruleId: String) -> String {
+        teamRuleKindPrefix + ruleId
+    }
+    static let teamRuleKindPrefix = "TEAM_RULE:"
+
 
     /// The rule seeded when Both turns on with none picked.
     static let bestBallRule = "BEST_BALL"
@@ -315,6 +324,13 @@ final class CreateMatchViewModel {
     /// them. Defaults to Best Ball; edit mode prefills the round's
     /// stored rules. The create gate still demands ≥1 on Both.
     private(set) var teamRules: Set<String> = ["BEST_BALL"]
+    /// The picked team rules' settings (stake, Vegas's birdie flip and
+    /// doubling holes), keyed by rule id then served key — the same
+    /// draft/baseline/default layering as the side games.
+    private(set) var teamRuleDrafts: [String: [String: SideGameConfigValue]] = [:]
+    /// Edit mode only: each rule's stored options, parsed from the
+    /// TEAM_VS_TEAM game's config so an edit never wipes a stake.
+    private var storedTeamRuleConfigs: [String: [String: SideGameConfigValue]] = [:]
     private(set) var groups: [SticksGroup] = []
     var selectedGroupId: String?
 
@@ -397,6 +413,16 @@ final class CreateMatchViewModel {
            let config = TeamVsTeamConfig.decode(from: raw) {
             let ids = Set(config.ruleIds)
             if !ids.isEmpty { teamRules = ids }
+            // Each stored rule's options (stake, Vegas fields) come
+            // back flat here, so an edit shows and re-posts exactly
+            // what's live instead of wiping it with a bare id.
+            for rule in config.rules {
+                var stored: [String: SideGameConfigValue] = [:]
+                if let stake = rule.stake { stored["stake"] = .number(stake) }
+                if let flip = rule.vegas?.birdieFlip { stored["birdieFlip"] = .flag(flip) }
+                if let holes = rule.vegas?.doubleHoles { stored["doubleHoles"] = .text(holes) }
+                storedTeamRuleConfigs[rule.rule] = stored
+            }
         }
         // The stored team-handicap mode now echoes on the round (nil
         // unless it's a scramble) — prefill the picker from it, falling
@@ -1002,10 +1028,8 @@ final class CreateMatchViewModel {
     }
 
     /// Offline fallback for `teamRuleChoices` (slice 92) — used only
-    /// when GET /round-options never loaded. Six of the server's seven
-    /// rules: VEGAS is deliberately absent, as it carries its own
-    /// options (birdie flip, doubling holes, stake) and a
-    /// half-configured Vegas is worse than no Vegas.
+    /// when GET /round-options never loaded, so no options schema and
+    /// every rule posts as a bare id with the server's defaults.
     static let teamRuleOptions: [TeamRuleOption] = [
         TeamRuleOption(key: "BEST_BALL", label: "Best ball", blurb: "The better ball on the hole."),
         TeamRuleOption(key: "WORST_BALL", label: "Worst ball", blurb: "The worse ball on the hole."),
@@ -1013,6 +1037,7 @@ final class CreateMatchViewModel {
         TeamRuleOption(key: "HIGH_LOW_BALL", label: "High-low by ball", blurb: "The same, scored per ball."),
         TeamRuleOption(key: "SUM", label: "Sum", blurb: "Both players' gross added."),
         TeamRuleOption(key: "AGGREGATE_NET", label: "Aggregate net", blurb: "Both players' net added."),
+        TeamRuleOption(key: "VEGAS", label: "Vegas", blurb: "Two scores form a 2-digit number; lower team wins the difference."),
     ]
 
     static let teamVsTeam = "TEAM_VS_TEAM"
@@ -1101,20 +1126,37 @@ final class CreateMatchViewModel {
     /// What a field currently reads: the user's edit, else the round's
     /// stored value (edit mode), else the served default.
     func settingValue(kind: String, _ setting: SideGameSetting) -> SideGameConfigValue? {
-        sideGameDrafts[kind]?[setting.key]
+        if kind.hasPrefix(Self.teamRuleKindPrefix) {
+            let rule = String(kind.dropFirst(Self.teamRuleKindPrefix.count))
+            return teamRuleDrafts[rule]?[setting.key]
+                ?? storedTeamRuleConfigs[rule]?[setting.key]
+                ?? setting.defaultValue
+        }
+        return sideGameDrafts[kind]?[setting.key]
             ?? storedSideGameConfigs[kind]?[setting.key]
             ?? setting.defaultValue
     }
 
     func setSetting(kind: String, key: String, to value: SideGameConfigValue) {
+        if kind.hasPrefix(Self.teamRuleKindPrefix) {
+            let rule = String(kind.dropFirst(Self.teamRuleKindPrefix.count))
+            teamRuleDrafts[rule, default: [:]][key] = value
+            return
+        }
         sideGameDrafts[kind, default: [:]][key] = value
     }
 
     /// A dependent field (Nassau's "Press at") only means something
     /// while its boolean sibling is on — hidden, and never posted, off.
     func isSettingActive(kind: String, _ setting: SideGameSetting, in schema: SideGameSchema) -> Bool {
+        isSettingActive(kind: kind, setting, in: schema.settings)
+    }
+
+    /// Same rule over a bare settings list — team rules carry their
+    /// fields straight on the choice, no schema wrapper.
+    func isSettingActive(kind: String, _ setting: SideGameSetting, in settings: [SideGameSetting]) -> Bool {
         guard let parentKey = setting.dependsOn else { return true }
-        guard let parent = schema.settings.first(where: { $0.key == parentKey }) else { return true }
+        guard let parent = settings.first(where: { $0.key == parentKey }) else { return true }
         return settingValue(kind: kind, parent)?.boolValue == true
     }
 
@@ -1141,6 +1183,34 @@ final class CreateMatchViewModel {
             }
         }
         return out
+    }
+
+    /// The options to post for a picked team rule: every active field
+    /// at its current value (draft → stored → served default). Fields
+    /// with no value at all (a null stake default) are omitted, so an
+    /// untouched stake never invents a 0.
+    func pendingTeamRuleOptions(for ruleId: String) -> [String: SideGameConfigValue] {
+        guard let rule = roundOptions.teamRules.first(where: { $0.id == ruleId }),
+              !rule.options.isEmpty else { return [:] }
+        let kind = Self.teamRuleSettingKind(ruleId)
+        var out: [String: SideGameConfigValue] = [:]
+        for setting in rule.options where isSettingActive(kind: kind, setting, in: rule.options) {
+            if let value = settingValue(kind: kind, setting) {
+                out[setting.key] = value
+            }
+        }
+        return out
+    }
+
+    /// How a picked rule rides in the body. Edit mode posts the legacy
+    /// bare id unless this session touched (or stored) the rule's
+    /// options — a bare id replaces the stored rule object, which
+    /// would silently drop its stake (verified live).
+    func teamRulePost(for ruleId: String) -> TeamRulePost {
+        if isEditing, teamRuleDrafts[ruleId] == nil, (storedTeamRuleConfigs[ruleId] ?? [:]).isEmpty {
+            return .id(ruleId)
+        }
+        return .rule(ruleId, options: pendingTeamRuleOptions(for: ruleId))
     }
 
     /// Edit mode: POSTs each picked game's changed settings after the
@@ -1216,10 +1286,10 @@ final class CreateMatchViewModel {
         // teamRules sent on a SCRAMBLE round. A true scramble (the
         // default Teams game) stays SCRAMBLE.
         var postedFormat = effectiveFormat
-        var postedRules: [String]?
+        var postedRules: [TeamRulePost]?
         if effectiveFormat == "SCRAMBLE", teamsGame != "SCRAMBLE" {
             postedFormat = "BOTH"
-            postedRules = [teamsGame]
+            postedRules = [teamRulePost(for: teamsGame)]
         }
         // Team assignments travel for a team format AND for an
         // individual round with a team match running on top of it.
@@ -1258,7 +1328,7 @@ final class CreateMatchViewModel {
         }
         if postedRules == nil, postedFormat == "BOTH" {
             let picked = teamRuleChoices.map(\.id).filter { teamRules.contains($0) }
-            postedRules = picked.isEmpty ? nil : picked
+            postedRules = picked.isEmpty ? nil : picked.map(teamRulePost(for:))
         }
         var request = CreateMatchRequest(
             courseName: course.name,

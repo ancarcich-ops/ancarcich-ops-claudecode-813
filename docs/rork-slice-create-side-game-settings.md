@@ -30,3 +30,15 @@ The iOS create flow now shows each picked game's settings inline (Skins carry / 
 - `POST /matches` accepts `sideGameConfigs` keyed by kind. The app now sends picked settings inline on create; edit mode still POSTs per game after PATCH. An unparseable config leaves the game on and unconfigured; kinds that aren't enabled are ignored.
 - side-game-config REPLACE is intended and documented. `dropped` now names an unknown field, or a value that asked for something and got nothing. It stays silent for a value meaning "unset", and for a dependent field whose switch is sent off in the same payload.
 - Recap: pars indexed by hole number (four call sites, including highlights); front/back split by hole number (front = holes 1–9). `scripts/recap-tenth-probe.py` asserts both — ALL PASS.
+
+---
+
+## Addendum — team rules take options too (2026-11-15, later)
+
+Vegas is unblocked without a new endpoint: `GET /round-options` → `teamRules[]` now carries `options` in the side-game settings shape (VEGAS: stake / birdieFlip / doubleHoles; every other rule: stake). `hasOptions` deliberately stays VEGAS-only so older builds keep working; the app filters nothing — all seven rules are selectable, and each picked rule renders its options inline. The dashed "coming soon" Vegas card is gone.
+
+Wire shape, verified live by `scripts/side-game-config-probe.py` (ALL PASS):
+- POST /matches (and PATCH with the full body) takes `teamRules` FLAT: `{"rule":"VEGAS","stake":0.25,"birdieFlip":true,"doubleHoles":"EXPONENTIAL"}`.
+- Stored (TEAM_VS_TEAM game config, `rules[]`): Vegas's fields nested — `{"rule":"VEGAS","stake":0.25,"vegas":{"birdieFlip":true,"doubleHoles":"EXPONENTIAL"}}`; `{"rule":"BEST_BALL","stake":1}` stays flat.
+- Legacy bare-string entries still accepted. A bare-string entry REPLACES the stored rule object, so it silently drops a stake — the app posts objects whenever it has stored values or touched drafts, bare ids only when it knows nothing.
+- App: options ride the same draft → stored → served-default layering as side games; null-default fields (stake) are omitted, never invented as 0.

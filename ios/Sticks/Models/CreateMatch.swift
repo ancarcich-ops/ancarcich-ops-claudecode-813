@@ -155,13 +155,46 @@ nonisolated struct CreateMatchPlayer: Encodable {
     let team: Int?
 }
 
-/// Body for POST /matches. `scheduledAt` is the tee time as an ISO
-/// 8601 string (slice 45 — defaults to "now" in the wizard). Optional
-/// keys (sideGames, groupId, tournamentId) are dropped when nil.
+/// Body for POST /matches (and PATCH /matches/:id, which requires the
+/// full body). `scheduledAt` is the tee time as an ISO 8601 string
+/// (slice 45 — defaults to "now" in the wizard). Optional keys
+/// (sideGames, sideGameConfigs, groupId, tournamentId) are dropped
+/// when nil.
 /// `format` is INDIVIDUAL / SCRAMBLE / BOTH — BOTH makes the server
 /// spin up the team match itself (never send TEAM_VS_TEAM as a side
 /// game). `tournamentId` (slice 55) binds the new round to a
 /// tournament — roundNumber auto-increments server-side.
+/// One entry in the body's `teamRules`: either the legacy bare rule id
+/// (never wipes what's stored) or the rule with its options FLAT — the
+/// server nests Vegas's own fields under "vegas" on store (verified
+/// live: {"rule":"VEGAS","stake":0.25,"birdieFlip":true,...} stores as
+/// {"rule":"VEGAS","stake":0.25,"vegas":{"birdieFlip":true,...}}).
+nonisolated enum TeamRulePost: Encodable, Hashable {
+    case id(String)
+    case rule(String, options: [String: SideGameConfigValue])
+
+    private struct Key: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .id(let rule):
+            var container = encoder.singleValueContainer()
+            try container.encode(rule)
+        case .rule(let rule, let options):
+            var container = encoder.container(keyedBy: Key.self)
+            try container.encode(rule, forKey: Key(stringValue: "rule")!)
+            for (key, value) in options.sorted(by: { $0.key < $1.key }) {
+                try container.encode(value, forKey: Key(stringValue: key)!)
+            }
+        }
+    }
+}
+
 nonisolated struct CreateMatchRequest: Encodable {
     let courseName: String
     let holes: Int
@@ -176,9 +209,11 @@ nonisolated struct CreateMatchRequest: Encodable {
     /// Slice 92 round 2: the server persists both now. Team handicap
     /// rides only on a Teams (scramble) round — on Individual and Team
     /// the round's net/gross/custom scoring already sets it. Rules ride
-    /// only on Individual and Team, as a bare id list.
+    /// only on Individual and Team.
     let teamHandicapMode: String?
-    let teamRules: [String]?
+    /// Bare rule ids (legacy shape) or rules carrying their flat
+    /// options. Empty is never sent — absence never wipes stored rules.
+    let teamRules: [TeamRulePost]?
     /// Each picked game's settings, keyed by kind — POST /matches only
     /// (validated like side-game-config; kinds not enabled are ignored).
     /// Edits still post per game after PATCH.

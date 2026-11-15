@@ -88,15 +88,40 @@ nonisolated struct TeamHandicapMode: Decodable, Hashable, Identifiable {
 /// balls per side — `needsTwoBalls` — which is why a SCRAMBLE (one ball
 /// per team) can never run one, and the form prunes them there. Rules
 /// are multi-select: each picked rule runs simultaneously with its own
-/// leaderboard. `hasOptions` marks VEGAS, which carries extra settings
-/// (birdie flip, doubling holes, stake) — unselectable until its panel
-/// ships.
+/// leaderboard. `hasOptions` stays VEGAS-only for older builds; the
+/// app renders from `options`, which every rule now carries (stake at
+/// minimum, plus Vegas's birdie flip and doubling holes).
 nonisolated struct TeamRuleChoice: Decodable, Hashable, Identifiable {
     let id: String
     let label: String
     let blurb: String
     let needsTwoBalls: Bool
     let hasOptions: Bool
+    /// The rule's settings fields, same schema shape as a side game's.
+    var options: [SideGameSetting] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, blurb, needsTwoBalls, hasOptions, options
+    }
+
+    init(
+        id: String, label: String, blurb: String,
+        needsTwoBalls: Bool, hasOptions: Bool, options: [SideGameSetting] = []
+    ) {
+        self.id = id; self.label = label; self.blurb = blurb
+        self.needsTwoBalls = needsTwoBalls; self.hasOptions = hasOptions
+        self.options = options
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        label = (try? container.decode(String.self, forKey: .label)) ?? ""
+        blurb = (try? container.decode(String.self, forKey: .blurb)) ?? ""
+        needsTwoBalls = (try? container.decode(Bool.self, forKey: .needsTwoBalls)) ?? true
+        hasOptions = (try? container.decode(Bool.self, forKey: .hasOptions)) ?? false
+        options = (try? container.decodeIfPresent([SideGameSetting].self, forKey: .options)) ?? []
+    }
 }
 
 extension RoundOptionsResponse: Decodable {
