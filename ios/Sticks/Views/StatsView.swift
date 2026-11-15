@@ -699,7 +699,7 @@ struct ScoringAnalysisCard: View {
                 }
 
                 if baseline != nil {
-                    Text("Strokes per hole, against \(handicapWithArticle(baselineName)) handicap.")
+                    Text("How your 18 holes break down, against \(handicapWithArticle(baselineName)) handicap.")
                         .font(SticksFont.sans(11))
                         .foregroundStyle(Color.sticksFaint)
                         .fixedSize(horizontal: false, vertical: true)
@@ -707,12 +707,10 @@ struct ScoringAnalysisCard: View {
 
                 distributionRows
 
-                if baseline != nil {
-                    Text("Per 18 holes, against \(handicapWithArticle(baselineName)) handicap. Triangle = the baseline, bar = your average.")
-                        .font(SticksFont.sans(11))
-                        .foregroundStyle(Color.sticksFaint)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("Share of 18 holes by score type. Change the baseline with the selector above.")
+                    .font(SticksFont.sans(11))
+                    .foregroundStyle(Color.sticksFaint)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -775,47 +773,78 @@ struct ScoringAnalysisCard: View {
 
     // MARK: Distribution
 
-    private struct DistributionKind: Identifiable {
+    private struct ScoreSegment: Identifiable {
         let label: String
         let player: Double
         let expected: Double
-        /// Birdies/pars: more is better. Bogeys/doubles: fewer is better.
-        let moreIsBetter: Bool
+        let color: Color
+        /// Light fills take ink text; dark fills take cream.
+        var isLight: Bool { color == .sticksHairline }
         var id: String { label }
     }
 
-    private var kinds: [DistributionKind] {
+    private var segments: [ScoreSegment] {
         let player = stats.distribution.per18
         let expected = baseline?.distribution ?? .zero
         return [
-            DistributionKind(label: "BIRDIES−", player: player.birdiesOrBetter, expected: expected.birdiesOrBetter, moreIsBetter: true),
-            DistributionKind(label: "PARS", player: player.pars, expected: expected.pars, moreIsBetter: true),
-            DistributionKind(label: "BOGEYS", player: player.bogeys, expected: expected.bogeys, moreIsBetter: false),
-            DistributionKind(label: "DOUBLES+", player: player.doublesOrWorse, expected: expected.doublesOrWorse, moreIsBetter: false),
+            ScoreSegment(label: "BIRDIES OR BETTER", player: player.birdiesOrBetter, expected: expected.birdiesOrBetter, color: .sticksGreen),
+            ScoreSegment(label: "PARS", player: player.pars, expected: expected.pars, color: .sticksHairline),
+            ScoreSegment(label: "BOGEYS", player: player.bogeys, expected: expected.bogeys, color: .sticksGold),
+            ScoreSegment(label: "DOUBLES OR WORSE", player: player.doublesOrWorse, expected: expected.doublesOrWorse, color: .sticksError),
         ]
     }
 
-    /// Shared scale — the max count across rows nearly fills the track.
-    private var scaleMax: Double {
-        max(kinds.flatMap { [$0.player, $0.expected] }.max() ?? 1, 0.5) * 1.05
+    /// Read as one sentence for VoiceOver.
+    private func spokenSummary(_ name: String, _ values: [Double]) -> String {
+        let parts = zip(segments, values).map { String(format: "%.1f \($1)", $0.player) }
+        return "\(name): " + parts.joined(separator: ", ")
     }
 
-    private var distributionRows: some View {
-        VStack(spacing: 6) {
-            ForEach(kinds) { kind in
-                distributionRow(kind)
-            }
+    private var baselineRowLabel: String {
+        switch selection {
+        case .hcp(let value): return "A \(value) HCP"
+        case .myIndex:
+            return stats.index.map { String(format: "A %.1f INDEX", $0) } ?? "BASELINE"
         }
     }
 
-    /// One track row: a light tan full-width track, the player's colored
-    /// bar over it (green when beating the baseline, danger when
-    /// trailing), the player's count above the bar end, and a triangle +
-    /// number marking the baseline's position on the track.
-    private func distributionRow(_ kind: DistributionKind) -> some View {
-        let showBaseline = baseline != nil
+    private var distributionRows: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            compositionBar(
+                label: "YOU",
+                values: segments.map { $0.player },
+                colors: segments.map { $0.color },
+                dimmed: false,
+                spokenName: "Your 18 holes"
+            )
+
+            if baseline != nil {
+                compositionBar(
+                    label: baselineRowLabel,
+                    values: segments.map { $0.expected },
+                    colors: segments.map { $0.color },
+                    dimmed: true,
+                    spokenName: "Baseline \(baselineRowLabel.lowercased())"
+                )
+            }
+
+            legend
+        }
+    }
+
+    /// One full round as a stacked bar: each score type is a capsule
+    /// segment, sized by its share of the 18 holes. Counts sit inside
+    /// segments wide enough to hold them.
+    private func compositionBar(
+        label: String,
+        values: [Double],
+        colors: [Color],
+        dimmed: Bool,
+        spokenName: String
+    ) -> some View {
+        let total = max(values.reduce(0, +), 0.5)
         return HStack(spacing: 10) {
-            Text(kind.label)
+            Text(label)
                 .font(SticksFont.mono(9.5))
                 .kerning(0.6)
                 .foregroundStyle(Color.sticksFaint)
@@ -823,56 +852,49 @@ struct ScoringAnalysisCard: View {
 
             GeometryReader { geo in
                 let width = geo.size.width
-                let barEnd = max(x(kind.player, in: width), 3)
-                let baselineX = min(max(x(kind.expected, in: width), 6), width - 6)
-
-                ZStack(alignment: .topLeading) {
-                    Text(String(format: "%.1f", kind.player))
-                        .font(SticksFont.mono(9.5))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.sticksInk)
-                        .position(x: min(max(barEnd, 10), width - 10), y: 5)
-
-                    Capsule()
-                        .fill(Color.sticksHairline.opacity(0.45))
-                        .frame(width: width, height: 6)
-                        .position(x: width / 2, y: 16)
-
-                    Capsule()
-                        .fill(barColor(kind))
-                        .frame(width: barEnd, height: 6)
-                        .position(x: barEnd / 2, y: 16)
-
-                    if showBaseline {
-                        Image(systemName: "arrowtriangle.up.fill")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(Color.sticksMuted)
-                            .position(x: baselineX, y: 24)
-
-                        Text(String(format: "%.1f", kind.expected))
-                            .font(SticksFont.mono(8.5))
-                            .monospacedDigit()
-                            .foregroundStyle(Color.sticksFaint)
-                            .position(x: baselineX, y: 33)
+                let items = values.indices.map { index in
+                    (index: index, value: values[index], color: colors[index])
+                }
+                HStack(spacing: 2) {
+                    ForEach(items, id: \.index) { item in
+                        let w = max(width * CGFloat(item.value / total) - 2, 0)
+                        Capsule()
+                            .fill(item.color.opacity(dimmed ? 0.4 : 1))
+                            .frame(width: w, height: 16)
+                            .overlay {
+                                if !dimmed, w >= 26 {
+                                    Text(String(format: "%.1f", item.value))
+                                        .font(SticksFont.mono(8.5))
+                                        .monospacedDigit()
+                                        .foregroundStyle(item.color == .sticksHairline ? Color.sticksMuted : Color.sticksCream)
+                                }
+                            }
                     }
                 }
             }
-            .frame(height: showBaseline ? 38 : 22)
+            .frame(height: 16)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenSummary(spokenName, values))
     }
 
-    private func x(_ value: Double, in width: CGFloat) -> CGFloat {
-        CGFloat(value / scaleMax) * width
-    }
-
-    /// Green when beating the baseline for this category, danger when
-    /// trailing it (no baseline reads neutral green).
-    private func barColor(_ kind: DistributionKind) -> Color {
-        guard baseline != nil else { return .sticksGreen }
-        let beating = kind.moreIsBetter
-            ? kind.player >= kind.expected
-            : kind.player <= kind.expected
-        return beating ? .sticksGreen : .sticksError
+    private var legend: some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
+            spacing: 5
+        ) {
+            ForEach(segments) { segment in
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(segment.color)
+                        .frame(width: 9, height: 9)
+                    Text(segment.label)
+                        .font(SticksFont.mono(8.5))
+                        .kerning(0.4)
+                        .foregroundStyle(Color.sticksMuted)
+                }
+            }
+        }
     }
 }
 
