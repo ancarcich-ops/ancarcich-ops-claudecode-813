@@ -32,6 +32,9 @@ struct WelcomeView: View {
     let onFinish: (WelcomeOutcome) -> Void
 
     @State private var page: Int = 0
+    /// First run: the last page hands off to the coach-mark tour instead
+    /// of jumping into the create wizard (which would bury the tour).
+    @State private var leadsIntoTour = !TutorialCenter.shared.hasSeen(.tabs)
 
     private let pageCount = 3
 
@@ -97,15 +100,15 @@ struct WelcomeView: View {
                 }
             } else {
                 VStack(spacing: 10) {
-                    primaryButton("New round") {
+                    primaryButton(leadsIntoTour ? "Show me around" : "New round") {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        onFinish(.newRound)
+                        onFinish(leadsIntoTour ? .home : .newRound)
                     }
 
                     Button {
                         onFinish(.home)
                     } label: {
-                        Text("Take me home")
+                        Text(leadsIntoTour ? "Skip to home" : "Take me home")
                             .font(SticksFont.sans(15, weight: .medium))
                             .foregroundStyle(Color.sticksMuted)
                             .frame(height: 34)

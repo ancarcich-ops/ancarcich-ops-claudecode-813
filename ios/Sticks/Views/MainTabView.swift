@@ -190,7 +190,19 @@ struct MainTabView: View {
         // notifications — never over the welcome screen itself.
         .onChange(of: welcomed) { _, isWelcomed in
             guard isWelcomed else { return }
-            Task { await PushNotificationService.shared.syncOnSignedInLaunch() }
+            Task {
+                // Let the tab tour open straight after the welcome; the
+                // system notification prompt waits until it's done (or
+                // gives up after a few minutes if the tour never ran).
+                let center = TutorialCenter.shared
+                var waited = 0.0
+                while !center.hasSeen(.tabs), waited < 180 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    waited += 0.5
+                }
+                try? await Task.sleep(for: .milliseconds(600))
+                await PushNotificationService.shared.syncOnSignedInLaunch()
+            }
         }
         // Slice 71: a notification tap while the app is up (foreground or
         // resumed from background) routes immediately.
