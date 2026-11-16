@@ -638,9 +638,10 @@ struct MatchDetailView: View {
                 createdByLink(
                     username: creatorUsername,
                     displayName: detail?.createdByDisplayName,
-                    // The creator's seat, matched by exact handle, carries
-                    // the account id the bare username can't pin down.
-                    userId: detail?.players.first { $0.username == creatorUsername }?.userId
+                    // Prefer the payload's createdBy.id; older servers omit
+                    // it, so fall back to the seat matched by exact handle.
+                    userId: detail?.createdById
+                        ?? detail?.players.first { $0.username == creatorUsername }?.userId
                 )
             }
         }

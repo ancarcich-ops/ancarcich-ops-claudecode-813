@@ -47,7 +47,7 @@ final class MemberProfileViewModel {
         }
         if stats == nil { phase = .loading }
         do {
-            let response = try await api.userStats(username: username, token: token)
+            let response = try await fetchStats(username: username, userId: expectedUserId, token: token)
             // The server resolved the name to a DIFFERENT account than
             // the link meant (usernames differing only by case). Showing
             // that account's empty stats under this player's name is
@@ -70,6 +70,21 @@ final class MemberProfileViewModel {
             if stats == nil {
                 phase = .failed("Can't reach Sticks. Check your connection and try again.")
             }
+        }
+    }
+
+    /// Fetches by account id when known (server #667 accepts ids), so a
+    /// case-colliding handle can't resolve to the wrong account. A 404 on
+    /// the id means the server predates id lookup — retry by username,
+    /// where the mismatch guard above still catches a wrong resolution.
+    private func fetchStats(username: String, userId: String?, token: String) async throws -> StatsResponse {
+        guard let userId, !userId.isEmpty else {
+            return try await api.userStats(username: username, token: token)
+        }
+        do {
+            return try await api.userStats(username: userId, token: token)
+        } catch let error as APIError where error.statusCode == 404 {
+            return try await api.userStats(username: username, token: token)
         }
     }
 }

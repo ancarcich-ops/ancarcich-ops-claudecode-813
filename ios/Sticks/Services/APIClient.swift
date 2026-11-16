@@ -919,6 +919,8 @@ nonisolated struct APIClient {
     /// forces createdByMe false. 404 when the name has no account.
     /// The raw username is passed to appendingPathComponent, which
     /// percent-encodes it (pre-encoding here would double-encode).
+    /// Since server #667 the path segment may also be an account id —
+    /// unambiguous where usernames can collide by case.
     func userStats(username: String, token: String) async throws -> StatsResponse {
         let request = makeRequest(path: "users/\(username)/stats", method: "GET", token: token)
         return try await perform(request)

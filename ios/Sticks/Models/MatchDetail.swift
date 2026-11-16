@@ -174,6 +174,10 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     /// carries none (the line simply doesn't render).
     let createdByUsername: String?
     let createdByDisplayName: String?
+    /// The creator's account id (`createdBy.id`, server #667) — pins the
+    /// profile link to the right account when two handles differ only
+    /// by case. Nil on older payloads.
+    let createdById: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, courseName, scheduledAt, status, holes, startingHole
@@ -187,7 +191,7 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
     /// Nested creator shapes — `{ username, displayName }` under
     /// `createdBy` / `creator`.
     private enum CreatorKeys: String, CodingKey {
-        case username, displayName
+        case id, username, displayName
     }
 
     init(from decoder: Decoder) throws {
@@ -217,16 +221,19 @@ nonisolated struct MatchDetail: Decodable, Identifiable, Hashable {
         // a bare createdBy string. Anything absent/empty → nil.
         var creatorUsername = (try? container.decodeIfPresent(String.self, forKey: .createdByUsername)) ?? nil
         var creatorDisplayName: String? = nil
+        var creatorId: String? = nil
         for key in [CodingKeys.createdBy, CodingKeys.creator] where creatorUsername == nil {
             if let nested = try? container.nestedContainer(keyedBy: CreatorKeys.self, forKey: key) {
                 creatorUsername = (try? nested.decodeIfPresent(String.self, forKey: .username)) ?? nil
                 creatorDisplayName = (try? nested.decodeIfPresent(String.self, forKey: .displayName)) ?? nil
+                creatorId = (try? nested.decodeIfPresent(String.self, forKey: .id)) ?? nil
             } else if let flat = (try? container.decodeIfPresent(String.self, forKey: key)) ?? nil {
                 creatorUsername = flat
             }
         }
         createdByUsername = (creatorUsername?.isEmpty ?? true) ? nil : creatorUsername
         createdByDisplayName = (creatorDisplayName?.isEmpty ?? true) ? nil : creatorDisplayName
+        createdById = (creatorId?.isEmpty ?? true) ? nil : creatorId
     }
 
     /// True when the caller holds a seat in this round — i.e. they're one
