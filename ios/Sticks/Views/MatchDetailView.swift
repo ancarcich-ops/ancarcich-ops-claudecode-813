@@ -531,19 +531,33 @@ struct MatchDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back")
 
-                let mark = (Text("Sticks").foregroundStyle(Color.sticksInk)
-                    + Text(".").foregroundStyle(Color.sticksGreen))
-                    .font(SticksFont.display(wordmarkSize))
-                    .lineLimit(1)
+                // The wordmark is a second way home: tap it anywhere
+                // and you land on the Home tab, same as the ghost pill.
+                // Pushed screens have no tab binding, so pop first and
+                // let MainTabView switch.
+                Button {
+                    dismiss()
+                    NotificationCenter.default.post(name: .sticksGoHome, object: nil)
+                } label: {
+                    let mark = (Text("Sticks").foregroundStyle(Color.sticksInk)
+                        + Text(".").foregroundStyle(Color.sticksGreen))
+                        .font(SticksFont.display(wordmarkSize))
+                        .lineLimit(1)
 
-                if wordmarkScales {
-                    // Fallback rung only: shrink to fit, never ellipsize.
-                    mark
-                        .minimumScaleFactor(0.55)
-                        .layoutPriority(1)
-                } else {
-                    mark.fixedSize()
+                    Group {
+                        if wordmarkScales {
+                            // Fallback rung only: shrink to fit, never ellipsize.
+                            mark
+                                .minimumScaleFactor(0.55)
+                                .layoutPriority(1)
+                        } else {
+                            mark.fixedSize()
+                        }
+                    }
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Sticks — go to Home")
             }
 
             Spacer(minLength: 8)
