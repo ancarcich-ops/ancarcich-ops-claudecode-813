@@ -42,10 +42,24 @@ enum RecapFormat {
         value > 0 ? .sticksError : (value < 0 ? .sticksGreen : .sticksMuted)
     }
 
+    /// The server pads a max-sum window with level holes at the
+    /// edges (longest window wins ties), so a "worst run" can open
+    /// with two pars. Trim those — the run should be the stretch that
+    /// earned the label: holes 2 through 5 · 3 over becomes 4 through 5.
+    static func trimmedStretch(_ arc: [RecapArcPoint], _ stretch: RecapStretch) -> RecapStretch {
+        guard arc.indices.contains(stretch.from), stretch.to > stretch.from else { return stretch }
+        var from = stretch.from
+        var to = min(stretch.to, arc.count - 1)
+        while to > from, arc[from].delta == 0 { from += 1 }
+        while to > from, arc[to].delta == 0 { to -= 1 }
+        return RecapStretch(from: from, to: to, vsPar: stretch.vsPar, holes: to - from + 1)
+    }
+
     /// A stretch of holes in playing order, named for speech: any
     /// stretch crossing the turn is "17 through 2", never "17–2" —
     /// so every stretch says "through" and none misleads.
     static func stretchText(_ arc: [RecapArcPoint], _ stretch: RecapStretch) -> String? {
+        let stretch = trimmedStretch(arc, stretch)
         guard arc.indices.contains(stretch.from) else { return nil }
         let to = min(stretch.to, arc.count - 1)
         guard to >= stretch.from, to < arc.count else { return nil }
@@ -617,11 +631,15 @@ struct RecapArcChart: View {
     /// The headline card draws a compact version: no labels, no readout.
     var compact = false
 
+    // Trimmed on both ends, so the highlight matches the caption —
+    // a worst run's leading pars shouldn't glow red.
     private var bestRange: ClosedRange<Int> {
-        best.from...min(best.to, max(arc.count - 1, 0))
+        let trimmed = RecapFormat.trimmedStretch(arc, best)
+        return trimmed.from...min(trimmed.to, max(arc.count - 1, 0))
     }
     private var worstRange: ClosedRange<Int> {
-        worst.from...min(worst.to, max(arc.count - 1, 0))
+        let trimmed = RecapFormat.trimmedStretch(arc, worst)
+        return trimmed.from...min(trimmed.to, max(arc.count - 1, 0))
     }
 
     var body: some View {
