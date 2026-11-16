@@ -159,11 +159,13 @@ nonisolated struct RecapByParRow: Decodable {
     let avgVsPar: Double?
 }
 
-/// One third of the card's difficulty ranking. `fromIndex`/`toIndex`
-/// are 1-based hole indexes — the app renders label + avgVsPar only.
+/// One third of the card's difficulty ranking — the six hardest
+/// stroke-index holes, the middle six, the easiest six. `vsPar` is the
+/// bucket's total strokes over par; `avgVsPar` the per-hole average.
 nonisolated struct RecapDifficultyRow: Decodable {
     let label: String
     let holes: Int
+    let vsPar: Int?
     let avgVsPar: Double?
 }
 

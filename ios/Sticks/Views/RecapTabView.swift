@@ -421,7 +421,7 @@ struct RecapTabView: View {
             .padding(.vertical, header ? 6 : 8)
     }
 
-    // MARK: Hard holes vs easy
+    // MARK: Strokes by hole difficulty
 
     @ViewBuilder
     private var difficultySection: some View {
@@ -429,60 +429,102 @@ struct RecapTabView: View {
         if !rows.isEmpty {
             // A course with no stroke index sends an empty array — the
             // section is absent, not empty.
-            section("HARD HOLES VS EASY") {
+            section("STROKES BY HOLE DIFFICULTY") {
+                let totalHoles = rows.reduce(0) { $0 + $1.holes }
                 let maxMagnitude = max(
                     rows.map { abs($0.avgVsPar ?? 0) }.max() ?? 1,
                     0.1
                 )
-                VStack(alignment: .leading, spacing: 12) {
+
+                Text("Every scorecard ranks its holes 1–\(totalHoles) by difficulty — stroke index 1 is the hardest hole. This splits that ranking into thirds and totals your score against par on each.")
+                    .font(SticksFont.sans(12))
+                    .foregroundStyle(Color.sticksMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 14) {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        let value = row.avgVsPar ?? 0
-                        HStack(spacing: 10) {
-                            Text(row.label.uppercased())
-                                .font(SticksFont.mono(10.5))
-                                .kerning(0.5)
-                                .foregroundStyle(Color.sticksMuted)
-                                .frame(width: 68, alignment: .leading)
-
-                            // Diverging bars from a centre line —
-                            // over par right (red), under left (green).
-                            GeometryReader { geo in
-                                let centre = geo.size.width / 2
-                                let halfSpan = geo.size.width / 2 - 4
-                                let barWidth = max((abs(value) / maxMagnitude) * halfSpan, 3)
-                                ZStack {
-                                    // The centre line — level.
-                                    Rectangle()
-                                        .fill(Color.sticksHairline.opacity(0.6))
-                                        .frame(width: 1)
-                                        .position(x: centre, y: 8)
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(value >= 0 ? Color.sticksError : Color.sticksGreen)
-                                        .frame(width: barWidth, height: 14)
-                                        .position(
-                                            x: value >= 0 ? centre + barWidth / 2 : centre - barWidth / 2,
-                                            y: 8
-                                        )
-                                }
-                            }
-                            .frame(height: 16)
-
-                            Text(RecapFormat.vsPar(value))
-                                .font(SticksFont.mono(12, weight: .semibold))
-                                .foregroundStyle(RecapFormat.vsParColor(Int(value.rounded())))
-                                .frame(width: 38, alignment: .trailing)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(row.label): \(RecapFormat.vsPar(value)) average against par")
+                        difficultyRow(row, maxMagnitude: maxMagnitude)
                     }
                 }
 
-                Text("The card ranks its holes 1 to 18 by difficulty — 1 is the hardest. This is your average against par in each third.")
-                    .font(SticksFont.sans(11.5))
-                    .foregroundStyle(Color.sticksFaint)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let verdict = difficultyVerdict(rows) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "lightbulb")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sticksGold)
+                            .padding(.top, 2)
+                        Text(verdict)
+                            .font(SticksFont.sans(12))
+                            .foregroundStyle(Color.sticksMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
+    }
+
+    /// "HARDEST  /  6 holes · +0.3 per hole  [====]  +2" — total is the
+    /// headline number, average the context beneath the label.
+    private func difficultyRow(_ row: RecapDifficultyRow, maxMagnitude: Double) -> some View {
+        let value = row.avgVsPar ?? 0
+        let perHole = value == 0 ? "E" : RecapFormat.vsPar(value)
+        let totalText = row.vsPar.map(RecapFormat.vsPar) ?? RecapFormat.vsPar(value)
+        let totalValue = row.vsPar ?? Int(value.rounded())
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.label.uppercased())
+                    .font(SticksFont.mono(10.5))
+                    .kerning(0.5)
+                    .foregroundStyle(Color.sticksInk)
+                Text("\(row.holes) HOLES · \(perHole) PER HOLE")
+                    .font(SticksFont.mono(9))
+                    .kerning(0.3)
+                    .foregroundStyle(Color.sticksFaint)
+            }
+            .frame(width: 118, alignment: .leading)
+
+            GeometryReader { geo in
+                let width = max(abs(value) / maxMagnitude * geo.size.width, value != 0 ? 4 : 0)
+                Capsule()
+                    .fill(value > 0 ? Color.sticksError.opacity(0.85) : Color.sticksGreen)
+                    .frame(width: width, height: 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: 12)
+
+            Text(totalText)
+                .font(SticksFont.mono(14, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(RecapFormat.vsParColor(totalValue))
+                .frame(width: 36, alignment: .trailing)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(row.label) \(row.holes) holes: \(totalText) against par, \(perHole) per hole"
+        )
+    }
+
+    /// One plain-English read on where the round leaked. Quiet when the
+    /// thirds are within a quarter stroke of each other.
+    private func difficultyVerdict(_ rows: [RecapDifficultyRow]) -> String? {
+        let withValues = rows.compactMap { row -> (RecapDifficultyRow, Double)? in
+            guard let v = row.avgVsPar else { return nil }
+            return (row, v)
+        }
+        guard withValues.count >= 2,
+              let worst = withValues.max(by: { $0.1 < $1.1 }),
+              let best = withValues.min(by: { $0.1 < $1.1 }),
+              worst.1 - best.1 >= 0.2
+        else { return nil }
+
+        let where_ = "Most strokes lost on the \(worst.0.label.lowercased()) \(worst.0.holes) holes (\(RecapFormat.vsPar(worst.0.vsPar ?? Int(worst.1.rounded()))) over)."
+        if worst.0.label.lowercased().contains("easiest") {
+            return where_ + " The easier holes are usually the quickest place to win some back."
+        }
+        if best.1 < 0 {
+            return where_ + " You matched or beat par on the \(best.0.label.lowercased()) third — keep that."
+        }
+        return where_
     }
 
     // MARK: History
