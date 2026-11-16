@@ -55,11 +55,18 @@ nonisolated struct BestRound: Hashable {
     let scheduledAt: Date?
     let vsPar: Int
     let gross: Int
+    /// Holes in the round — nil from servers that predate the field.
+    let holesPlayed: Int?
+
+    /// Personal bests are 18-hole rounds only, as a rule: a 9-hole
+    /// +4 isn't a better round than an 18-hole +12. Unknown counts as
+    /// full (older payloads only ever picked 18s).
+    var isFullRound: Bool { (holesPlayed ?? 18) == 18 }
 }
 
 extension BestRound: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case matchId, courseName, scheduledAt, vsPar, gross
+        case matchId, courseName, scheduledAt, vsPar, gross, holesPlayed
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +76,7 @@ extension BestRound: Decodable {
         scheduledAt = try container.decodeIfPresent(Date.self, forKey: .scheduledAt)
         vsPar = try container.decodeIfPresent(Int.self, forKey: .vsPar) ?? 0
         gross = try container.decodeIfPresent(Int.self, forKey: .gross) ?? 0
+        holesPlayed = try container.decodeIfPresent(Int.self, forKey: .holesPlayed)
     }
 }
 
@@ -182,6 +190,9 @@ extension WinsByGame: Decodable {
 /// The player's best round on one course.
 nonisolated struct StatsCourseRecord: Identifiable, Hashable {
     let courseName: String
+    /// The record round — lets the list mark the same round the hero's
+    /// BEST cell shows.
+    let matchId: String?
     let gross: Int?
     let net: Double?
     /// Holes in the best round (18 or 9) — optional and accepted under
@@ -193,12 +204,13 @@ nonisolated struct StatsCourseRecord: Identifiable, Hashable {
 
 extension StatsCourseRecord: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case courseName, gross, net, holesPlayed, holes
+        case courseName, matchId, gross, net, holesPlayed, holes
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         courseName = try container.decodeIfPresent(String.self, forKey: .courseName) ?? ""
+        matchId = try container.decodeIfPresent(String.self, forKey: .matchId)
         gross = try container.decodeIfPresent(Int.self, forKey: .gross)
         net = try container.decodeIfPresent(Double.self, forKey: .net)
         holesPlayed = try container.decodeIfPresent(Int.self, forKey: .holesPlayed)

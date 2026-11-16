@@ -318,7 +318,7 @@ private struct StatCellsPanel: View {
                     .kerning(0.9)
                     .foregroundStyle(Color.sticksFaint)
 
-                if let best = stats.bestRound {
+                if let best = stats.bestRound, best.isFullRound {
                     Text(StatsFormat.vsPar(best.vsPar))
                         .font(SticksFont.display(27, weight: .bold))
                         .monospacedDigit()

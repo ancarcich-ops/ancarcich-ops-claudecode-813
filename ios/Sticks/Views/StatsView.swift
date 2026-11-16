@@ -132,7 +132,7 @@ struct StatsView: View {
                 }
 
                 if !stats.courseRecords.isEmpty {
-                    CourseBestsCard(records: stats.courseRecords)
+                    CourseBestsCard(records: stats.courseRecords, personalBest: stats.bestRound)
                 }
 
                 if !stats.rounds.isEmpty {
@@ -1074,11 +1074,21 @@ private struct WinsByGameGrid: View {
 /// Internal: reused by the read-only member profile (slice 63).
 struct CourseBestsCard: View {
     let records: [StatsCourseRecord]
+    /// The hero's BEST round. The medal goes on that same round so the
+    /// two never disagree (the hero ranks by score vs par, which a
+    /// bare lowest-gross pick doesn't match across different pars).
+    var personalBest: BestRound? = nil
 
-    /// The single lowest-gross record gets the gold medal glyph.
+    /// One gold medal: the personal-best round when it's listed, else
+    /// the lowest gross among FULL 18-hole records. 9-hole rounds never
+    /// take it — a 42 over nine isn't a personal best.
     private var medalId: String? {
-        records
-            .filter { $0.gross != nil }
+        if let best = personalBest, best.isFullRound,
+           let match = records.first(where: { $0.matchId != nil && $0.matchId == best.matchId }) {
+            return match.id
+        }
+        return records
+            .filter { $0.gross != nil && $0.holesPlayed == 18 }
             .min { ($0.gross ?? .max) < ($1.gross ?? .max) }?
             .id
     }
@@ -1132,7 +1142,7 @@ struct CourseBestsCard: View {
         }
         if let net = record.net {
             pieces.append(
-                Text("\(net, specifier: "%.1f") NET").foregroundStyle(Color.sticksGreen)
+                Text("\(Self.netText(net)) NET").foregroundStyle(Color.sticksGreen)
             )
         }
         guard var combined = pieces.first else {
@@ -1142,6 +1152,12 @@ struct CourseBestsCard: View {
             combined = combined + Text(" · ").foregroundStyle(Color.sticksFaint) + piece
         }
         return combined
+    }
+
+    /// "74" for a whole net, "74.5" otherwise — never the locale's
+    /// "74,0", which read as a pair of numbers in a mono row of them.
+    static func netText(_ net: Double) -> String {
+        net.rounded() == net ? "\(Int(net))" : String(format: "%.1f", net)
     }
 }
 

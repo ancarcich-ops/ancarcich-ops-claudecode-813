@@ -128,7 +128,7 @@ struct MemberProfileView: View {
                 }
 
                 if !stats.courseRecords.isEmpty {
-                    CourseBestsCard(records: stats.courseRecords)
+                    CourseBestsCard(records: stats.courseRecords, personalBest: stats.bestRound)
                 }
             }
             .padding(.horizontal, 20)
