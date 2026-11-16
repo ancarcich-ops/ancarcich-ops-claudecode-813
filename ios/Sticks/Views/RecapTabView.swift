@@ -127,15 +127,6 @@ struct RecapTabView: View {
                 .font(SticksFont.sans(15))
                 .foregroundStyle(Color.sticksInk)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if let best = payload.best, let worst = payload.worst {
-                RecapArcChart(
-                    arc: payload.arc,
-                    best: best,
-                    worst: worst,
-                    selection: $arcSelection
-                )
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
