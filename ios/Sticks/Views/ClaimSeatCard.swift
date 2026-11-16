@@ -39,7 +39,10 @@ struct ClaimSeatCard: View {
                     Text("Played in this round?")
                         .font(SticksFont.sans(16, weight: .semibold))
                         .foregroundStyle(Color.sticksInk)
-                    Text("Claim your spot so it counts toward your stats.")
+                    // The seats on offer are name-only entries — say
+                    // so. "Claim your spot" alone read like the app was
+                    // guessing the viewer's identity.
+                    Text("These players were added by name — if one of them is you, claim it so the round counts toward your stats.")
                         .font(SticksFont.sans(12))
                         .foregroundStyle(Color.sticksMuted)
                         .fixedSize(horizontal: false, vertical: true)
