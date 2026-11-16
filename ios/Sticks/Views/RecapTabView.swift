@@ -221,7 +221,12 @@ struct RecapTabView: View {
                 .foregroundStyle(Color.sticksInk)
                 .padding(.bottom, 10)
 
-            ForEach(Array(swing.holes.enumerated()), id: \.element.position) { _, hole in
+            ForEach(
+                // In hole order, not the server's biggest-swing-first —
+                // the list shouldn't reshuffle when the opponent changes.
+                swing.holes.sorted { $0.hole < $1.hole },
+                id: \.position
+            ) { hole in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text("H\(hole.hole)")
                         .font(SticksFont.mono(11))
@@ -255,18 +260,35 @@ struct RecapTabView: View {
     }
 
     /// "2 your way" / "2 their way" — a signed figure with words
-    /// beside it, so it can't be misread as vs-par.
+    /// beside it, so it can't be misread as vs-par. Reading someone
+    /// else's card, the names take over: "2 BIGPEAS" / "2 SROKA".
     private func swingDirection(_ swing: Int) -> String {
-        if swing > 0 { return "\(swing) YOUR WAY" }
-        if swing < 0 { return "\(-swing) THEIR WAY" }
-        return "EVEN"
+        if swing == 0 { return "EVEN" }
+        if isOwnSeat { return swing > 0 ? "\(swing) YOUR WAY" : "\(-swing) THEIR WAY" }
+        let won = swing > 0
+        let name = won ? firstName(recap.seat.displayName) : firstName(currentSwing?.opponentName ?? "")
+        return "\(abs(swing)) \(name.uppercased())"
+    }
+
+    private var currentSwing: RecapSwing? {
+        payload.swings.indices.contains(swingIndex) ? payload.swings[swingIndex] : nil
+    }
+
+    private func firstName(_ name: String) -> String {
+        name.split(separator: " ").first.map(String.init) ?? name
     }
 
     private func marginText(_ swing: RecapSwing) -> String {
         let across = " across \(swing.comparedHoles) holes"
-        if swing.total > 0 { return "You finished \(swing.total) ahead of \(swing.opponentName)\(across)." }
-        if swing.total < 0 { return "\(swing.opponentName) finished \(-swing.total) ahead of you\(across)." }
-        return "All square with \(swing.opponentName)\(across)."
+        let seat = firstName(recap.seat.displayName)
+        if isOwnSeat {
+            if swing.total > 0 { return "You finished \(swing.total) ahead of \(swing.opponentName)\(across)." }
+            if swing.total < 0 { return "\(swing.opponentName) finished \(-swing.total) ahead of you\(across)." }
+            return "All square with \(swing.opponentName)\(across)."
+        }
+        if swing.total > 0 { return "\(seat) finished \(swing.total) ahead of \(swing.opponentName)\(across)." }
+        if swing.total < 0 { return "\(swing.opponentName) finished \(-swing.total) ahead of \(seat)\(across)." }
+        return "\(seat) and \(swing.opponentName) finished all square\(across)."
     }
 
     // MARK: The round
