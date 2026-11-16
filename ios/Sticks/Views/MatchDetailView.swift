@@ -295,7 +295,17 @@ struct MatchDetailView: View {
         } message: {
             Text(actionError ?? "")
         }
-        .onAppear { tutorialPresence.isVisible = true }
+        .onAppear {
+            tutorialPresence.isVisible = true
+            // Tabs keep their stacks mounted, so a round left open on
+            // Home never re-runs `.task` — after Replay tutorials (or
+            // a tab hop) the tour would never be asked for again. Ask
+            // on every appearance once the round has loaded; the
+            // center drops seen and already-queued tours.
+            if viewModel.detail != nil {
+                requestMatchTour()
+            }
+        }
         .onDisappear { tutorialPresence.isVisible = false }
         .task {
             // Slice 93: claim any reaction push's scroll target before
@@ -308,12 +318,7 @@ struct MatchDetailView: View {
             if viewModel.detail?.status == .completed {
                 try? await Task.sleep(for: .seconds(1.5))
             }
-            let presence = tutorialPresence
-            TutorialCenter.shared.request(
-                .match,
-                isRelevant: { presence.isVisible },
-                steps: TutorialTours.match
-            )
+            requestMatchTour()
             // Slice 96: re-sync the account's display prefs (throttled
             // in the store) so a website flip lands here too.
             await DisplayPrefsStore.shared.refresh(session: session)
@@ -372,6 +377,16 @@ struct MatchDetailView: View {
     /// The big gold FINISH ROUND moment — live round, every hole scored.
     private var showsFinishCTA: Bool {
         canMarkFinal && viewModel.isRoundComplete
+    }
+
+    /// Queues the round-page coach marks; a no-op once seen.
+    private func requestMatchTour() {
+        let presence = tutorialPresence
+        TutorialCenter.shared.request(
+            .match,
+            isRelevant: { presence.isVisible },
+            steps: TutorialTours.match
+        )
     }
 
     private var actionsMenu: some View {
