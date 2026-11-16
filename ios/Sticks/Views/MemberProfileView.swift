@@ -18,6 +18,12 @@ struct MemberProfileDestination: Hashable {
     let username: String
     /// Best-known display name — shown while the profile loads.
     let displayName: String
+    /// The account this link MEANS, when the source knows it (a linked
+    /// seat). The stats endpoint resolves by username, case-insensitively
+    /// — and usernames that differ only by case can both exist
+    /// ("Seuss.md" with the rounds, "seuss.md" empty), so the name alone
+    /// can land on the wrong person. With an id we can check.
+    var userId: String? = nil
 }
 
 extension MatchDetailPlayer {
@@ -29,7 +35,7 @@ extension MatchDetailPlayer {
     /// profile.
     var profileDestination: MemberProfileDestination? {
         guard let handle = username, !handle.isEmpty else { return nil }
-        return MemberProfileDestination(username: handle, displayName: displayName)
+        return MemberProfileDestination(username: handle, displayName: displayName, userId: userId)
     }
 }
 
@@ -37,6 +43,9 @@ struct MemberProfileView: View {
     let username: String
     /// Fallback title until the payload's displayName arrives.
     let fallbackName: String
+    /// The account the tapped link meant, when known — see
+    /// `MemberProfileDestination.userId`.
+    var expectedUserId: String? = nil
     let session: SessionStore
     /// Called when the profile turns out to be the caller's own —
     /// the owner routes to the editable Stats tab (and this pops).
@@ -70,7 +79,14 @@ struct MemberProfileView: View {
         .toolbarBackground(Color.sticksBg, for: .navigationBar)
         .tint(Color.sticksGreen)
         .task {
-            await viewModel.load(username: username, session: session)
+            // A link to the caller's own seat goes straight to their
+            // Stats tab — no username round trip that could resolve to
+            // a same-name-different-case account.
+            if let expectedUserId, expectedUserId == session.user?.id {
+                onOpenOwnStats()
+                return
+            }
+            await viewModel.load(username: username, expectedUserId: expectedUserId, session: session)
             if viewModel.isSelf {
                 onOpenOwnStats()
             }
@@ -206,7 +222,7 @@ struct MemberProfileView: View {
                 .foregroundStyle(Color.sticksInk)
                 .padding(.horizontal, 40)
             Button {
-                Task { await viewModel.load(username: username, session: session) }
+                Task { await viewModel.load(username: username, expectedUserId: expectedUserId, session: session) }
             } label: {
                 Text("Try Again")
                     .font(SticksFont.sans(15, weight: .semibold))

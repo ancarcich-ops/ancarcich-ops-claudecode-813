@@ -126,6 +126,7 @@ struct SettingsView: View {
                 MemberProfileView(
                     username: destination.username,
                     fallbackName: destination.displayName,
+                    expectedUserId: destination.userId,
                     session: session,
                     onOpenOwnStats: {
                         if !path.isEmpty { path.removeLast() }

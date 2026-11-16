@@ -65,6 +65,7 @@ struct StatsView: View {
                 MemberProfileView(
                     username: destination.username,
                     fallbackName: destination.displayName,
+                    expectedUserId: destination.userId,
                     session: session,
                     onOpenOwnStats: {
                         path = NavigationPath()

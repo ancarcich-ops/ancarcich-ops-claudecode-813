@@ -612,18 +612,22 @@ struct MatchDetailView: View {
             if let creatorUsername = detail?.createdByUsername {
                 createdByLink(
                     username: creatorUsername,
-                    displayName: detail?.createdByDisplayName
+                    displayName: detail?.createdByDisplayName,
+                    // The creator's seat, matched by exact handle, carries
+                    // the account id the bare username can't pin down.
+                    userId: detail?.players.first { $0.username == creatorUsername }?.userId
                 )
             }
         }
     }
 
     /// "CREATED BY @USER ›" — pushes the creator's read-only profile.
-    private func createdByLink(username: String, displayName: String?) -> some View {
+    private func createdByLink(username: String, displayName: String?, userId: String?) -> some View {
         NavigationLink(
             value: MemberProfileDestination(
                 username: username,
-                displayName: displayName ?? username
+                displayName: displayName ?? username,
+                userId: userId
             )
         ) {
             HStack(spacing: 4) {

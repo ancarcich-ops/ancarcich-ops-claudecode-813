@@ -40,7 +40,7 @@ final class MemberProfileViewModel {
         self.api = api
     }
 
-    func load(username: String, session: SessionStore) async {
+    func load(username: String, expectedUserId: String? = nil, session: SessionStore) async {
         guard let token = session.token else {
             session.signOut()
             return
@@ -48,6 +48,14 @@ final class MemberProfileViewModel {
         if stats == nil { phase = .loading }
         do {
             let response = try await api.userStats(username: username, token: token)
+            // The server resolved the name to a DIFFERENT account than
+            // the link meant (usernames differing only by case). Showing
+            // that account's empty stats under this player's name is
+            // wrong data; say so instead.
+            if let expectedUserId, let resolved = response.targetUserId, resolved != expectedUserId {
+                phase = .failed("This player's profile can't be opened right now — another account has a near-identical username.")
+                return
+            }
             stats = response.stats
             baselines = response.baselines
             isSelf = response.isSelf
