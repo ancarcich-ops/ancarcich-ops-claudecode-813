@@ -374,10 +374,13 @@ struct RecapTabView: View {
                                 byParCell("PAR \(row.par)", alignment: .leading)
                                 byParCell("\(row.holes)")
                                 byParCell(row.avgScore.map { String(format: "%.1f", $0) } ?? "—")
-                                let vs = row.avgVsPar ?? 0
+                                // avgVsPar is per hole — scale it to the
+                                // bucket's strokes over par, so the rows
+                                // sum to the round's headline number.
+                                let vs = row.avgVsPar.map { Int(($0 * Double(row.holes)).rounded()) }
                                 byParCell(
-                                    RecapFormat.vsPar(vs),
-                                    color: RecapFormat.vsParColor(Int(vs.rounded()))
+                                    vs.map(RecapFormat.vsPar) ?? "—",
+                                    color: vs.map(RecapFormat.vsParColor) ?? .sticksMuted
                                 )
                             }
                             .overlay(alignment: .top) {
