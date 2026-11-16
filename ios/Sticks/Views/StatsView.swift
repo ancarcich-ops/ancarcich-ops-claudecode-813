@@ -862,11 +862,18 @@ struct ScoringAnalysisCard: View {
                             .fill(item.color.opacity(dimmed ? 0.4 : 1))
                             .frame(width: w, height: 16)
                             .overlay {
-                                if !dimmed, w >= 26 {
+                                if w >= 26 {
                                     Text(String(format: "%.1f", item.value))
                                         .font(SticksFont.mono(8.5))
                                         .monospacedDigit()
-                                        .foregroundStyle(item.color == .sticksHairline ? Color.sticksMuted : Color.sticksCream)
+                                        // Full-color fills take cream text; the
+                                        // dimmed baseline and the pale pars
+                                        // segment both take ink.
+                                        .foregroundStyle(
+                                            item.color == .sticksHairline || dimmed
+                                                ? Color.sticksInk
+                                                : Color.sticksCream
+                                        )
                                 }
                             }
                     }
