@@ -390,6 +390,16 @@ struct MatchDetailView: View {
                     Label("Round settings", systemImage: "slider.horizontal.3")
                 }
             }
+            // Second entrance for the side-games editor — the card
+            // further down the page is the primary one, but a menu
+            // item means nobody has to scroll to find it.
+            if canEditSideGames {
+                Button {
+                    showsEditSideGames = true
+                } label: {
+                    Label("Side games", systemImage: "dice")
+                }
+            }
             if canMarkFinal {
                 Button {
                     showsFinalConfirm = true
