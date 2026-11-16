@@ -75,3 +75,26 @@ iOS 3D segment goes from stall → ready within seconds.
   (document-start user script) rewrites that expression in the webpack
   module factory as the chunk registers. It no-ops once the fixed bundle
   is live. It logs "patched getCursor in module …" under `[Flyover]`.
+
+## Second blocker: Google 3D tiles 404 (2026-11-16)
+
+With the getCursor patch applied (verified in headless Chromium against the
+live embed: error gone, "patched getCursor in module 99351" logged), the
+flyover still stalls because the very first request fails:
+
+    GET https://tile.googleapis.com/v1/3dtiles/root.json?key=<embed key>
+    -> 404 {"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}
+
+Same result with a direct curl (Referer sticks-golf.vercel.app), so it is the
+key/project, not the page. Zero tiles load -> the embed's 6s timer posts
+"stalled". Per Google/Cesium reports this 404 means the key's Cloud project
+has no active billing account, or Map Tiles API is not enabled for it (or the
+key belongs to a different project than the one with Map Tiles enabled).
+
+Fix in Google Cloud Console (project owning the key in the embed bundle):
+1. Billing -> project linked to an active billing account (valid card).
+2. APIs & Services -> enable "Map Tiles API".
+3. Credentials -> key's API restrictions include Map Tiles API; HTTP referrer
+   restrictions allow sticks-golf.vercel.app/*. Note the iOS WKWebView sends the
+   page's own origin as Referer, so a referrer rule for the site covers the app.
+Verify: the curl above returns JSON with a "root" entry instead of 404.
