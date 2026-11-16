@@ -808,6 +808,15 @@ struct ScoringAnalysisCard: View {
         }
     }
 
+    /// Short header for the legend's baseline column.
+    private var baselineShortLabel: String {
+        switch selection {
+        case .hcp(let value): return "A \(value)"
+        case .myIndex:
+            return stats.index.map { String(format: "A %.1f", $0) } ?? "BASE"
+        }
+    }
+
     private var distributionRows: some View {
         VStack(alignment: .leading, spacing: 10) {
             compositionBar(
@@ -885,20 +894,53 @@ struct ScoringAnalysisCard: View {
         .accessibilityLabel(spokenSummary(spokenName, values))
     }
 
+    /// Color key plus the exact counts: your per-18 number in ink, the
+    /// baseline's in muted — so thin segments that can't hold a label
+    /// still read.
     private var legend: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
-            spacing: 5
-        ) {
+        VStack(spacing: 6) {
+            if baseline != nil {
+                HStack(spacing: 0) {
+                    Spacer()
+                    Text("YOU")
+                        .font(SticksFont.mono(8.5))
+                        .kerning(0.5)
+                        .foregroundStyle(Color.sticksFaint)
+                        .frame(width: 36, alignment: .trailing)
+                    Text(baselineShortLabel.uppercased())
+                        .font(SticksFont.mono(8.5))
+                        .kerning(0.5)
+                        .foregroundStyle(Color.sticksFaint)
+                        .frame(width: 44, alignment: .trailing)
+                }
+            }
+
             ForEach(segments) { segment in
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 2.5)
                         .fill(segment.color)
                         .frame(width: 9, height: 9)
+
                     Text(segment.label)
                         .font(SticksFont.mono(8.5))
                         .kerning(0.4)
                         .foregroundStyle(Color.sticksMuted)
+
+                    Spacer()
+
+                    Text(String(format: "%.1f", segment.player))
+                        .font(SticksFont.mono(9.5))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sticksInk)
+                        .frame(width: 36, alignment: .trailing)
+
+                    if baseline != nil {
+                        Text(String(format: "%.1f", segment.expected))
+                            .font(SticksFont.mono(9.5))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.sticksMuted)
+                            .frame(width: 44, alignment: .trailing)
+                    }
                 }
             }
         }
