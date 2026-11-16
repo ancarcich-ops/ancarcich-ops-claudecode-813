@@ -319,10 +319,19 @@ private struct StatCellsPanel: View {
                     .foregroundStyle(Color.sticksFaint)
 
                 if let best = stats.bestRound, best.isFullRound {
-                    Text(StatsFormat.vsPar(best.vsPar))
+                    // "+12 · 83" — the vs-par headline with the gross
+                    // it came from. +12 alone doesn't say whether that
+                    // was an 83 or a 97; the gross anchors it.
+                    (Text(StatsFormat.vsPar(best.vsPar))
                         .font(SticksFont.display(27, weight: .bold))
                         .monospacedDigit()
                         .foregroundStyle(StatsFormat.vsParColor(best.vsPar))
+                        + Text("  ·  \(best.gross)")
+                            .font(SticksFont.mono(13, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.sticksMuted))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
 
                     Text(best.courseName.uppercased())
                         .font(SticksFont.mono(10))
