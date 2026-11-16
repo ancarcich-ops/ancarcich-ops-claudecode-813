@@ -192,7 +192,7 @@ struct EditSideGamesSheet: View {
                         }
                     }
 
-                    Text(game.blurb)
+                    Text(displayBlurb(game))
                         .font(SticksFont.sans(12))
                         .foregroundStyle(Color.sticksMuted)
                         .opacity(disabled ? 0.7 : 1)
@@ -215,6 +215,22 @@ struct EditSideGamesSheet: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// The server ships one static blurb per game, and Skins' states
+    /// the default tie rule ("ties carry over") — which reads as a
+    /// contradiction the moment the round is set to No carry, with the
+    /// picker asserting the opposite right below. Rebuild the tie
+    /// clause from the round's actual push rule; the draft wins over
+    /// the stored config so the row keeps up while the picker moves.
+    private func displayBlurb(_ game: SideGameOption) -> String {
+        guard game.kind == "SKINS", game.blurb.contains("ties carry over") else { return game.blurb }
+        let rule = drafts[game.kind]?["pushRule"]?.stringValue
+            ?? game.config?["pushRule"]?.stringValue
+            ?? "CARRYOVER"
+        return rule == "NO_CARRY"
+            ? game.blurb.replacingOccurrences(of: "ties carry over", with: "ties wash")
+            : game.blurb
     }
 
     /// What shows beneath a game that's on: its settings entry, when
