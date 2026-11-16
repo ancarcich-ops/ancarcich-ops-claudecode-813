@@ -113,6 +113,11 @@ final class FlyoverService: NSObject {
             forMainFrameOnly: true
         ))
         controller.addUserScript(WKUserScript(
+            source: Self.getCursorPatchScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        controller.addUserScript(WKUserScript(
             source: Self.webglProbeScript,
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: true
@@ -144,6 +149,54 @@ final class FlyoverService: NSObject {
       };
     })();
     """
+
+    /// Client-side guard for the embed's getCursor bug (docs/flyover-
+    /// getcursor-fix.md): the embed passes `getCursor: f ? … : void 0`,
+    /// and with no aim callback that explicit undefined overwrites
+    /// deck.gl's default — `this.props.getCursor is not a function`
+    /// kills the render loop and the load "stalls". This rewrites that
+    /// one expression in the webpack module factory as the chunk
+    /// registers, to the spread form the server fix uses. Once the
+    /// fixed bundle ships, the pattern no longer matches and it no-ops.
+    private static let getCursorPatchScript = #"""
+    (function () {
+      var RE = /getCursor:([A-Za-z_$][\w$]*)\?\(\)=>"crosshair":void 0/g;
+      function patchModules(data) {
+        try {
+          var mods = data && data[1];
+          if (!mods || typeof mods !== 'object') return;
+          Object.keys(mods).forEach(function (id) {
+            var fn = mods[id];
+            if (typeof fn !== 'function') return;
+            var src = Function.prototype.toString.call(fn);
+            if (src.indexOf('"crosshair":void 0') === -1) return;
+            var fixed = src.replace(RE, '...($1?{getCursor:()=>"crosshair"}:{})');
+            if (fixed === src) return;
+            mods[id] = (0, eval)('(' + fixed + ')');
+            try { window.webkit.messageHandlers.sticksFlyoverLog.postMessage({ line: 'patched getCursor in module ' + id }); } catch (_) {}
+          });
+        } catch (e) {}
+      }
+      var name = 'webpackChunk_N_E';
+      var arr = self[name] || [];
+      arr.forEach(patchModules);
+      var current = function () {
+        for (var i = 0; i < arguments.length; i++) patchModules(arguments[i]);
+        return Array.prototype.push.apply(this, arguments);
+      };
+      Object.defineProperty(arr, 'push', {
+        configurable: true,
+        get: function () { return current; },
+        set: function (webpackPush) {
+          current = function () {
+            for (var i = 0; i < arguments.length; i++) patchModules(arguments[i]);
+            return webpackPush.apply(this, arguments);
+          };
+        }
+      });
+      self[name] = arr;
+    })();
+    """#
 
     /// Reports whether this WebView can actually create a WebGL context.
     /// The flyover is 100% WebGL — without it the page paints only its
