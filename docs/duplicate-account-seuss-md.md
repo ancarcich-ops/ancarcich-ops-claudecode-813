@@ -45,3 +45,15 @@ profile is unreachable by username.
   empty stats.
 - Once (4) ships, the app can request by id directly; the username lookup
   becomes the fallback.
+
+## Shipped & verified (2026-11-16)
+
+- Server #667 deployed: id lookup live, `Seuss.md` resolves to the real
+  account, `createdBy.id` present. All three probed live and confirmed.
+- App: decodes `createdBy.id` (`createdById`); creator link uses it,
+  falling back to the exact-username seat. Profile loads fetch by
+  userId first, username on 404 (pre-#667 servers); mismatch guard kept.
+- User tested on device: own-creator link routes to Stats tab; other
+  players' profiles load by id. Working.
+- The "near-identical username" error is now effectively unreachable;
+  left in as a guard for servers without id lookup.
