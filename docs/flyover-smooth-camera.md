@@ -157,3 +157,7 @@ Log-correlated with the app:
    stream delivers during 8.4 s; frames show mosaic blur until the flight
    ends. The pre-roll from the section above (wait for ~40 tiles) plus a
    slightly lower target zoom (≤17.4) keeps detail ahead of the camera.
+
+## Follow-up
+
+Reveal and flight timing ("goes before it loads"): see `docs/flyover-reveal-gate.md`.
