@@ -131,3 +131,13 @@ site chrome.
   it in place: it protects against the pattern returning and costs nothing.
 - Still open: camera smoothing (docs/flyover-smooth-camera.md) and embed page
   chrome (site header + Sign in render inside the WKWebView).
+
+## Cleanup (2026-11-17): client patch removed
+
+The server fix (#670) is live and confirmed painting 3D meshes, so
+`getCursorPatchScript` and its user script were removed from
+`FlyoverService.swift` — dead weight; the doc note from the shipped section no
+longer applies. Web PR #673 carries the recording's three fixes (dying-page
+status suppressed via `pagehide`; camera zoom 16.8→17.4, pitch 55→65; 40-tile
+pre-roll). The app-side stale-status guard added the same day stays: it covers
+the app's own teardown window regardless of what the embed posts.
