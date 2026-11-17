@@ -1,6 +1,13 @@
 # Flyover: don't reveal or fly until the view is actually loaded
 
-Status: spec, not yet implemented. Web repo only. **No app change is needed**, because the app already keeps its "LOADING 3D VIEW" overlay up until the embed posts `ready`. If `ready` is posted later, the reveal happens later.
+Status: implemented in web PR #678 (not yet deployed as of 2026-11-17; the live flyover chunk is still #673's `9351-a23e82928fbad6c1.js`).
+
+Deviations from this spec, agreed:
+- The starvation stat is `"Tiles Loading"` (loaders.gl 4.4.3), not `"Tiles In Loading"`. Confirmed in the live bundle's loaders.gl constants.
+- The camera-snap pre-fetch (section 3) was not built: HolePreview3D also runs in HoleStudyMode/OnCourseMode on the web, where the snap would be visible. Revisit (with a second invisible viewport) only if hole 11 is still soft at the green after the gate.
+- Verified off-device: no tiles → `stalled`, camera never moves. NOT verified: the refined path and the 5 s cap (no tiles load without the key). The next device recording's `view refined in NNNms` / `reveal cap hit at 5000ms` lines settle it.
+
+Original spec: Web repo only. **No app change is needed**, because the app already keeps its "LOADING 3D VIEW" overlay up until the embed posts `ready`. If `ready` is posted later, the reveal happens later.
 
 ## What the device recording shows (2026-11-17, holes 10 → 11)
 

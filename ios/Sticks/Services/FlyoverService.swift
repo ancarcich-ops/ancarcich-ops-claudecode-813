@@ -130,8 +130,9 @@ final class FlyoverService: NSObject {
         #endif
     }
 
-    /// Forwards window errors, unhandled promise rejections, and
-    /// console.error lines from the embed to `sticksFlyoverLog`.
+    /// Forwards window errors, unhandled promise rejections, console.error,
+    /// console.warn, and reveal-gate log/info lines from the embed to
+    /// `sticksFlyoverLog`.
     private static let consoleCaptureScript = """
     (function () {
       function post(line) {
@@ -150,6 +151,18 @@ final class FlyoverService: NSObject {
         post('console.error: ' + Array.prototype.map.call(arguments, String).join(' '));
         return origError.apply(console, arguments);
       };
+      // Reveal-gate diagnostics (web #678): "view refined in NNNms",
+      // "reveal cap hit at 5000ms", etc. Filtered so library chatter
+      // from deck.gl/loaders.gl stays out of the app log.
+      var gate = /refined|cap hit|reveal|stalled|starv|flight|gate/i;
+      ['log', 'info', 'warn'].forEach(function (level) {
+        var orig = console[level];
+        console[level] = function () {
+          var text = Array.prototype.map.call(arguments, String).join(' ');
+          if (level === 'warn' || gate.test(text)) { post('console.' + level + ': ' + text); }
+          return orig.apply(console, arguments);
+        };
+      });
     })();
     """
 
