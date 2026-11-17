@@ -115,3 +115,19 @@ Also confirmed from the app's exact embed URL: the chrome-less embed ships the
 site header (sticky, with nav) and two "Sign in" links — wrong furniture inside
 the flyover WKWebView. Separate small fix: the embed route should render no
 site chrome.
+
+## #670 deployed & verified (2026-11-17)
+
+- Production deployment `dpl_6JDkDf18Z2X95aNcyhWj6egFiD7K` serves
+  `9351-1365d8164d595de7.js`: `"crosshair":void 0` count 0; the DeckGL prop is
+  now `getCursor: p ? () => "crosshair" : <deck.gl default>` — the spread form.
+- Chunk 9351 is no longer referenced by a stable number in the page
+  (`9351-933b473e32e625ac.js` from the pre-merge tip was not the deployed hash);
+  always read the chunk name out of the embed HTML.
+- The harmless sibling (`cursor:` CSS in the minimap, chunk 9483) is not loaded
+  by the embed page at all — the false-positive trap doesn't apply to the app's
+  embed loads, only to whole-repo greps.
+- App-side `getCursorPatchScript` now no-ops by design (pattern absent). Leave
+  it in place: it protects against the pattern returning and costs nothing.
+- Still open: camera smoothing (docs/flyover-smooth-camera.md) and embed page
+  chrome (site header + Sign in render inside the WKWebView).
