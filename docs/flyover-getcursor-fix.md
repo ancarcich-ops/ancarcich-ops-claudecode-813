@@ -98,3 +98,20 @@ Fix in Google Cloud Console (project owning the key in the embed bundle):
    restrictions allow sticks-golf.vercel.app/*. Note the iOS WKWebView sends the
    page's own origin as Referer, so a referrer rule for the site covers the app.
 Verify: the curl above returns JSON with a "root" entry instead of 404.
+
+## Correction (2026-11-17): the PR numbers were crossed
+
+#666 is "A round keeps the card it was played on" (stroke-index-per-match) —
+it was never the flyover fix. No flyover fix was ever merged in the web repo;
+the buggy line is untouched since #552 (August). The real fix is web PR #670
+(one line, `getCursor` spread form), opened 2026-11-17, verified in a real
+browser with a control run (without a Google key the component returns early
+and deck.gl never mounts, so probes must set a dummy key). It was unmerged at
+the time of writing — merge and deploy, then verify the live chunk lost
+`"crosshair":void 0` (new chunk hash). The app's getCursorPatchScript no-ops
+once it ships.
+
+Also confirmed from the app's exact embed URL: the chrome-less embed ships the
+site header (sticky, with nav) and two "Sign in" links — wrong furniture inside
+the flyover WKWebView. Separate small fix: the embed route should render no
+site chrome.
