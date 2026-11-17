@@ -1,0 +1,22 @@
+{
+  "declaration": {
+    "schemaVersion": 1,
+    "dataUsages": [
+      { "category": "EMAIL_ADDRESS", "purposes": ["APP_FUNCTIONALITY"], "dataProtections": ["DATA_LINKED_TO_YOU"] },
+      { "category": "NAME", "purposes": ["APP_FUNCTIONALITY"], "dataProtections": ["DATA_LINKED_TO_YOU"] },
+      { "category": "PHONE_NUMBER", "purposes": ["APP_FUNCTIONALITY"], "dataProtections": ["DATA_LINKED_TO_YOU"] },
+      { "category": "USER_ID", "purposes": ["APP_FUNCTIONALITY"], "dataProtections": ["DATA_LINKED_TO_YOU"] },
+      { "category": "PRECISE_LOCATION", "purposes": ["APP_FUNCTIONALITY"], "dataProtections": ["DATA_LINKED_TO_YOU"] },
+      { "category": "OTHER_USER_CONTENT", "purposes": ["APP_FUNCTIONALITY"], "dataProtections": ["DATA_LINKED_TO_YOU"] }
+    ]
+  },
+  "privacyPolicyUrl": "https://sticks-golf.app/privacy",
+  "thirdPartySDKs": [],
+  "medicalDevice": false,
+  "evidence": [
+    { "label": "Account signup collects email, name, optional phone", "detail": "SignupRequest in APIClient.swift sends username, email, password, displayName, phone to the Sticks API.", "source": "ios/Sticks/Services/APIClient.swift" },
+    { "label": "Precise location sent to server", "detail": "postTee sends lat/lng/accuracy per tee shot; nearbyCourses queries with lat/lng. GPS via CoreLocation (LocationService).", "source": "ios/Sticks/Services/APIClient.swift, ios/Sticks/Services/LocationService.swift" },
+    { "label": "User content: scores, matches, side-game picks", "detail": "Scores and match data posted to the API and shared with group members.", "source": "ios/Sticks/Services/APIClient.swift" },
+    { "label": "No analytics, ads, or tracking SDKs", "detail": "No third-party analytics or advertising SDKs present; networking is first-party API plus Esri map tiles.", "source": "ios/Sticks/Services" }
+  ]
+}

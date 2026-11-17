@@ -11,7 +11,7 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Sticks uses Face ID to sign you in without retyping your password.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Sticks uses your location to show live GPS distances to the green while you play, and to keep those distances live on your lock screen and Apple Watch during a round.</string>
+	<string>Sticks uses your location to show live GPS distances to the green while you play, to keep those distances live on your lock screen and Apple Watch during a round, and to find courses near you when you set up a round.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Sticks connects to Health so it can start the Sticks app on your Apple Watch when a round begins — the watch records that round as a golf workout.</string>
 	<key>NSHealthUpdateUsageDescription</key>

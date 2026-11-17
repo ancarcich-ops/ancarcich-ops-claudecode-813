@@ -599,7 +599,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Sticks works with Health to launch its Apple Watch companion automatically and record your rounds as golf workouts.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Sticks saves your rounds to Health as golf workouts from your Apple Watch.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Sticks uses your location to show live GPS distances to the green while you play, and to keep those distances live on your lock screen and Apple Watch during a round.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Sticks uses your location to show live GPS distances to the green while you play, to keep those distances live on your lock screen and Apple Watch during a round, and to find courses near you when you set up a round.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -635,7 +635,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Sticks works with Health to launch its Apple Watch companion automatically and record your rounds as golf workouts.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Sticks saves your rounds to Health as golf workouts from your Apple Watch.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Sticks uses your location to show live GPS distances to the green while you play, and to keep those distances live on your lock screen and Apple Watch during a round.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Sticks uses your location to show live GPS distances to the green while you play, to keep those distances live on your lock screen and Apple Watch during a round, and to find courses near you when you set up a round.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
