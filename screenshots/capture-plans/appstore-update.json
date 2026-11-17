@@ -1,0 +1,55 @@
+{
+  "version": 2,
+  "platform": "ios",
+  "screenshotScenario": "app-store",
+  "scrollDirection": "page",
+  "screenshotPrompts": [
+    {
+      "label": "Live Scorecard",
+      "screenDescription": "In-progress round detail: on-course GPS button, hero card thru 6 all square, scorecard",
+      "requiredLabels": ["Resume on-course GPS", "SCORECARD", "THRU 6"],
+      "prompt": "Live round you can follow shot by shot",
+      "setup": [
+        {"action": "tap", "label": "Torrey Pines Golf Club (South Course)", "type": "Button"}
+      ]
+    },
+    {
+      "label": "On-Course GPS",
+      "screenDescription": "On-course GPS map: satellite hole view, distances to pin, score entry",
+      "requiredLabels": ["ENTER SCORE"],
+      "prompt": "Your caddie on the cart path",
+      "setup": [
+        {"action": "tap", "label": "Resume on-course GPS", "type": "Button"}
+      ]
+    },
+    {
+      "label": "Win Probability",
+      "screenDescription": "Back on round detail, scrolled to live standings with win percentages and skins",
+      "requiredLabels": ["STANDINGS"],
+      "prompt": "Odds that move with every shot",
+      "setup": [
+        {"action": "tap", "label": "Back", "type": "Button"},
+        {"action": "scroll", "direction": "down"},
+        {"action": "scroll", "direction": "down"}
+      ]
+    },
+    {
+      "label": "Side Games",
+      "screenDescription": "Round detail scrolled to the side games card with skins running",
+      "requiredLabels": ["SKINS"],
+      "prompt": "Side games that settle themselves",
+      "setup": [
+        {"action": "scroll", "direction": "down"}
+      ]
+    },
+    {
+      "label": "Stats",
+      "screenDescription": "Stats tab: personal career stats, averages, bests",
+      "requiredLabels": ["Stats", "career"],
+      "prompt": "A career record that keeps itself",
+      "setup": [
+        {"action": "tap_bottom_tab", "tabPosition": 3, "tabCount": 4}
+      ]
+    }
+  ]
+}

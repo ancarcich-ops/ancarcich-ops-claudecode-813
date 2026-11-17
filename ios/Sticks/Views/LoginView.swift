@@ -222,6 +222,7 @@ struct LoginView: View {
             .submitLabel(submitLabel)
             .onSubmit(onSubmit)
             .sticksFieldStyle(isFocused: focusedField == field)
+            .accessibilityIdentifier(field == .identifier ? "login-identifier" : "login-extra")
     }
 
     /// Slice 51: SecureField/TextField pair sharing `password`, with an
@@ -235,6 +236,7 @@ struct LoginView: View {
                         .autocorrectionDisabled()
                 } else {
                     SecureField("Password", text: $password)
+                    .accessibilityIdentifier("login-password")
                 }
             }
             .textContentType(.password)
@@ -295,6 +297,7 @@ struct LoginView: View {
         .disabled(!canSubmit)
         .animation(.easeInOut(duration: 0.15), value: isSubmitting)
         .animation(.easeInOut(duration: 0.15), value: canSubmit)
+        .accessibilityIdentifier("login-submit")
     }
 
     /// Slice 51: shown only when a biometric token exists on a

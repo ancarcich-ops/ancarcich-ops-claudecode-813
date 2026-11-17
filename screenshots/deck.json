@@ -1,51 +1,72 @@
 {
-  "theme": {
-    "style": "Clubhouse-at-dusk luxury: deep forest green felt textures paired with warm ivory and brass light, evoking leather scorecards, polished trophies, and old-money fairways. Lighting is soft and directional like late afternoon sun through clubhouse windows, with fine grain and velvet-smooth gradients. Mood is quietly confident and traditional, never flashy or arcade-like.",
-    "headlineFont": "'Plus Jakarta Sans', sans-serif — import via @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap')",
-    "headlineFontSize": 124,
-    "mockupIds": {
-      "iphone": "deep-blue"
-    },
-    "palette": {
-      "primary": "#123524",
-      "secondary": "#F2EBDD",
-      "accent": "#C89B3C"
-    }
+  "appContext": {
+    "appName": "Sticks",
+    "category": "Sports",
+    "summary": "GPS yardages, live scoring, side games"
   },
-  "slides": [
-    {
-      "label": "Live Scorecard",
-      "backgroundPrompt": "Abstract digital art of a nearly solid deep forest green (#123524) surface with a soft warm ivory (#F2EBDD) light shaft cutting diagonally from the lower right, subtle felt-like texture visible under the light, fine grain throughout, the upper 30% darker and calmer for text overlay, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/cfc73c53-b7ad-4487-b8b4-a06036926379.png"
-    },
-    {
-      "label": "On-Course GPS",
-      "backgroundPrompt": "Abstract digital art of a deep forest green (#123524) base evoking a golf course seen from above at dusk: sweeping darker emerald contour bands curving like fairway mowing lines, two faint brass (#C89B3C) arcing lines fading into the dark like yardage arcs, a soft ivory (#F2EBDD) glow rising from the lower edge like coastal light, the upper 30% darker and calm for text overlay, subtle grain texture, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no numbers, no UI elements, no device mockups",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/6f356bff-e172-4078-8c96-0caef21a5cb9.png"
-    },
-    {
-      "label": "Win Percentage Market",
-      "backgroundPrompt": "Abstract digital art on a deep forest green (#123524) base with drifting brass (#C89B3C) particle light trails swirling diagonally from bottom-left to top-right, small glowing embers scattered mid-frame, cinematic rim lighting giving a trading-floor energy, the top third darker and uncluttered, subtle grain texture, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/10970c0c-0f40-4d67-bd7d-a15f6cbe531c.png"
-    },
-    {
-      "label": "Side Games",
-      "backgroundPrompt": "Abstract digital art with an ivory cream (#F2EBDD) base and thin curling ribbons of muted forest green (#123524) light weaving gracefully across the frame, soft golden brass (#C89B3C) highlights catching the ribbon edges, warm diffused lighting from above, delicate depth of field blur at the corners, the upper 30% kept calm and open, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/08c276b1-9bdf-452b-8116-a3b32b873888.png"
-    },
-    {
-      "label": "Stats",
-      "backgroundPrompt": "Abstract digital art of a deep forest green (#123524) vignette with a single soft diagonal ivory (#F2EBDD) light beam crossing from top-left to bottom-right, minimal composition with subtle brass (#C89B3C) glow pooling at the base, fine dust particles suspended in the beam, editorial and restrained mood, upper region dark and calm for text, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/b184dae0-38a1-4402-b959-37edf9702ac7.png"
-    }
-  ],
-  "headlines": {
-    "en": {
-      "Live Scorecard": "Scores<br>Keep Themselves",
-      "On-Course GPS": "Exact Yardage.<br>Every Shot.",
-      "Win Percentage Market": "Watch The Odds<br>Shift Live",
-      "Side Games": "Classic Games.<br>Zero Math.",
-      "Stats": "Every Round.<br>Remembered."
+  "devices": {
+    "iphone": {
+      "theme": {
+        "style": "Clubhouse at dusk: deep forest green velvet and felt tones lit by warm ivory and burnished brass light, like late-afternoon sun slanting through tall clubhouse windows. The deck uses fine film grain, soft directional golden-hour glow, polished metallic sheens and leather-rich warmth. Backgrounds stay calm, dark and luxurious, with the upper third quiet for headlines. The mood is traditional and quietly confident, never flashy.",
+        "headlineFont": "font-family: 'Playfair Display', serif; weight 600. @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap');",
+        "headlineFontSize": 124,
+        "mockupIds": {
+          "iphone": "silver",
+          "ipad": "silver"
+        },
+        "palette": {
+          "primary": "#123524",
+          "secondary": "#F3EBDA",
+          "accent": "#C9A14A"
+        },
+        "layoutId": "hero-clipped"
+      },
+      "slides": [
+        {
+          "label": "Live Scorecard",
+          "capture": "screenshots/captures/iphone/01-live-scorecard.png",
+          "prompt": "Live round you can follow shot by shot",
+          "backgroundPrompt": "Rich cinematic abstract scene of deep forest green velvet folds rolling gently across the lower frame, catching warm brass and ivory highlights from low late-afternoon light entering at the right. The upper third fades to a calm near-black emerald, while fine film grain and soft depth-of-field blur on the edges add a luxurious tactile feel. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-live-scorecard.png"
+        },
+        {
+          "label": "On-Course GPS",
+          "capture": "screenshots/captures/iphone/02-on-course-gps.png",
+          "prompt": "Your caddie on the cart path",
+          "backgroundPrompt": "Abstract digital art of long sweeping horizontal bands of soft golden-hour light in burnished brass and warm ivory, gliding across a deep pine green to dark moss gradient from the left edge. Delicate haze and floating dust motes catch the light in the lower half, and the top region stays dark and uncluttered. Subtle grain and velvet-smooth tonal transitions complete the scene. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-on-course-gps.png"
+        },
+        {
+          "label": "Win Probability",
+          "capture": "screenshots/captures/iphone/03-win-probability.png",
+          "prompt": "Odds that move with every shot",
+          "backgroundPrompt": "3D rendered scene of slender polished brass arcs curving upward diagonally from the bottom-left through a dark forest green atmosphere, each edge glinting with warm champagne rim light. A soft ivory glow pools behind the arcs, and the upper portion fades into deep emerald shadow. Fine grain and gentle depth-of-field blur add premium depth. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-win-probability.png"
+        },
+        {
+          "label": "Side Games",
+          "capture": "screenshots/captures/iphone/04-side-games.png",
+          "prompt": "Side games that settle themselves",
+          "backgroundPrompt": "Photorealistic abstract close-up of layered rich green felt planes stacked at shallow angles, with their stitched edges softly lit by warm amber lamplight from above right. Scattered warm bokeh orbs of brass and ivory glow in the lower center, and the top third falls into a deep velvety bottle-green darkness. Subtle grain and smooth shadow gradients finish the image. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-side-games.png"
+        },
+        {
+          "label": "Stats",
+          "capture": "screenshots/captures/iphone/05-stats.png",
+          "prompt": "A career record that keeps itself",
+          "backgroundPrompt": "Elegant abstract composition of a single large soft sphere of burnished gold light rising from the bottom center, its glow bleeding into a polished metallic sheen across a deep forest green to near-black gradient. Faint concentric ripples of ivory light radiate outward, and the upper region stays calm and dark. Fine film grain and velvet-smooth falloff create a refined, trophy-room warmth. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-stats.png"
+        }
+      ],
+      "headlines": {
+        "en": {
+          "Live Scorecard": "Every Shot<br>Live",
+          "On-Course GPS": "Your Pocket<br>Caddie",
+          "Win Probability": "Odds That<br>Move",
+          "Side Games": "Bets Settled<br>Instantly",
+          "Stats": "Your Career<br>Record"
+        }
+      }
     }
   }
 }

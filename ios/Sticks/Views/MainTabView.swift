@@ -87,11 +87,17 @@ struct MainTabView: View {
         // Coach marks wait while the welcome is up, then the tab tour
         // runs; each tab's own tour runs the first time it's opened.
         .onAppear {
-            TutorialCenter.shared.isSuspended = !welcomed
-            requestTutorials()
+            TutorialCenter.shared.isSuspended = !welcomed || Self.isCaptureScenario
+            if !Self.isCaptureScenario { requestTutorials() }
+            #if DEBUG && targetEnvironment(simulator)
+            // App-store capture scenario: skip the first-launch welcome
+            // and hold coach marks so the replay sees real screens.
+            // Compiled out of release builds.
+            if Self.isCaptureScenario { welcomed = true }
+            #endif
         }
         .onChange(of: welcomed) { _, isWelcomed in
-            TutorialCenter.shared.isSuspended = !isWelcomed
+            TutorialCenter.shared.isSuspended = !isWelcomed || Self.isCaptureScenario
             requestTutorials()
         }
         .onChange(of: selection) { _, _ in
@@ -130,6 +136,15 @@ struct MainTabView: View {
     /// The selected tab, readable from a queued tour's relevance check
     /// (the closure can't see this view's @State later).
     static var currentSelection: SticksTab = .home
+
+#if DEBUG && targetEnvironment(simulator)
+    /// App-store capture scenario — read at launch, never in release.
+    static let isCaptureScenario =
+        UserDefaults.standard.string(forKey: "RORK_SCREENSHOT_SCENARIO") == "app-store"
+#else
+    /// Always off in release builds.
+    static let isCaptureScenario = false
+#endif
 
     private var tabsWithBar: some View {
         ZStack {
