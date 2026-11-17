@@ -132,3 +132,28 @@ loop when ~40 tiles have loaded (`tileCountRef.current >= 40`) or 2.5 s after
   gentle stop, no lurches at ~2.4 s or ~6 s.
 - Dragging during the flight still takes over immediately.
 - The app still gets `ready`. Test Torrey Pines hole 1 on the phone.
+
+## Device recording, 2026-11-17 (holes 2 → 1, Torrey Pines)
+
+Log-correlated with the app:
+
+1. **Hole switch poisons the next load.** Tearing down hole 2's page aborts
+   its in-flight tile fetches; `onTileError` fires with `Load failed` and the
+   dying page posts `status: "error"` 23 ms AFTER the hole-1 page's
+   navigation started. The app's guard (`state != .ready`) doesn't cover it —
+   state is `.loading` — so it marked hole 1 failed and flashed the
+   "3D DIDN'T LOAD" fallback until the real `ready` arrived 350 ms later.
+   App-side fixed (ignore statuses before the new document's didFinish).
+   Web-side fix in the same spirit: in `onTileError`, ignore aborted fetches
+   (`error.name === "AbortError"` / `Load failed` when `document.visibilityState`
+   is unloading or the component unmounted) — a dying page should post
+   nothing.
+2. **The flight reads as flat ground-hugging pan, not a flyover.** Zoom
+   18.5+ at pitch 64–70 is ~100 m altitude: the camera skims the ground, so
+   mid-flight frames look like a 2D map with no horizon. Suggest starting
+   higher and tilting through the flight, e.g. zoom 16.8 → 17.4 with pitch
+   55 → 65, so the green approach reads as descent.
+3. **Blur mid-flight.** Tiles at the flight's zoom need more detail than the
+   stream delivers during 8.4 s; frames show mosaic blur until the flight
+   ends. The pre-roll from the section above (wait for ~40 tiles) plus a
+   slightly lower target zoom (≤17.4) keeps detail ahead of the camera.

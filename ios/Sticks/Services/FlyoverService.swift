@@ -78,6 +78,14 @@ final class FlyoverService: NSObject {
     /// Bumped on every load; the watchdog only fails the generation it
     /// was started for, so a hole switch can't be failed by a stale timer.
     private var generation = 0
+
+    /// False between `load()` and the new document's didFinish. The
+    /// embed's status scripts can only run after mount, so any status
+    /// posted before that belongs to the PREVIOUS page being torn down
+    /// (e.g. its in-flight tile fetches aborting with "Load failed").
+    /// Honoring those marked a healthy next hole as failed and flashed
+    /// the 2D fallback for the ~350 ms until the real "ready" arrived.
+    private var pageFinished = false
     private var watchdog: Task<Void, Never>?
 
     /// Loads that show no life after this long surface the RETRY state.
@@ -245,6 +253,7 @@ final class FlyoverService: NSObject {
     private func load(_ url: URL) {
         generation += 1
         state = .loading
+        pageFinished = false
         Self.log("Loading flyover: \(url.absoluteString)")
         webView.stopLoading()
         webView.load(URLRequest(url: url, timeoutInterval: 30))
@@ -268,6 +277,7 @@ final class FlyoverService: NSObject {
         // silently stall. Wait for the embed's own status message; the
         // watchdog stays armed in case the page's JS never runs.
         Self.log("Page HTML finished loading")
+        pageFinished = true
         if state == .loading { state = .pageLoaded }
     }
 
@@ -280,6 +290,10 @@ final class FlyoverService: NSObject {
             watchdog?.cancel()
             state = .ready
         case "error":
+            if !pageFinished {
+                Self.log("Ignoring embed status from the previous page (teardown abort)")
+                return
+            }
             guard state != .ready else { return }
             watchdog?.cancel()
             state = .failed
