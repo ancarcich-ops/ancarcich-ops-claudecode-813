@@ -730,7 +730,10 @@ struct MatchDetailView: View {
     /// an ink label and a green underline; inactive is muted.
     private func detailTabBar(_ detail: MatchDetail) -> some View {
         let callCount = viewModel.response?.odds?.totalCalls ?? 0
-        return HStack(spacing: 24) {
+        // Three tabs on a finished, priced round (Scorecard | Recap |
+        // Live odds) only just fit the card width — tighter spacing and
+        // shrinkable single-line labels keep "Scorecard" from wrapping.
+        return HStack(spacing: 18) {
             tabButton(
                 title: "Scorecard",
                 badge: "\(thruCount(detail))/\(detail.holes)",
@@ -801,9 +804,12 @@ struct MatchDetailView: View {
                     Text(title)
                         .font(SticksFont.sans(15, weight: .semibold))
                         .foregroundStyle(isActive ? Color.sticksInk : Color.sticksMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     if let badge {
                         Text(badge)
                             .font(SticksFont.mono(10))
+                            .lineLimit(1)
                             .foregroundStyle(isActive ? Color.sticksGreen : Color.sticksFaint)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
