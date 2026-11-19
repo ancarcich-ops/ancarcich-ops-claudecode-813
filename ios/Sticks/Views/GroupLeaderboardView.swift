@@ -1060,12 +1060,8 @@ private struct LeaderboardAvatar: View {
     var body: some View {
         Group {
             if let urlString = avatarUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        initialsBubble
-                    }
+                RemoteAvatarImage(url: url) {
+                    initialsBubble
                 }
             } else {
                 initialsBubble

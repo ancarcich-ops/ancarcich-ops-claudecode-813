@@ -287,19 +287,31 @@ struct MatchListView: View {
 
     private var matchList: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
+            // Headers and cards are direct children of the LazyVStack so
+            // only the cards on screen are built — a VStack per section
+            // would build every card in the feed up front.
+            LazyVStack(alignment: .leading, spacing: 10) {
                 if !liveMatches.isEmpty {
                     matchSection(
                         title: "Live",
                         matches: liveMatches,
-                        showsLiveDot: true
+                        showsLiveDot: true,
+                        isFirst: true
                     )
                 }
                 if !upcomingMatches.isEmpty {
-                    matchSection(title: "Upcoming", matches: upcomingMatches)
+                    matchSection(
+                        title: "Upcoming",
+                        matches: upcomingMatches,
+                        isFirst: liveMatches.isEmpty
+                    )
                 }
                 if !recentMatches.isEmpty {
-                    matchSection(title: "Recent", matches: recentMatches)
+                    matchSection(
+                        title: "Recent",
+                        matches: recentMatches,
+                        isFirst: liveMatches.isEmpty && upcomingMatches.isEmpty
+                    )
                 }
             }
             .padding(.horizontal, 20)
@@ -311,51 +323,53 @@ struct MatchListView: View {
         }
     }
 
+    @ViewBuilder
     private func matchSection(
         title: String,
         matches: [MatchSummary],
-        showsLiveDot: Bool = false
+        showsLiveDot: Bool = false,
+        isFirst: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 7) {
-                if showsLiveDot {
-                    PulsingDot()
-                }
-                Text(title)
-                    .font(SticksFont.label(12))
-                    .kerning(1.8)
-                    .textCase(.uppercase)
-                    .foregroundStyle(showsLiveDot ? Color.sticksGreen : Color.sticksMuted)
+        HStack(spacing: 7) {
+            if showsLiveDot {
+                PulsingDot()
             }
-            .padding(.leading, 4)
+            Text(title)
+                .font(SticksFont.label(12))
+                .kerning(1.8)
+                .textCase(.uppercase)
+                .foregroundStyle(showsLiveDot ? Color.sticksGreen : Color.sticksMuted)
+        }
+        .padding(.leading, 4)
+        // Section gap (24pt) minus the stack's 10pt row spacing.
+        .padding(.top, isFirst ? 0 : 14)
 
-            ForEach(matches) { match in
-                // Live cards carry "+ PICK" chips and every card now
-                // carries the slice-93 reaction row, so none of them can
-                // be a NavigationLink (the link would swallow the nested
-                // chip taps) — a container tap gesture pushes the detail
-                // instead, and the deeper chip Buttons win their own taps.
-                // Slice 96: "Show reactions" off → pass nil, which hides
-                // the card's whole reaction row (the row only renders
-                // when a toggle closure is provided).
-                MatchCardView(
-                    match: match,
-                    showsPicks: match.status == .inProgress,
-                    onToggleReaction: DisplayPrefsStore.shared.showReactions
-                        ? { emoji in
-                            Task { await viewModel.toggleReaction(
-                                matchId: match.id,
-                                emoji: emoji,
-                                session: session
-                            ) }
-                        }
-                        : nil
-                )
-                .contentShape(.rect)
-                .onTapGesture { path.append(match) }
-                .accessibilityAddTraits(.isButton)
-                .tutorialAnchor(match.id == firstVisibleMatchId ? TutorialAnchor.homeFirstCard : nil)
-            }
+        ForEach(matches) { match in
+            // Live cards carry "+ PICK" chips and every card now
+            // carries the slice-93 reaction row, so none of them can
+            // be a NavigationLink (the link would swallow the nested
+            // chip taps) — a container tap gesture pushes the detail
+            // instead, and the deeper chip Buttons win their own taps.
+            // Slice 96: "Show reactions" off → pass nil, which hides
+            // the card's whole reaction row (the row only renders
+            // when a toggle closure is provided).
+            MatchCardView(
+                match: match,
+                showsPicks: match.status == .inProgress,
+                onToggleReaction: DisplayPrefsStore.shared.showReactions
+                    ? { emoji in
+                        Task { await viewModel.toggleReaction(
+                            matchId: match.id,
+                            emoji: emoji,
+                            session: session
+                        ) }
+                    }
+                    : nil
+            )
+            .contentShape(.rect)
+            .onTapGesture { path.append(match) }
+            .accessibilityAddTraits(.isButton)
+            .tutorialAnchor(match.id == firstVisibleMatchId ? TutorialAnchor.homeFirstCard : nil)
         }
     }
 

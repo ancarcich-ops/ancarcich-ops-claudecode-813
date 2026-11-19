@@ -169,15 +169,21 @@ struct GroupFeedView: View {
 
     private var feed: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
+            // Headers and cards sit directly in the LazyVStack so only
+            // on-screen cards are built.
+            LazyVStack(alignment: .leading, spacing: 10) {
                 if !liveMatches.isEmpty {
-                    matchSection(title: "Live", matches: liveMatches, showsLiveDot: true)
+                    matchSection(title: "Live", matches: liveMatches, showsLiveDot: true, isFirst: true)
                 }
                 if !upcomingMatches.isEmpty {
-                    matchSection(title: "Upcoming", matches: upcomingMatches)
+                    matchSection(title: "Upcoming", matches: upcomingMatches, isFirst: liveMatches.isEmpty)
                 }
                 if !recentMatches.isEmpty {
-                    matchSection(title: "Recent", matches: recentMatches)
+                    matchSection(
+                        title: "Recent",
+                        matches: recentMatches,
+                        isFirst: liveMatches.isEmpty && upcomingMatches.isEmpty
+                    )
                 }
             }
             .padding(.horizontal, 20)
@@ -189,30 +195,32 @@ struct GroupFeedView: View {
         }
     }
 
+    @ViewBuilder
     private func matchSection(
         title: String,
         matches: [MatchSummary],
-        showsLiveDot: Bool = false
+        showsLiveDot: Bool = false,
+        isFirst: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 7) {
-                if showsLiveDot {
-                    FeedPulsingDot()
-                }
-                Text(title)
-                    .font(SticksFont.label(12))
-                    .kerning(1.8)
-                    .textCase(.uppercase)
-                    .foregroundStyle(showsLiveDot ? Color.sticksGreen : Color.sticksMuted)
+        HStack(spacing: 7) {
+            if showsLiveDot {
+                FeedPulsingDot()
             }
-            .padding(.leading, 4)
+            Text(title)
+                .font(SticksFont.label(12))
+                .kerning(1.8)
+                .textCase(.uppercase)
+                .foregroundStyle(showsLiveDot ? Color.sticksGreen : Color.sticksMuted)
+        }
+        .padding(.leading, 4)
+        // Section gap (24pt) minus the stack's 10pt row spacing.
+        .padding(.top, isFirst ? 0 : 14)
 
-            ForEach(matches) { match in
-                NavigationLink(value: match) {
-                    MatchCardView(match: match)
-                }
-                .buttonStyle(FeedCardButtonStyle())
+        ForEach(matches) { match in
+            NavigationLink(value: match) {
+                MatchCardView(match: match)
             }
+            .buttonStyle(FeedCardButtonStyle())
         }
     }
 

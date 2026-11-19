@@ -694,14 +694,8 @@ private struct MarketAvatar: View {
     var body: some View {
         Group {
             if let urlString = player.avatarUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        initialsBubble
-                    }
+                RemoteAvatarImage(url: url) {
+                    initialsBubble
                 }
             } else {
                 initialsBubble

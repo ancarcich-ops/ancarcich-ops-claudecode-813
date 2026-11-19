@@ -2509,9 +2509,7 @@ private struct PlayerBubble: View {
             if let avatarUrl, let url = URL(string: avatarUrl) {
                 Color.sticksPanel2
                     .overlay {
-                        AsyncImage(url: url) { image in
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        } placeholder: {
+                        RemoteAvatarImage(url: url) {
                             initialsView
                         }
                         .allowsHitTesting(false)

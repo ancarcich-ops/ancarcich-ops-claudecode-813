@@ -152,10 +152,16 @@ struct MatchCardView: View {
         let date = match.status == .completed
             ? (match.completedAt ?? match.scheduledAt)
             : match.scheduledAt
+        return dateFormatter.string(from: date).uppercased()
+    }
+
+    /// Built once: DateFormatter is expensive and this runs per card
+    /// per render.
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE, MMM d · h:mm a"
-        return formatter.string(from: date).uppercased()
-    }
+        return formatter
+    }()
 
     // MARK: - Status pill
 
@@ -931,12 +937,8 @@ private struct PlayerAvatar: View {
     var body: some View {
         Group {
             if let urlString = player.avatarUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        initialsBubble
-                    }
+                RemoteAvatarImage(url: url) {
+                    initialsBubble
                 }
             } else {
                 initialsBubble

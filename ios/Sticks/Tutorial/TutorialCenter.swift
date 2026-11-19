@@ -80,7 +80,16 @@ final class TutorialCenter {
     static let shared = TutorialCenter()
 
     /// Live on-screen frames of every tagged view, in window space.
-    private(set) var frames: [String: CGRect] = [:]
+    /// Anchors report on every scroll frame, so the raw store is NOT
+    /// observed; only while a tour is on screen does a change bump
+    /// `frameRevision`, which the overlay observes through `frames`.
+    @ObservationIgnored private var frameStore: [String: CGRect] = [:]
+    private var frameRevision = 0
+
+    var frames: [String: CGRect] {
+        _ = frameRevision
+        return frameStore
+    }
 
     /// The tour on screen, with only the steps whose targets exist.
     private(set) var activeID: TutorialID?
@@ -133,11 +142,15 @@ final class TutorialCenter {
     // MARK: Frames
 
     func setFrame(_ frame: CGRect?, for id: String) {
+        let changed: Bool
         if let frame, frame.width > 0, frame.height > 0 {
-            if frames[id] != frame { frames[id] = frame }
-        } else if frames[id] != nil {
-            frames[id] = nil
+            changed = frameStore[id] != frame
+            if changed { frameStore[id] = frame }
+        } else {
+            changed = frameStore[id] != nil
+            if changed { frameStore[id] = nil }
         }
+        if changed, activeID != nil { frameRevision &+= 1 }
     }
 
     // MARK: Surfaces
@@ -213,6 +226,7 @@ final class TutorialCenter {
 
         steps = available
         stepIndex = 0
+        frameRevision &+= 1
         isClosing = false
         activeID = pending.id
         requestScrollIfNeeded()
