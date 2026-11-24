@@ -60,6 +60,8 @@ struct CreateMatchView: View {
     @FocusState private var focusedSetting: String?
     @State private var showsSettingsSaveAlert = false
     @State private var createdMatchId: String?
+    /// The screenshot-import flow, opened from the Round step.
+    @State private var showsImport = false
     /// Read by queued coach-mark tours: is the wizard still up?
     @State private var tutorialPresence = TutorialPresence()
 
@@ -110,6 +112,12 @@ struct CreateMatchView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) { footerBar }
+        .fullScreenCover(isPresented: $showsImport) {
+            ScorecardImportView(user: user, session: session) { matchId in
+                showsImport = false
+                onCreated(matchId)
+            }
+        }
         // The wizard is a full-screen cover: its own coach-mark surface,
         // so tab tours wait until it closes.
         .onAppear {
@@ -313,7 +321,57 @@ struct CreateMatchView: View {
             if step == .round, !viewModel.isEditing, !isTournamentBound {
                 tournamentNote
             }
+
+            if step == .round, !viewModel.isEditing, !isTournamentBound {
+                importCard
+                    .padding(.top, 8)
+            }
         }
+    }
+
+    /// "Already played?" — opens the screenshot import, which saves a
+    /// finished round on its own and hands the id back here.
+    private var importCard: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showsImport = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "text.viewfinder")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.sticksGreen)
+                    .frame(width: 38, height: 38)
+                    .background(Color.sticksGreen.opacity(0.1))
+                    .clipShape(.rect(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Already played?")
+                        .font(SticksFont.sans(14.5, weight: .bold))
+                        .foregroundStyle(Color.sticksInk)
+                    Text("Import a scorecard screenshot from 18Birdies, Arccos or a paper card.")
+                        .font(SticksFont.sans(12.5))
+                        .foregroundStyle(Color.sticksMuted)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.sticksFaint)
+            }
+            .padding(12)
+            .background(Color.sticksCard)
+            .clipShape(.rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.sticksHairline, lineWidth: 1)
+            )
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel("Import a round from a scorecard screenshot")
     }
 
     /// The web's note under the intro copy: "Stringing rounds together
@@ -2579,7 +2637,7 @@ private struct SegmentPicker<Value: Hashable>: View {
 /// so it can never size past the label — the old free-floating ZStack
 /// shape was flexible and could balloon into a full-screen green block
 /// (slice 39's Course-step takeover).
-private struct CreateLedgeButtonStyle: ButtonStyle {
+struct CreateLedgeButtonStyle: ButtonStyle {
     let showsLedge: Bool
 
     func makeBody(configuration: Configuration) -> some View {

@@ -1010,6 +1010,18 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// POST /imports/scorecard — the server reads one scorecard
+    /// screenshot (raw JPEG) and returns its holes, pars and scores.
+    /// Errors (400/413/422/429/503) carry golfer-facing messages shown
+    /// verbatim. Spec: docs/scorecard-import-spec.md.
+    func importScorecard(jpegData: Data, token: String) async throws -> ScorecardImportResponse {
+        var request = makeRequest(path: "imports/scorecard", method: "POST", token: token)
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jpegData
+        request.timeoutInterval = 60
+        return try await perform(request)
+    }
+
     /// DELETE /me/avatar — removes the photo; the profile falls back to
     /// the initials bubble.
     func deleteAvatar(token: String) async throws {
