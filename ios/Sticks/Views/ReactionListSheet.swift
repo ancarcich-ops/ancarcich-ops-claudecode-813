@@ -86,7 +86,14 @@ struct ReactionListSheet: View {
         } catch let error as APIError where error.isUnauthorized {
             session.signOut()
         } catch let error as APIError {
-            phase = .failed(error.message)
+            // 405 means the server hasn't shipped the who-reacted route
+            // yet (docs/reactions-who-reacted-spec.md) — say so instead
+            // of a bare status code.
+            if error.statusCode == 405 {
+                phase = .failed("Seeing who reacted isn't available yet — it needs a Sticks server update.")
+            } else {
+                phase = .failed(error.message)
+            }
         } catch {
             phase = .failed("Can't reach Sticks. Check your connection and try again.")
         }
