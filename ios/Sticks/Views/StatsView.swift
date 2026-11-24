@@ -108,13 +108,11 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 26) {
                 identityHeader(stats)
 
-                addScoreButton
-
                 StatsHeroCard(stats: stats)
                     .tutorialAnchor(TutorialAnchor.statsHero, scrollable: true)
 
                 if stats.matchesPlayed > 0 {
-                    AtAGlanceGrid(stats: stats)
+                    AtAGlanceGrid(stats: stats, onImport: { showsCreate = true })
                         .tutorialAnchor(TutorialAnchor.statsGlance, scrollable: true)
                     WinsByGameGrid(wins: stats.winsByGame)
                 }
@@ -165,37 +163,13 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Add a score
-
-    /// Opens the New round flow (which now carries the scorecard
-    /// screenshot import) — the quick path from "how am I playing?"
-    /// to logging what just happened.
-    private var addScoreButton: some View {
-        Button {
-            showsCreate = true
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "square.and.arrow.down")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("IMPORT A ROUND")
-                    .font(SticksFont.mono(10.5))
-                    .kerning(0.8)
-            }
-            .foregroundStyle(Color.sticksCream)
-            .padding(.horizontal, 16)
-            .frame(height: 33)
-            .background(Color.sticksGreen)
-            .clipShape(.capsule)
-            .contentShape(.capsule)
-        }
-        .buttonStyle(NewRoundPressStyle())
-        .accessibilityLabel("Import a round")
-    }
-
-    /// The empty state gets the same call to action pinned to the
-    /// bottom, where a thumb can reach it.
+    /// The empty state's call to action pinned to the bottom, where
+    /// a thumb can reach it. Once rounds exist the same pill moves
+    /// down to the At a glance header (importPill). The At a glance
+    /// card only appears when matchesPlayed > 0, so the empty state
+    /// and the header pill never show at the same time.
     private var addScoreFooter: some View {
-        addScoreButton
+        importPill { showsCreate = true }
             .padding(.horizontal, 20)
             .padding(.top, 12)
             .padding(.bottom, 16)
@@ -992,11 +966,39 @@ struct ScoringAnalysisCard: View {
 
 // MARK: - At a glance
 
+/// Opens the New round flow (which carries the scorecard screenshot
+/// import) — the At a glance header's action and the empty state's
+/// pinned call to action. Compact fits the card's title line.
+private func importPill(action: @escaping () -> Void, compact: Bool = false) -> some View {
+    Button {
+        action()
+    } label: {
+        HStack(spacing: compact ? 5 : 6) {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: compact ? 9 : 10, weight: .semibold))
+            Text("IMPORT A ROUND")
+                .font(SticksFont.mono(compact ? 9.5 : 10.5))
+                .kerning(0.8)
+        }
+        .foregroundStyle(Color.sticksCream)
+        .padding(.horizontal, compact ? 11 : 16)
+        .frame(height: compact ? 26 : 33)
+        .background(Color.sticksGreen)
+        .clipShape(.capsule)
+        .contentShape(.capsule)
+    }
+    .buttonStyle(NewRoundPressStyle())
+    .accessibilityLabel("Import a round")
+}
+
 private struct AtAGlanceGrid: View {
     let stats: PlayerStats
+    let onImport: () -> Void
 
     var body: some View {
-        StatsSectionCard(title: "At a glance") {
+        StatsSectionCard(title: "At a glance", accessory: {
+            importPill(action: onImport, compact: true)
+        }) {
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
                 spacing: 10
