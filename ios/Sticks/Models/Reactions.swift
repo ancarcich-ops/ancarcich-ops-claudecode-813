@@ -55,6 +55,60 @@ nonisolated struct ReactionToggleResponse: Decodable {
     let reactions: [Reaction]
 }
 
+// MARK: - Who reacted
+
+/// One person behind a reaction tally — served only by the who-reacted
+/// endpoint (docs/reactions-who-reacted-spec.md). List and detail
+/// payloads keep tallies-only so they never carry identities.
+nonisolated struct ReactionUser: Codable, Hashable, Identifiable {
+    let id: String
+    let handle: String?
+    let displayName: String
+    let avatarUrl: String?
+    /// ISO timestamp of the reaction — the sheet orders by it.
+    let at: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, handle, displayName, avatarUrl, at
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        handle = try? container.decode(String.self, forKey: .handle)
+        displayName = (try? container.decode(String.self, forKey: .displayName)) ?? ""
+        avatarUrl = try? container.decode(String.self, forKey: .avatarUrl)
+        at = try? container.decode(String.self, forKey: .at)
+    }
+}
+
+/// One emoji's tally WITH the people behind it — the who-reacted
+/// endpoint's unit. `users` arrives newest reaction first.
+nonisolated struct ReactionTallyWithUsers: Codable, Hashable {
+    let emoji: String
+    let count: Int
+    let mine: Bool
+    let users: [ReactionUser]
+}
+
+/// GET /matches/:id/reactions?target=… response — every used emoji's
+/// tally for one target, each with its reactor list.
+nonisolated struct ReactionWhoResponse: Decodable {
+    let ok: Bool
+    let target: String?
+    let tallies: [ReactionTallyWithUsers]
+}
+
+/// The who-reacted sheet's open state — which target's which emoji the
+/// caller long-pressed. Identifiable so .sheet(item:) can drive it.
+@MainActor
+struct WhoReactedTarget: Identifiable {
+    let targetKey: String
+    let emoji: String
+
+    var id: String { "\(targetKey):\(emoji)" }
+}
+
 /// One server-computed score highlight ("EAGLE", "SNOWMAN", …).
 /// Rendered exactly as sent — the server owns sorting and copy.
 nonisolated struct MatchHighlight: Decodable, Hashable {

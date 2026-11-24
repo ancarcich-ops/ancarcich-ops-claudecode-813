@@ -581,6 +581,24 @@ nonisolated struct APIClient {
         return try await perform(request)
     }
 
+    /// GET /matches/:id/reactions?target=… — one target's tallies WITH
+    /// the reactors (the who-reacted sheet). Target is "round" or
+    /// "hole:<matchPlayerId>:<hole>"; users arrive newest-first. Backed
+    /// by docs/reactions-who-reacted-spec.md.
+    func reactionUsers(
+        matchId: String,
+        targetKey: String,
+        token: String
+    ) async throws -> ReactionWhoResponse {
+        let request = makeRequest(
+            path: "matches/\(matchId)/reactions",
+            method: "GET",
+            queryItems: [URLQueryItem(name: "target", value: targetKey)],
+            token: token
+        )
+        return try await perform(request)
+    }
+
     /// POST /matches/:id/complete — marks the round finished. No body;
     /// idempotent, so re-posting on an already-completed match is safe.
     func postComplete(matchId: String, token: String) async throws {

@@ -8,6 +8,11 @@
 //  green outline. Emoji order is the server's `reactionEmoji` (detail)
 //  or the client constant (cards).
 //
+//  Who-reacted: a LONG-PRESS on a used chip (count > 0) opens the
+//  reactors sheet — tap still toggles the caller's own reaction. The
+//  closure is optional; surfaces without identities (feed cards) pass
+//  nothing and the gesture simply doesn't exist.
+//
 
 import SwiftUI
 import UIKit
@@ -17,27 +22,46 @@ struct ReactionRow: View {
     let emojis: [String]
     /// The target's tallies from the latest server payload.
     let tallies: [Reaction]
+    /// Long-press a used chip → the reactors sheet. Nil = no gesture.
+    var onWhoReacted: ((String) -> Void)? = nil
     let onToggle: (String) -> Void
 
     var body: some View {
         HStack(spacing: 6) {
             ForEach(emojis, id: \.self) { emoji in
-                chip(emoji)
+                ReactionChip(
+                    emoji: emoji,
+                    tally: tallies.first { $0.emoji == emoji },
+                    onWhoReacted: onWhoReacted,
+                    onToggle: onToggle
+                )
             }
         }
     }
+}
 
-    private func tally(for emoji: String) -> Reaction? {
-        tallies.first { $0.emoji == emoji }
-    }
+/// One emoji chip. Tap toggles the caller's own reaction; a long-press
+/// on a used chip opens the reactors sheet INSTEAD of toggling. The
+/// flag matters because a Button fires on touch-up inside — releasing
+/// after a long hold would otherwise toggle too, so the gesture marks
+/// the touch consumed and the action drops it.
+private struct ReactionChip: View {
+    let emoji: String
+    let tally: Reaction?
+    var onWhoReacted: ((String) -> Void)?
+    let onToggle: (String) -> Void
 
-    @ViewBuilder
-    private func chip(_ emoji: String) -> some View {
-        let tally = tally(for: emoji)
-        let isUsed = (tally?.count ?? 0) > 0
-        let isMine = tally?.mine == true
+    @State private var longPressConsumed = false
 
+    private var isUsed: Bool { (tally?.count ?? 0) > 0 }
+    private var isMine: Bool { tally?.mine == true }
+
+    var body: some View {
         Button {
+            if longPressConsumed {
+                longPressConsumed = false
+                return
+            }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onToggle(emoji)
         } label: {
@@ -66,8 +90,25 @@ struct ReactionRow: View {
         }
         .buttonStyle(ReactionChipButtonStyle())
         .animation(.easeOut(duration: 0.15), value: tally)
+        .simultaneousGesture(whoReactedGesture)
         .accessibilityLabel("\(emoji) reaction\(isUsed ? ", \(tally?.count ?? 0)" : "")")
         .accessibilityAddTraits(isMine ? [.isSelected] : [])
+        .accessibilityAction(named: "See who reacted") {
+            onWhoReacted?(emoji)
+        }
+    }
+
+    /// Long-press opens the reactors sheet — only on used chips, only
+    /// when the caller can show it.
+    private var whoReactedGesture: AnyGesture<Void> {
+        let gesture = LongPressGesture(minimumDuration: 0.4)
+            .onEnded { _ in
+                guard isUsed else { return }
+                longPressConsumed = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onWhoReacted?(emoji)
+            }
+        return AnyGesture(gesture.map { _ in () })
     }
 }
 
@@ -91,6 +132,8 @@ struct HighlightRow: View {
     /// Slice 96: the account's "Show reactions" setting — false drops
     /// this row's emoji chips while the highlight itself stays.
     var showsReactions: Bool = true
+    /// Who-reacted passthrough — the sheet opens on this hole's target.
+    var onWhoReacted: ((String) -> Void)? = nil
     let onToggle: (String) -> Void
 
     var body: some View {
@@ -120,7 +163,12 @@ struct HighlightRow: View {
                 .foregroundStyle(Color.sticksMuted)
 
             if showsReactions {
-                ReactionRow(emojis: emojiSet, tallies: tallies, onToggle: onToggle)
+                ReactionRow(
+                    emojis: emojiSet,
+                    tallies: tallies,
+                    onWhoReacted: onWhoReacted,
+                    onToggle: onToggle
+                )
             }
         }
         .padding(.vertical, 10)

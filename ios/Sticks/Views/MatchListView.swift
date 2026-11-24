@@ -345,26 +345,13 @@ struct MatchListView: View {
         .padding(.top, isFirst ? 0 : 14)
 
         ForEach(matches) { match in
-            // Live cards carry "+ PICK" chips and every card now
-            // carries the slice-93 reaction row, so none of them can
+            // Live cards carry "+ PICK" chips, so none of them can
             // be a NavigationLink (the link would swallow the nested
             // chip taps) — a container tap gesture pushes the detail
             // instead, and the deeper chip Buttons win their own taps.
-            // Slice 96: "Show reactions" off → pass nil, which hides
-            // the card's whole reaction row (the row only renders
-            // when a toggle closure is provided).
             MatchCardView(
                 match: match,
-                showsPicks: match.status == .inProgress,
-                onToggleReaction: DisplayPrefsStore.shared.showReactions
-                    ? { emoji in
-                        Task { await viewModel.toggleReaction(
-                            matchId: match.id,
-                            emoji: emoji,
-                            session: session
-                        ) }
-                    }
-                    : nil
+                showsPicks: match.status == .inProgress
             )
             .contentShape(.rect)
             .onTapGesture { path.append(match) }

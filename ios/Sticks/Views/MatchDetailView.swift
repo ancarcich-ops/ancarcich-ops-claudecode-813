@@ -73,6 +73,9 @@ struct MatchDetailView: View {
     /// Slice 93: a reaction push's parked scroll target, consumed once
     /// the detail has loaded — hole-level keys scroll to Highlights.
     @State private var pendingScrollTarget: String?
+    /// Who-reacted: the long-pressed chip's target — the reactors sheet
+    /// (docs/reactions-who-reacted-spec.md) opens for that emoji there.
+    @State private var whoReactedTarget: WhoReactedTarget?
 
     init(match: MatchSummary, session: SessionStore) {
         self.match = match
@@ -973,7 +976,13 @@ struct MatchDetailView: View {
                                     highlight: highlight,
                                     tallies: detail.tallies(for: highlight.reactionKey),
                                     emojiSet: detail.emojiSet,
-                                    showsReactions: showsReactions
+                                    showsReactions: showsReactions,
+                                    onWhoReacted: { emoji in
+                                        whoReactedTarget = WhoReactedTarget(
+                                            targetKey: highlight.reactionKey,
+                                            emoji: emoji
+                                        )
+                                    }
                                 ) { emoji in
                                     Task { await viewModel.toggleReaction(
                                         emoji: emoji,
@@ -995,7 +1004,13 @@ struct MatchDetailView: View {
                 if showsReactions {
                     ReactionRow(
                         emojis: detail.emojiSet,
-                        tallies: detail.tallies(for: ReactionTarget.roundKey)
+                        tallies: detail.tallies(for: ReactionTarget.roundKey),
+                        onWhoReacted: { emoji in
+                            whoReactedTarget = WhoReactedTarget(
+                                targetKey: ReactionTarget.roundKey,
+                                emoji: emoji
+                            )
+                        }
                     ) { emoji in
                         Task { await viewModel.toggleReaction(
                             emoji: emoji,
@@ -1014,6 +1029,14 @@ struct MatchDetailView: View {
                     .stroke(Color.sticksHairline, lineWidth: 1)
             )
             .id(HighlightScrollAnchor.id)
+            .sheet(item: $whoReactedTarget) { target in
+                ReactionListSheet(
+                    matchId: match.id,
+                    targetKey: target.targetKey,
+                    emoji: target.emoji,
+                    session: session
+                )
+            }
         }
     }
 
