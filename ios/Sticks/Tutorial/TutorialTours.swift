@@ -45,6 +45,7 @@ enum TutorialAnchor {
 
     static let createSteps = "create.steps"
     static let createCourse = "create.course"
+    static let createImport = "create.import"
     static let createPrimary = "create.primary"
     static let createSideGames = "create.sideGames"
 }
@@ -261,6 +262,13 @@ enum TutorialTours {
             title: "Find your course",
             body: "Search by name, or use courses near you. Tee, holes and format come next.",
             icon: "mappin.and.ellipse"
+        ),
+        TutorialStep(
+            target: TutorialAnchor.createImport,
+            title: "Already played?",
+            body: "Snap a photo of the scorecard — 18Birdies, Arccos or paper — and Sticks reads the scores into a finished round.",
+            icon: "text.viewfinder",
+            scrolls: true
         ),
         TutorialStep(
             target: TutorialAnchor.createPrimary,

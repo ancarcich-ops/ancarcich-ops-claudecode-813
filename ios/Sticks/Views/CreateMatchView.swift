@@ -324,6 +324,7 @@ struct CreateMatchView: View {
 
             if step == .round, !viewModel.isEditing, !isTournamentBound {
                 importCard
+                    .tutorialAnchor(TutorialAnchor.createImport, scrollable: true)
                     .padding(.top, 8)
             }
         }
