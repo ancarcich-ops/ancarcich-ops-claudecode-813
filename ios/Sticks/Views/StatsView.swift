@@ -175,9 +175,9 @@ struct StatsView: View {
             showsCreate = true
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .bold))
-                Text("LOG A ROUND")
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("IMPORT A ROUND")
                     .font(SticksFont.mono(10.5))
                     .kerning(0.8)
             }
@@ -189,7 +189,7 @@ struct StatsView: View {
             .contentShape(.capsule)
         }
         .buttonStyle(NewRoundPressStyle())
-        .accessibilityLabel("Log a round")
+        .accessibilityLabel("Import a round")
     }
 
     /// The empty state gets the same call to action pinned to the
