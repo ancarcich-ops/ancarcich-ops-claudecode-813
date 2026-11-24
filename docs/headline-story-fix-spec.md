@@ -31,3 +31,10 @@ beat the seat, the story should feature the winner. Proposed order:
 
 The "biggest single run against the seat" angle (what picked Parian) can stay as
 the stretch detail, not the subject.
+
+## Verify against
+
+`GET /api/mobile/matches/cmwp7wobb0001129vq0glnnue/recap` (Quivira, Seuss.md's
+seat) must come back with T-Bone as the story subject per the order above, and
+copy of the form "T-Bone beat you by 11 …". Also check a seat that won their
+round (story unchanged) and a seat the winner finished behind.
