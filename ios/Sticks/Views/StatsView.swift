@@ -40,6 +40,9 @@ struct StatsView: View {
                     failedView(message)
                 case .empty:
                     emptyView
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            addScoreFooter
+                        }
                 case .loaded:
                     if let stats = viewModel.stats {
                         content(stats)
@@ -105,6 +108,8 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 26) {
                 identityHeader(stats)
 
+                addScoreButton
+
                 StatsHeroCard(stats: stats)
                     .tutorialAnchor(TutorialAnchor.statsHero, scrollable: true)
 
@@ -158,6 +163,43 @@ struct StatsView: View {
         .refreshable {
             await viewModel.load(session: session)
         }
+    }
+
+    // MARK: - Add a score
+
+    /// Opens the New round flow (which now carries the scorecard
+    /// screenshot import) — the quick path from "how am I playing?"
+    /// to logging what just happened.
+    private var addScoreButton: some View {
+        Button {
+            showsCreate = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .bold))
+                Text("LOG A ROUND")
+                    .font(SticksFont.mono(10.5))
+                    .kerning(0.8)
+            }
+            .foregroundStyle(Color.sticksCream)
+            .padding(.horizontal, 16)
+            .frame(height: 33)
+            .background(Color.sticksGreen)
+            .clipShape(.capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(NewRoundPressStyle())
+        .accessibilityLabel("Log a round")
+    }
+
+    /// The empty state gets the same call to action pinned to the
+    /// bottom, where a thumb can reach it.
+    private var addScoreFooter: some View {
+        addScoreButton
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+            .background(Color.sticksBg)
     }
 
     // MARK: - Identity header
