@@ -59,7 +59,7 @@ Field rules. The client decodes everything tolerantly, so missing keys are fine 
 
 - `source`: `"18birdies" | "arccos" | "ghin" | "golfshot" | "paper" | "other"`. Display only.
 - `course.name`: the course name as printed on the image, or `null`.
-- `course.matchedCourseId` / `matchedCourseName`: optional. Run the same lookup `GET /courses?q=` uses with `course.name` and return the best confident hit. The app pre-selects it, and the user can still change the course.
+- `course.matchedCourseId` / `matchedCourseName`: optional. Run the same lookup `GET /courses?q=` uses with `course.name` and return a hit only when it is unambiguous. When several courses match equally ("Torrey Pines" → North and South), return neither. The app pre-selects a returned match. Without one, it pre-fills the course search with `course.name` so the user picks.
 - `date`: `YYYY-MM-DD` when the image shows one, else `null`. The app defaults to today.
 - `roundHoles`: 9 or 18 when the card makes it clear, else `null`.
 - `holes`: only the holes **visible in this image**, using absolute hole numbers (1–18). `par` is 3–6 or `null`.
@@ -85,9 +85,11 @@ Every error uses the usual `{ "error": "<message>" }` body. The app shows the me
 
 Allow 20 images per user per hour. That's generous for a few imports with a retry or two, and caps cost.
 
+The limiter fails open: if its counter errors, the request goes through. Log every such failure loudly so it can't stay open unnoticed, and keep the per-request caps (one image, 6 MB) as the cost backstop.
+
 ## Model and prompt guidance
 
-- Use any vision model with structured or JSON output. Ask for exactly the schema above and validate it with zod before returning.
+- Use any vision model with structured or JSON output. Ask for exactly the schema above and validate it before returning. Hand-written guards match the rest of the repo; no validation library is needed. When a single value is out of range (strokes 1–15, par 3–6), set it to `null` with `uncertain: true` instead of rejecting the whole response. Never clamp it, because clamping invents a score. Retry only when the overall shape is wrong, or when a hole number falls outside 1–18.
   - On a validation failure, retry once, then return 422.
 - System prompt essentials:
   - "You are reading a golf scorecard screenshot. Extract only what is visible. Never invent or infer scores. Unreadable means null with uncertain: true."
